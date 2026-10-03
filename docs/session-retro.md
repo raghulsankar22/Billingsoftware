@@ -1,0 +1,8 @@
+# Integration session retrospective
+
+1. Cloud access: the connected Supabase account and signed-in browser initially returned no projects. Created Finance billing software in raghulsankar Org after the user selected it, using Mumbai and the connector's $0/month cost confirmation.
+2. Deployment guidance: the first-run screen pointed only to migration 001, leaving required profile saving, security restrictions, replacement, and PDF storage absent. Corrected it to all four migrations and added the server credential requirement.
+3. Guardrails: the repository had passing tests but no CI workflow. Added a workflow running TypeScript, tests, and build. The existing lint command enters an interactive ESLint setup prompt; lint still needs a configured deterministic replacement.
+4. Configuration feedback: added a local checker that reports missing settings without revealing values. It checks presence and URL shape, not remote authorization.
+5. Coordination: the other billing chat is actively integrating isolated branches. Shared setup changes and architecture findings were sent there to avoid conflicting work. Synchronization outcome persistence and workbook validation remain assigned to that chat for follow-up.
+6. Verification: 27 tests, TypeScript, and production build passed. Applied migrations 001–004 remotely, ran the SQL billing integrity test with rollback, verified RLS on four tables, confirmed billing functions execute only for service_role, and confirmed private PDF storage. The security advisor reports only the intentional absence of browser policies for Microsoft tokens. OneDrive remains unverified pending Microsoft credentials/sign-in.
