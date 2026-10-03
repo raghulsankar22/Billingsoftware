@@ -1,7 +1,7 @@
 import ExcelJS from "exceljs";
 import { decrypt, encrypt } from "./crypto";
 import { createAdminSupabase } from "./supabase";
-import { appendRegisterBill, createRegister } from "./register";
+import { appendRegisterBill, createRegister, requireRegisterSheet } from "./register";
 import type { Bill } from "./types";
 
 const graphBase = "https://graph.microsoft.com/v1.0";
@@ -96,8 +96,7 @@ export async function syncBillToOneDrive(profileId: string, bill: Bill) {
 
 export async function markBillVoidInOneDrive(profileId: string, billNumber: number) {
   await updateRegister(profileId, (workbook) => {
-    const sheet = workbook.getWorksheet("Bills");
-    if (!sheet) throw new Error("The workbook has no Bills register.");
+    const sheet = requireRegisterSheet(workbook);
     let found = false;
     sheet.eachRow((row, index) => {
       if (index > 1 && Number(row.getCell(4).value) === billNumber) {

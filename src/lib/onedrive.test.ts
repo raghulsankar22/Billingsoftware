@@ -81,6 +81,28 @@ describe("OneDrive register sync", () => {
     expect(row.font.strike).toBe(true);
   });
 
+  it.each(["renamed", "reordered", "missing", "extra"])("does not upload void changes when register headers are %s", async (mismatch) => {
+    const workbook = createRegister(); appendRegisterBill(workbook, bill);
+    const sheet = workbook.getWorksheet("Bills")!;
+    if (mismatch === "renamed") sheet.getCell("G1").value = "Unrelated notes";
+    if (mismatch === "reordered") {
+      const name = sheet.getCell("F1").value;
+      sheet.getCell("F1").value = sheet.getCell("G1").value;
+      sheet.getCell("G1").value = name;
+    }
+    if (mismatch === "missing") sheet.getCell("I1").value = null;
+    if (mismatch === "extra") sheet.getCell("J1").value = "Additional column";
+    const content = Buffer.from(await workbook.xlsx.writeBuffer()); let uploads = 0;
+    vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
+      if (url.includes("/token")) return token();
+      if (init?.method === "PUT") { uploads++; return json({}); }
+      if (url.includes("/content")) return new Response(content);
+      return json({ id: "file", eTag: "etag" });
+    }));
+    await expect(markBillVoidInOneDrive("profile", bill.billNumber)).rejects.toThrow(/headers do not match/);
+    expect(uploads).toBe(0);
+  });
+
   it("retries Microsoft throttling using Retry-After and fails safely after repeated conflicts", async () => {
     const workbook = createRegister(); const bytes = Buffer.from(await workbook.xlsx.writeBuffer());
     let reads = 0, uploads = 0;

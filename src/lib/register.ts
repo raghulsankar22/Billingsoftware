@@ -18,12 +18,17 @@ export function createRegister() {
   return workbook;
 }
 
-export function appendRegisterBill(workbook: ExcelJS.Workbook, bill: Bill) {
+export function requireRegisterSheet(workbook: ExcelJS.Workbook) {
   const sheet = workbook.getWorksheet("Bills");
   if (!sheet) throw new Error("The workbook has no Bills register. Choose a billing register workbook.");
-  if (registerHeaders.some((header, index) => sheet.getCell(1, index + 1).value !== header)) {
+  if (sheet.actualColumnCount !== registerHeaders.length || registerHeaders.some((header, index) => sheet.getCell(1, index + 1).value !== header)) {
     throw new Error("The workbook's Bills headers do not match this app's register.");
   }
+  return sheet;
+}
+
+export function appendRegisterBill(workbook: ExcelJS.Workbook, bill: Bill) {
+  const sheet = requireRegisterSheet(workbook);
   const rows: ExcelJS.CellValue[][] = [];
   let existing = false;
   for (let index = 2; index <= sheet.rowCount; index++) {
