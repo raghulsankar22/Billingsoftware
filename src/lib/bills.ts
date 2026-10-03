@@ -6,6 +6,7 @@ export function toBill(row: Record<string, unknown>): Bill {
   const totalLoanAmount = Number(row.total_loan_amount ?? 0);
   return {
     id: String(row.id),
+    profileId: row.profile_id ? String(row.profile_id) : undefined,
     billNumber: Number(row.bill_number),
     status: String(row.status) as Bill["status"],
     deliveryNo: String(row.delivery_no ?? ""),

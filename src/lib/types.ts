@@ -23,6 +23,7 @@ export type BillInput = {
 
 export type Bill = BillInput & {
   id: string;
+  profileId?: string;
   billNumber: number;
   status: BillStatus;
   replacementForId?: string;

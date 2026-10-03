@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { accountSlot } from "@/lib/accounts";
 import { billSchema } from "@/lib/validation";
 import { requireOwnerProfile, requireUser } from "@/lib/auth";
 import { createAdminSupabase } from "@/lib/supabase";
@@ -9,13 +10,14 @@ import { persistBillPdf } from "@/lib/bill-pdf-storage";
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
   try {
     const user = await requireUser(request);
-    const profile = await requireOwnerProfile(user.id);
+    const profile = await requireOwnerProfile(user.id, accountSlot(request));
     if (!profile) return NextResponse.json({ error: "Business profile is required." }, { status: 422 });
     const { id } = await context.params;
     const input = billSchema.parse(await request.json());
     const total = totals(input);
     const payload = {
       ...input,
+      accountSlot: accountSlot(request),
       totalAssessedValue: total.assessedValue,
       totalLoanAmount: total.loanAmount,
       items: input.items.map((item, sortOrder) => ({ ...item, sortOrder })),

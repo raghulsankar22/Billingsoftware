@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { accountSlot } from "@/lib/accounts";
 import { requireOwnerProfile, requireUser } from "@/lib/auth";
 import { createAdminSupabase } from "@/lib/supabase";
 import { toBill } from "@/lib/bills";
@@ -7,7 +8,7 @@ import { loadBillPdf } from "@/lib/bill-pdf-storage";
 export async function GET(request: Request, context: { params: Promise<{ id: string }> }) {
   try {
     const user = await requireUser(request);
-    const profile = await requireOwnerProfile(user.id);
+    const profile = await requireOwnerProfile(user.id, accountSlot(request));
     if (!profile) return NextResponse.json({ error: "Business profile is required." }, { status: 422 });
     const { id } = await context.params;
     const { data, error } = await createAdminSupabase().from("bills").select("*, bill_items(*)").eq("id", id).eq("profile_id", profile.id).single();

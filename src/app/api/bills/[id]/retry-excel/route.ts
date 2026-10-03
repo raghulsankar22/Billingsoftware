@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { accountSlot } from "@/lib/accounts";
 import { requireOwnerProfile, requireUser } from "@/lib/auth";
 import { createAdminSupabase } from "@/lib/supabase";
 import { toBill } from "@/lib/bills";
@@ -6,7 +7,7 @@ import { syncBillToGoogleDrive } from "@/lib/google-drive";
 
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
   try {
-    const user = await requireUser(request); const profile = await requireOwnerProfile(user.id);
+    const user = await requireUser(request); const profile = await requireOwnerProfile(user.id, accountSlot(request));
     if (!profile) throw new Error("Business profile is required.");
     const { id } = await context.params; const supabase = createAdminSupabase();
     const { data, error } = await supabase.from("bills").select("*, bill_items(*)").eq("id", id).eq("profile_id", profile.id).single();

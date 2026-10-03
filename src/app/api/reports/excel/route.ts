@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
+import { accountSlot } from "@/lib/accounts";
 import { requireOwnerProfile, requireUser } from "@/lib/auth";
 import { buildReportRegister, loadReportBills, reportFilters } from "@/lib/excel-report";
 
 export async function GET(request: Request) {
   try {
-    const user = await requireUser(request); const profile = await requireOwnerProfile(user.id);
+    const user = await requireUser(request); const profile = await requireOwnerProfile(user.id, accountSlot(request));
     if (!profile) throw new Error("Business profile is required.");
     const filters = reportFilters(new URL(request.url).searchParams);
     const workbook = buildReportRegister(await loadReportBills(profile.id, filters));

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { accountSlot } from "@/lib/accounts";
 import { billSchema } from "@/lib/validation";
 import { requireOwnerProfile, requireUser } from "@/lib/auth";
 import { createAdminSupabase } from "@/lib/supabase";
@@ -10,7 +11,7 @@ import { loadBillHistory } from "@/lib/bill-history";
 export async function GET(request: Request) {
   try {
     const user = await requireUser(request);
-    const profile = await requireOwnerProfile(user.id);
+    const profile = await requireOwnerProfile(user.id, accountSlot(request));
     if (!profile) return NextResponse.json({ bills: [] });
     const { searchParams } = new URL(request.url);
     return NextResponse.json(await loadBillHistory(createAdminSupabase(), profile.id, searchParams));
@@ -20,11 +21,11 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const user = await requireUser(request);
-    const profile = await requireOwnerProfile(user.id);
+    const profile = await requireOwnerProfile(user.id, accountSlot(request));
     if (!profile) return NextResponse.json({ error: "Create your business profile before issuing a bill." }, { status: 422 });
     const input = billSchema.parse(await request.json());
     const total = totals(input);
-    const payload = { ...input, totalAssessedValue: total.assessedValue, totalLoanAmount: total.loanAmount, items: input.items.map((item, sortOrder) => ({ ...item, sortOrder })) };
+    const payload = { ...input, accountSlot: accountSlot(request), totalAssessedValue: total.assessedValue, totalLoanAmount: total.loanAmount, items: input.items.map((item, sortOrder) => ({ ...item, sortOrder })) };
     const supabase = createAdminSupabase();
     const { data: result, error: createError } = await supabase.rpc("create_bill", { p_owner_id: user.id, p_bill: payload });
     if (createError) throw createError;
