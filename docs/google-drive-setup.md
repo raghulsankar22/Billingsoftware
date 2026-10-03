@@ -2,7 +2,7 @@
 
 The app now uses Google Drive for its Excel register. Supabase remains the source of truth: synchronization regenerates the workbook from all saved bills, including voided bills. Treat the Drive workbook as an export; manual edits will be replaced during the next sync. Excel downloads still work independently.
 
-Set `SUPABASE_SERVICE_ROLE_KEY`, `GOOGLE_CLIENT_ID`, and `GOOGLE_CLIENT_SECRET` in `.env.local`. The URL, browser publishable key, and generated encryption key are already configured locally. Retain the encryption key securely. Run `pnpm check:configuration` to list missing settings without revealing values.
+Set `SUPABASE_SERVICE_ROLE_KEY`, `BILLING_OWNER_EMAIL`, `GOOGLE_CLIENT_ID`, and `GOOGLE_CLIENT_SECRET` in `.env.local`. Use the email address for the single owner login. The URL, browser publishable key, and generated encryption key are already configured locally. Retain the encryption key securely. Run `pnpm check:configuration` to list missing settings without revealing values.
 
 In Google Cloud, enable the Google Drive API, configure the OAuth consent screen, and create a Web application OAuth client. Register `http://localhost:3100/api/google-drive/callback` as an authorized redirect URI. Add your account as a test user if the consent screen is in testing. Testing-mode refresh tokens can expire; use an appropriate published consent configuration for sustained use.
 

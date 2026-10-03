@@ -8,7 +8,7 @@ if (existsSync('.env.local')) {
   }
 }
 const missing = [];
-for (const key of ['NEXT_PUBLIC_SUPABASE_URL', 'NEXT_PUBLIC_SUPABASE_ANON_KEY', 'SUPABASE_SERVICE_ROLE_KEY', 'GOOGLE_CLIENT_SECRET']) {
+for (const key of ['NEXT_PUBLIC_SUPABASE_URL', 'NEXT_PUBLIC_SUPABASE_ANON_KEY', 'SUPABASE_SERVICE_ROLE_KEY', 'BILLING_OWNER_EMAIL', 'GOOGLE_CLIENT_SECRET']) {
   if (!settings[key]) missing.push(key);
 }
 if (!settings.GOOGLE_CLIENT_ID) missing.push('GOOGLE_CLIENT_ID');
