@@ -4,6 +4,7 @@ import { requireOwnerProfile, requireUser } from "@/lib/auth";
 import { createAdminSupabase } from "@/lib/supabase";
 import { toBill, totals } from "@/lib/bills";
 import { syncBillToOneDrive } from "@/lib/onedrive";
+import { persistBillPdf } from "@/lib/bill-pdf-storage";
 
 export async function GET(request: Request) {
   try {
@@ -34,6 +35,11 @@ export async function POST(request: Request) {
     const { data, error } = await supabase.from("bills").select("*, bill_items(*)").eq("id", result.id).single();
     if (error) throw error;
     const bill = toBill({ ...data, items: data.bill_items });
+    try {
+      await persistBillPdf(profile, bill);
+    } catch (pdfError) {
+      await supabase.from("bills").update({ pdf_error: pdfError instanceof Error ? pdfError.message : "PDF storage failed" }).eq("id", bill.id);
+    }
     try {
       await syncBillToOneDrive(profile.id, bill);
       await supabase.from("bills").update({ excel_sync_status: "synced", excel_sync_error: null }).eq("id", bill.id);
