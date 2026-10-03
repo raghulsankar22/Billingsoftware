@@ -5,6 +5,7 @@ import { createAdminSupabase } from "@/lib/supabase";
 import { toBill, totals } from "@/lib/bills";
 import { syncBillToGoogleDrive } from "@/lib/google-drive";
 import { persistBillPdf } from "@/lib/bill-pdf-storage";
+import { loadBillHistory } from "@/lib/bill-history";
 
 export async function GET(request: Request) {
   try {
@@ -12,12 +13,7 @@ export async function GET(request: Request) {
     const profile = await requireOwnerProfile(user.id);
     if (!profile) return NextResponse.json({ bills: [] });
     const { searchParams } = new URL(request.url);
-    const query = searchParams.get("q")?.trim();
-    let requestQuery = createAdminSupabase().from("bills").select("*, bill_items(*)").eq("profile_id", profile.id).order("bill_number", { ascending: false });
-    if (query) requestQuery = requestQuery.or(`customer_name.ilike.%${query}%,phone.ilike.%${query}%,bill_number.eq.${Number(query) || -1}`);
-    const { data, error } = await requestQuery.limit(100);
-    if (error) throw error;
-    return NextResponse.json({ bills: (data ?? []).map((bill) => toBill({ ...bill, items: bill.bill_items })) });
+    return NextResponse.json(await loadBillHistory(createAdminSupabase(), profile.id, searchParams));
   } catch (error) { return NextResponse.json({ error: error instanceof Error ? error.message : "Unable to load bills" }, { status: 400 }); }
 }
 
