@@ -31,7 +31,7 @@ export function amountInWords(value: number): string {
   }
   if (remaining) parts.push(belowThousand(remaining));
   const suffix = paise ? ` and ${belowThousand(paise)} Paise` : "";
-  return `Rupees ${parts.join(" ")}${suffix} Only`;
+  return `Rupees ${parts.join(" ") || "Zero"}${suffix} Only`;
 }
 
 export const formatINR = (value: number) => new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", minimumFractionDigits: 2 }).format(value || 0);

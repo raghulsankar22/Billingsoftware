@@ -9,6 +9,10 @@ describe("amountInWords", () => {
   it("includes paise when supplied", () => {
     expect(amountInWords(8000.5)).toBe("Rupees Eight Thousand and Fifty Paise Only");
   });
+
+  it("names zero rupees for amounts below one rupee", () => {
+    expect(amountInWords(0.5)).toBe("Rupees Zero and Fifty Paise Only");
+  });
 });
 
 describe("itemSummary", () => {

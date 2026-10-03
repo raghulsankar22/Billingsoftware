@@ -1,5 +1,7 @@
 export type BillStatus = "issued" | "void" | "sync_pending" | "sync_failed";
 
+export type BusinessSnapshot = { business_name: string; address: string; phone: string; logo_url?: string | null };
+
 export type BillItemInput = {
   particulars: string;
   grams: number;
@@ -30,6 +32,7 @@ export type Bill = BillInput & {
   excelSyncStatus: "synced" | "pending" | "failed";
   excelSyncError?: string;
   createdAt: string;
+  businessSnapshot?: BusinessSnapshot;
 };
 
 export const registerHeaders = [
