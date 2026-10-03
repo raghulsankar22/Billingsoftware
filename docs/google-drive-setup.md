@@ -6,7 +6,9 @@ Set `SUPABASE_SERVICE_ROLE_KEY`, `BILLING_OWNER_EMAIL`, `GOOGLE_CLIENT_ID`, and 
 
 In Google Cloud, enable the Google Drive API, configure the OAuth consent screen, and create a Web application OAuth client. Register `http://localhost:3100/api/google-drive/callback` as an authorized redirect URI. Add your account as a test user if the consent screen is in testing. Testing-mode refresh tokens can expire; use an appropriate published consent configuration for sustained use.
 
-The app requests `drive.file`, offline access, and consent with state and PKCE. It creates `Finance Billing Register.xlsx` in My Drive and remembers its ID. Use the same Google account when reconnecting. `GOOGLE_DRIVE_WORKBOOK_NAME` controls the name at creation.
+The app requests `drive.file`, offline access, and consent with state and PKCE. Each business account has its own connection and remembered workbook ID. Names include the account number and sanitized business name, for example `Finance Billing Register - Account 2 - Example Business.xlsx`. `GOOGLE_DRIVE_WORKBOOK_NAME` controls the base name. Select and connect each business account separately; use the same Google account when reconnecting.
+
+Connection status and OAuth start use `?account=1|2|3` (default 1). The encrypted browser request binds the authenticated owner, profile UUID, and account slot. The callback verifies all three against the database before exchanging credentials and returns to the selected account. Reconnection preserves that profile's existing workbook ID.
 
 Synchronization uses a database lease shared across servers. Busy syncs report a retryable error. File IDs are generated and saved before creation so retries do not create duplicates. Transfers are bounded to 20 seconds; registers larger than 5 MB require direct Excel download. Failed syncs retain saved bills and retry controls.
 
