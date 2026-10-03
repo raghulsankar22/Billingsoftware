@@ -28,5 +28,7 @@ describe("bill PDF", () => {
     const bytes = createBillPdf(bill, { business_name: "Changed Name", address: "Other Address", phone: "000" });
     expect(Buffer.from(bytes.subarray(0, 4)).toString()).toBe("%PDF");
     expect(bytes.length).toBeGreaterThan(3000);
+    // A Unicode character map is required for ₹ to survive PDF text extraction.
+    expect(Buffer.from(bytes).toString("latin1")).toContain("/ToUnicode");
   });
 });

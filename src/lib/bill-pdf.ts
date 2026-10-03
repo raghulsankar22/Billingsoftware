@@ -1,17 +1,29 @@
 import { jsPDF } from "jspdf";
+import { currencyFont } from "./currency-font";
 import { amountInWords } from "./money";
 import type { Bill } from "./types";
 
 type BusinessDetails = { business_name: string; address: string; phone: string; logo_url?: string | null };
 type SnapshottedBill = Bill & { businessSnapshot?: BusinessDetails };
 
-const money = (value: number) => `Rs. ${new Intl.NumberFormat("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value)}`;
+const money = (value: number) => `₹ ${new Intl.NumberFormat("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value)}`;
 
 export function createBillPdf(bill: SnapshottedBill, currentProfile: BusinessDetails): Uint8Array {
   const business = bill.businessSnapshot ?? currentProfile;
   const pdf = new jsPDF({ unit: "mm", format: "a4", compress: true });
+  pdf.addFileToVFS("BillCurrency.ttf", currencyFont);
+  pdf.addFont("BillCurrency.ttf", "BillCurrency", "normal");
   const left = 15;
   let y = 17;
+
+  function currency(text: string, right: number, width: number, size = 9) {
+    pdf.setFont("BillCurrency", "normal");
+    pdf.setFontSize(size);
+    // Amounts remain inside their columns even for large Indian-grouped values.
+    const measured = pdf.getTextWidth(text);
+    if (measured > width) pdf.setFontSize(size * width / measured);
+    pdf.text(text, right, y, { align: "right" });
+  }
 
   function line(text: string, x: number, width: number, size = 10, bold = false) {
     pdf.setFont("helvetica", bold ? "bold" : "normal");
@@ -79,10 +91,12 @@ export function createBillPdf(bill: SnapshottedBill, currentProfile: BusinessDet
     const description = pdf.splitTextToSize(item.particulars, 86) as string[];
     const height = Math.max(8, description.length * 4.5 + 3);
     if (y + height > 254) { newPage(); tableHeader(); }
+    pdf.setFont("helvetica", "normal");
+    pdf.setFontSize(9);
     pdf.text(description, 18, y);
     pdf.text(String(item.grams), 112, y);
-    pdf.text(money(item.assessedValue), 132, y);
-    pdf.text(money(item.loanAmount), 169, y);
+    currency(money(item.assessedValue), 162, 32);
+    currency(money(item.loanAmount), 192, 27);
     y += height;
     pdf.setDrawColor(220, 226, 232);
     pdf.line(left, y - 4, 195, y - 4);
@@ -91,8 +105,8 @@ export function createBillPdf(bill: SnapshottedBill, currentProfile: BusinessDet
   if (y + 51 > 275) newPage();
   pdf.setFont("helvetica", "bold");
   pdf.setFontSize(10);
-  pdf.text(`Total Value: ${money(bill.totalAssessedValue)}`, left, y);
-  pdf.text(`Loan Amount: ${money(bill.totalLoanAmount)}`, 118, y);
+  currency(`Total Value: ${money(bill.totalAssessedValue)}`, 105, 90, 10);
+  currency(`Loan Amount: ${money(bill.totalLoanAmount)}`, 195, 77, 10);
   y += 8;
   line(`Amount in words: ${amountInWords(bill.totalLoanAmount)}`, left, 180, 10);
   y += 21;
