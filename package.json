@@ -7,7 +7,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "test": "vitest run"
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "check:configuration": "node scripts/check-configuration.mjs"
   },
   "dependencies": {
     "@azure/msal-browser": "^4.8.0",
