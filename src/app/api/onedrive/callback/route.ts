@@ -1,25 +1,25 @@
-import { NextResponse } from "next/server";
-import { encrypt, readSignedState } from "@/lib/crypto";
+import { NextRequest, NextResponse } from "next/server";
+import { encrypt } from "@/lib/crypto";
 import { createAdminSupabase } from "@/lib/supabase";
+import { applicationUrl, exchangeMicrosoftCode, microsoftCookie, readMicrosoftConnection } from "@/lib/microsoft-oauth";
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
+  const redirect = (query: string) => {
+    const response = NextResponse.redirect(`${applicationUrl(url.origin)}/?${query}`);
+    response.cookies.set(microsoftCookie, "", { httpOnly: true, secure: url.protocol === "https:", sameSite: "lax", path: "/api/onedrive", maxAge: 0 });
+    return response;
+  };
   try {
     const code = url.searchParams.get("code"); const state = url.searchParams.get("state");
+    const payload = readMicrosoftConnection(new NextRequest(request).cookies.get(microsoftCookie)?.value, state);
+    if (url.searchParams.has("error")) throw new Error("Microsoft sign-in was cancelled or access was not allowed. Please connect again.");
     if (!code || !state) throw new Error("Microsoft did not return a connection code.");
-    const payload = JSON.parse(readSignedState(state)) as { ownerId: string; exp: number };
-    if (payload.exp < Date.now()) throw new Error("Microsoft connection request expired. Please try again.");
-    const clientId = process.env.MICROSOFT_CLIENT_ID || process.env.NEXT_PUBLIC_AZURE_CLIENT_ID; const secret = process.env.MICROSOFT_CLIENT_SECRET;
-    if (!clientId || !secret) throw new Error("Microsoft OAuth server credentials are not configured.");
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || url.origin;
-    const response = await fetch(`https://login.microsoftonline.com/${process.env.NEXT_PUBLIC_AZURE_TENANT_ID || "common"}/oauth2/v2.0/token`, { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ client_id: clientId, client_secret: secret, code, redirect_uri: `${baseUrl}/api/onedrive/callback`, grant_type: "authorization_code", scope: "offline_access Files.ReadWrite" }) });
-    if (!response.ok) throw new Error(`Microsoft token exchange failed: ${await response.text()}`);
-    const tokens = await response.json() as { refresh_token?: string };
-    if (!tokens.refresh_token) throw new Error("Microsoft did not provide an offline refresh token.");
+    const refreshToken = await exchangeMicrosoftCode(code, payload);
     const supabase = createAdminSupabase(); const { data: profile, error: profileError } = await supabase.from("business_profiles").select("id").eq("owner_id", payload.ownerId).single();
     if (profileError) throw profileError;
-    const { error } = await supabase.from("microsoft_connections").upsert({ profile_id: profile.id, refresh_token_encrypted: encrypt(tokens.refresh_token), workbook_path: process.env.ONEDRIVE_WORKBOOK_PATH || "Finance Billing Register.xlsx", updated_at: new Date().toISOString() });
+    const { error } = await supabase.from("microsoft_connections").upsert({ profile_id: profile.id, refresh_token_encrypted: encrypt(refreshToken), workbook_path: process.env.ONEDRIVE_WORKBOOK_PATH || "Finance Billing Register.xlsx", updated_at: new Date().toISOString() });
     if (error) throw error;
-    return NextResponse.redirect(`${baseUrl}/?onedrive=connected`);
-  } catch (error) { return NextResponse.redirect(`${process.env.NEXT_PUBLIC_APP_URL || url.origin}/?onedrive=error&message=${encodeURIComponent(error instanceof Error ? error.message : "Connection failed")}`); }
+    return redirect("onedrive=connected");
+  } catch (error) { return redirect(`onedrive=error&message=${encodeURIComponent(error instanceof Error ? error.message : "Connection failed")}`); }
 }
