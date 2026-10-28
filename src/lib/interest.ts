@@ -1,4 +1,4 @@
-import type { BillItemInput } from "./types";
+import type { BillItemInput, RepaymentSummary } from "./types";
 
 function calendarDate(value: string): Date {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) throw new Error("Choose a valid return date.");
@@ -28,7 +28,7 @@ function interestPaise(principalPaise: number, rateBasisPoints: number, months: 
   return Number((BigInt(principalPaise) * BigInt(rateBasisPoints) * BigInt(months) + 5_000n) / 10_000n);
 }
 
-export function calculateRepayment(items: BillItemInput[], billDate: string, returnDate: string) {
+export function calculateRepayment(items: BillItemInput[], billDate: string, returnDate: string): RepaymentSummary {
   const start = calendarDate(billDate);
   const end = calendarDate(returnDate);
   if (end.getTime() < start.getTime()) throw new Error("Return date cannot be before the bill date.");

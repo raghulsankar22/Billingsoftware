@@ -9,8 +9,8 @@ const precision = (value: number, scale: number) => Math.abs(value * scale - Mat
 const moneySchema = z.coerce.number().finite().positive().max(100_000_000).refine((value) => precision(value, 100), "Amounts can have up to two decimal places.");
 
 export const deliverySchema = z.object({
-  deliveryNo: z.string().trim().min(1, "Enter a delivery number.").max(60),
   deliveryDate: dateSchema,
+  itemMetals: z.array(z.enum(["Gold", "Silver"]).nullable()).max(30).optional(),
 });
 
 export const billSchema = z.object({

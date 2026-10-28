@@ -11,6 +11,7 @@ export function toBill(row: Record<string, unknown>): Bill {
     status: String(row.status) as Bill["status"],
     deliveryNo: String(row.delivery_no ?? ""),
     deliveryDate: String(row.delivery_date ?? ""),
+    deliverySummary: row.delivery_summary && typeof row.delivery_summary === "object" && "lines" in row.delivery_summary && Array.isArray(row.delivery_summary.lines) ? row.delivery_summary as Bill["deliverySummary"] : undefined,
     billDate: String(row.bill_date),
     customerName: String(row.customer_name),
     fatherName: String(row.father_name),

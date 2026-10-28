@@ -1,17 +1,19 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { AccountSlot } from "@/lib/account-url";
 import { formatINR } from "@/lib/money";
 import type { Bill } from "@/lib/types";
 import { api } from "./api";
+import { calculateRepayment } from "@/lib/interest";
+import { RepaymentDetails } from "./repayment-details";
 
 function today() {
   const date = new Date();
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
-export function BillDelivery({ accountSlot, onSaved, onOpen, onOverview }: { accountSlot: AccountSlot; onSaved: (bill: Bill) => void; onOpen: (bill: Bill) => void; onOverview: (bill: Bill) => void }) {
+export function BillDelivery({ accountSlot, onSaved, onOpen, onOverview, onReceipt }: { accountSlot: AccountSlot; onSaved: (bill: Bill) => void; onOpen: (bill: Bill) => void; onOverview: (bill: Bill) => void; onReceipt: (bill: Bill) => void }) {
   const [billNumber, setBillNumber] = useState("");
   const [bill, setBill] = useState<Bill | null>(null);
   const [deliveryNo, setDeliveryNo] = useState("");
@@ -20,18 +22,28 @@ export function BillDelivery({ accountSlot, onSaved, onOpen, onOverview }: { acc
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [warnings, setWarnings] = useState<string[]>([]);
+  const [itemMetals, setItemMetals] = useState<("Gold" | "Silver" | null)[]>([]);
   const generation = useRef(0);
   useEffect(() => () => { generation.current += 1; }, []);
+  const collection = useMemo(() => {
+    if (!bill || !deliveryDate) return { repayment: null, error: "" };
+    try {
+      return { repayment: calculateRepayment(bill.items.map((item, index) => ({ ...item, metal: item.metal ?? itemMetals[index] ?? undefined })), bill.billDate, deliveryDate), error: "" };
+    } catch (failure) {
+      return { repayment: null, error: failure instanceof Error ? failure.message : "Unable to calculate interest." };
+    }
+  }, [bill, deliveryDate, itemMetals]);
 
   async function findBill(event: React.FormEvent) {
     event.preventDefault();
     const request = ++generation.current;
     setBusy("lookup"); setError(""); setMessage(""); setWarnings([]); setBill(null);
     try {
-      const { bill: found } = await api(`/api/delivery?billNumber=${encodeURIComponent(billNumber.trim())}`, accountSlot);
+      const { bill: found, nextDeliveryNumber } = await api(`/api/delivery?billNumber=${encodeURIComponent(billNumber.trim())}`, accountSlot);
       if (request !== generation.current) return;
       setBill(found);
-      setDeliveryNo(found.deliveryNo ?? "");
+      setDeliveryNo(found.deliveryNo || String(nextDeliveryNumber));
+      setItemMetals(found.items.map((item: Bill["items"][number]) => item.metal ?? null));
       setDeliveryDate(found.deliveryDate || (today() < found.billDate ? found.billDate : today()));
     } catch (failure) {
       if (request === generation.current) setError(failure instanceof Error ? failure.message : "Unable to find this bill.");
@@ -43,10 +55,11 @@ export function BillDelivery({ accountSlot, onSaved, onOpen, onOverview }: { acc
   async function saveDelivery(event: React.FormEvent) {
     event.preventDefault();
     if (!bill) return;
+    if (!collection.repayment || collection.repayment.missingMetal) { setError(collection.error || "Choose Gold or Silver for each item to calculate interest."); return; }
     const request = ++generation.current;
     setBusy("save"); setError(""); setMessage(""); setWarnings([]);
     try {
-      const result = await api(`/api/bills/${bill.id}/delivery`, accountSlot, { method: "PATCH", body: JSON.stringify({ deliveryNo, deliveryDate }) });
+      const result = await api(`/api/bills/${bill.id}/delivery`, accountSlot, { method: "PATCH", body: JSON.stringify({ deliveryDate, itemMetals }) });
       if (request !== generation.current) return;
       setBill(result.bill);
       setDeliveryNo(result.bill.deliveryNo);
@@ -73,10 +86,12 @@ export function BillDelivery({ accountSlot, onSaved, onOpen, onOverview }: { acc
     {bill && <div className="delivery-details">
       <div className="section-heading"><div><h2>Bill #{bill.billNumber} · {bill.customerName}</h2><p className="muted">Bill date: {bill.billDate}</p></div><span className="pill">{bill.status === "void" ? bill.deliveryNo && bill.deliveryDate ? "Voided · Delivered" : "Voided" : bill.deliveryNo && bill.deliveryDate ? "Delivered" : "Awaiting delivery"}</span></div>
       <div className="delivery-customer"><p><b>Father&apos;s name:</b> {bill.fatherName}</p><p><b>Address:</b> {bill.address}</p>{bill.phone && <p><b>Mobile:</b> {bill.phone}</p>}<p><b>Loan amount:</b> {formatINR(bill.totalLoanAmount)}</p></div>
-      <div className="item-table-wrap"><table className="history-table"><thead><tr><th>Metal</th><th>Particulars</th><th>Gram</th><th>Assessed value</th><th>Loan amount</th></tr></thead><tbody>{bill.items.map((item, index) => <tr key={index}><td>{item.metal ?? "—"}</td><td>{item.particulars}</td><td>{item.grams}</td><td>{formatINR(item.assessedValue)}</td><td>{formatINR(item.loanAmount)}</td></tr>)}</tbody></table></div>
-      <div className="delivery-bill-actions"><button type="button" className="secondary" onClick={() => onOpen(bill)}>Open bill</button><button type="button" className="secondary" onClick={() => onOverview(bill)}>Repayment overview</button></div>
+      <div className="item-table-wrap"><table className="history-table"><thead><tr><th>Metal</th><th>Particulars</th><th>Gram</th><th>Assessed value</th><th>Principal</th><th>Monthly rate</th><th>Interest to collect</th></tr></thead><tbody>{bill.items.map((item, index) => <tr key={index}><td>{item.metal ?? <select aria-label={`Metal for item ${index + 1}`} value={itemMetals[index] ?? ""} disabled={Boolean(busy)} onChange={(event) => { const metal = event.target.value; setItemMetals(current => current.map((choice, itemIndex) => itemIndex === index ? metal === "Gold" || metal === "Silver" ? metal : null : choice)); setMessage(""); }}><option value="">Choose metal</option><option value="Gold">Gold</option><option value="Silver">Silver</option></select>}</td><td>{item.particulars}</td><td>{item.grams}</td><td>{formatINR(item.assessedValue)}</td><td>{formatINR(item.loanAmount)}</td><td>{collection.repayment?.lines[index].ratePercent == null ? "—" : `${collection.repayment.lines[index].ratePercent}%`}</td><td>{collection.repayment?.lines[index].interest == null ? "—" : formatINR(collection.repayment.lines[index].interest!)}</td></tr>)}</tbody></table></div>
+      <div className="delivery-bill-actions"><button type="button" className="secondary" onClick={() => onOpen(bill)}>Open bill</button><button type="button" className="secondary" onClick={() => onOverview(bill)}>Repayment overview</button>{bill.deliveryNo && bill.deliveryDate && <button type="button" className="secondary" onClick={() => onReceipt(bill)}>View delivery bill</button>}</div>
       <form className="delivery-entry" onSubmit={saveDelivery}>
-        <div className="form-grid"><label>Delivery bill number<input value={deliveryNo} maxLength={60} disabled={Boolean(busy)} onChange={(event) => { setDeliveryNo(event.target.value); setMessage(""); }} required /></label><label>Delivery bill date<input type="date" min={bill.billDate} value={deliveryDate} disabled={Boolean(busy)} onChange={(event) => { setDeliveryDate(event.target.value); setMessage(""); }} required /></label></div>
+        <div className="form-grid"><label>Delivery bill number (automatic)<input value={deliveryNo} readOnly /></label><label>Delivery bill date<input type="date" min={bill.billDate} value={deliveryDate} disabled={Boolean(busy)} onChange={(event) => { setDeliveryDate(event.target.value); setMessage(""); }} required /></label></div>
+        {collection.error && <p className="error" role="alert">{collection.error}</p>}
+        {collection.repayment && <RepaymentDetails repayment={collection.repayment} />}
         <button disabled={Boolean(busy)}>{busy === "save" ? "Saving…" : bill.deliveryNo && bill.deliveryDate ? "Update delivery" : "Save delivery"}</button>
       </form>
     </div>}

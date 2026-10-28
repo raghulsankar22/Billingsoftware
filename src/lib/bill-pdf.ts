@@ -2,13 +2,18 @@ import { jsPDF } from "jspdf";
 import { currencyFont } from "./currency-font";
 import { amountInWords } from "./money";
 import type { Bill } from "./types";
+import { calculateRepayment } from "./interest";
 
 type BusinessDetails = { business_name: string; address: string; phone: string; logo_url?: string | null };
 type SnapshottedBill = Bill & { businessSnapshot?: BusinessDetails };
 
 const money = (value: number) => `₹ ${new Intl.NumberFormat("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value)}`;
 
-export function createBillPdf(bill: SnapshottedBill, currentProfile: BusinessDetails): Uint8Array {
+export function createBillPdf(bill: SnapshottedBill, currentProfile: BusinessDetails, documentType: "finance" | "delivery" = "finance"): Uint8Array {
+  const delivery = documentType === "delivery";
+  if (delivery && (!bill.deliveryNo || !bill.deliveryDate)) throw new Error("Save delivery before printing the delivery bill.");
+  const repayment = delivery ? bill.deliverySummary ?? calculateRepayment(bill.items, bill.billDate, bill.deliveryDate!) : null;
+  if (repayment?.missingMetal) throw new Error("Choose Gold or Silver for every item before printing the delivery bill.");
   const business = bill.businessSnapshot ?? currentProfile;
   const pdf = new jsPDF({ unit: "mm", format: "a4", compress: true });
   pdf.addFileToVFS("BillCurrency.ttf", currencyFont);
@@ -38,7 +43,7 @@ export function createBillPdf(bill: SnapshottedBill, currentProfile: BusinessDet
     y = 18;
     pdf.setFontSize(9);
     pdf.setFont("helvetica", "bold");
-    pdf.text(`${business.business_name} - Bill #${bill.billNumber}`, left, y);
+    pdf.text(`${business.business_name} - ${delivery ? `Delivery #${bill.deliveryNo}` : `Bill #${bill.billNumber}`}`, left, y);
     y += 9;
   }
 
@@ -70,13 +75,16 @@ export function createBillPdf(bill: SnapshottedBill, currentProfile: BusinessDet
   y += 8;
   pdf.setFont("helvetica", "bold");
   pdf.setFontSize(14);
-  pdf.text("FINANCE BILL", 105, y, { align: "center" });
+  pdf.text(delivery ? "DELIVERY BILL" : "FINANCE BILL", 105, y, { align: "center" });
   y += 10;
   pdf.setFontSize(10);
-  pdf.text(`Bill No.: ${bill.billNumber}`, left, y);
-  pdf.text(`Date: ${bill.billDate}`, 148, y);
+  pdf.text(delivery ? `Delivery No.: ${bill.deliveryNo}` : `Bill No.: ${bill.billNumber}`, left, y);
+  pdf.text(`Date: ${delivery ? bill.deliveryDate : bill.billDate}`, 148, y);
   y += 7;
-  if (bill.deliveryNo || bill.deliveryDate) {
+  if (delivery) {
+    line(`Original Bill No.: ${bill.billNumber}     Bill Date: ${bill.billDate}`, left, 180);
+    if (bill.status === "void") line("Original bill status: Voided - delivery recorded", left, 180, 9);
+  } else if (bill.deliveryNo || bill.deliveryDate) {
     line(`Delivery No.: ${bill.deliveryNo || "-"}     Delivery Date: ${bill.deliveryDate || "-"}`, left, 180);
   }
   line(`Name: ${bill.customerName}`, left, 180);
@@ -105,13 +113,27 @@ export function createBillPdf(bill: SnapshottedBill, currentProfile: BusinessDet
     pdf.line(left, y - 4, 195, y - 4);
   }
 
-  if (y + 51 > 275) newPage();
+  if (y + (delivery ? 97 : 51) > 275) newPage();
   pdf.setFont("helvetica", "bold");
   pdf.setFontSize(10);
-  currency(`Total Value: ${money(bill.totalAssessedValue)}`, 105, 90, 10);
-  currency(`Loan Amount: ${money(bill.totalLoanAmount)}`, 195, 77, 10);
-  y += 8;
-  line(`Amount in words: ${amountInWords(bill.totalLoanAmount)}`, left, 180, 10);
+  if (repayment) {
+    line(`Additional interest months: ${repayment.chargedMonths}`, left, 180, 10);
+    line(`Monthly rates: ${[...new Set(repayment.lines.map(item => `${item.metal}: ${item.ratePercent}%`))].join(", ")}`, left, 180, 9);
+    for (const [label, amount] of [["Principal", repayment.principal], ["First-month interest charged at issue", repayment.initialInterest ?? 0], ["Interest to collect now", repayment.interest ?? 0], ["Total to collect now", repayment.total ?? repayment.principal]] as const) {
+      pdf.setFont("helvetica", "normal");
+      pdf.setFontSize(10);
+      pdf.text(`${label}:`, left, y);
+      currency(money(amount), 195, 80, 10);
+      y += 7;
+    }
+    line("The first-month charge is assumed collected at issue and is excluded from the total above.", left, 180, 8);
+    line(`Amount in words: ${amountInWords(repayment.total ?? repayment.principal)}`, left, 180, 10);
+  } else {
+    currency(`Total Value: ${money(bill.totalAssessedValue)}`, 105, 90, 10);
+    currency(`Loan Amount: ${money(bill.totalLoanAmount)}`, 195, 77, 10);
+    y += 8;
+    line(`Amount in words: ${amountInWords(bill.totalLoanAmount)}`, left, 180, 10);
+  }
   y += 21;
   pdf.line(20, y, 78, y);
   pdf.line(132, y, 190, y);

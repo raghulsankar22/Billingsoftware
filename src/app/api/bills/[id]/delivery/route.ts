@@ -22,7 +22,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
     const { data, error } = await db.from("bills").select("*, bill_items(*)").eq("id", result.id).eq("profile_id", profile.id).single();
     if (error) throw error;
     const bill = toBill({ ...data, items: data.bill_items });
-    const warnings = await refreshUpdatedBillOutputs(profile, bill, result.previousPdfPath);
+    const warnings = await refreshUpdatedBillOutputs(profile, bill, result.previousPdfPath, result.previousDeliveryPdfPath);
     return NextResponse.json({ bill, warnings });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Unable to save delivery." }, { status: 400 });

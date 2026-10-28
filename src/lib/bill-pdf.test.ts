@@ -24,6 +24,12 @@ const bill: Bill = {
 };
 
 describe("bill PDF", () => {
+  it("creates a delivery bill PDF and requires a saved delivery number and date", () => {
+    const bytes = createBillPdf(bill, bill.businessSnapshot!, "delivery");
+    expect(Buffer.from(bytes.subarray(0, 4)).toString()).toBe("%PDF");
+    expect(Buffer.from(bytes).toString("latin1")).toContain("/ToUnicode");
+    expect(() => createBillPdf({ ...bill, deliveryNo: "" }, bill.businessSnapshot!, "delivery")).toThrow("Save delivery");
+  });
   it("creates an A4 PDF from the issued business snapshot", () => {
     const bytes = createBillPdf(bill, { business_name: "Changed Name", address: "Other Address", phone: "000" });
     expect(Buffer.from(bytes.subarray(0, 4)).toString()).toBe("%PDF");

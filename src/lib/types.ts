@@ -10,6 +10,16 @@ export type BillItemInput = {
   loanAmount: number;
 };
 
+export type RepaymentSummary = {
+  chargedMonths: number;
+  lines: { metal?: "Gold" | "Silver"; particulars: string; principal: number; ratePercent: number | null; initialInterest: number | null; interest: number | null; total: number | null }[];
+  principal: number;
+  initialInterest: number | null;
+  interest: number | null;
+  total: number | null;
+  missingMetal: boolean;
+};
+
 export type BillInput = {
   deliveryNo?: string;
   deliveryDate?: string;
@@ -35,6 +45,7 @@ export type Bill = BillInput & {
   excelSyncError?: string;
   createdAt: string;
   businessSnapshot?: BusinessSnapshot;
+  deliverySummary?: RepaymentSummary;
 };
 
 export const registerHeaders = [

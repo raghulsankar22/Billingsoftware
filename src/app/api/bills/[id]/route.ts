@@ -25,7 +25,7 @@ export async function PATCH(request: Request, context: Context) {
     const { data, error } = await db.from("bills").select("*, bill_items(*)").eq("id", result.id).eq("profile_id", profile.id).single();
     if (error) throw error;
     const bill = toBill({ ...data, items: data.bill_items });
-    const warnings = await refreshUpdatedBillOutputs(profile, bill, result.previousPdfPath);
+    const warnings = await refreshUpdatedBillOutputs(profile, bill, result.previousPdfPath, result.previousDeliveryPdfPath);
     return NextResponse.json({ bill, warnings });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Unable to edit bill" }, { status: 400 });
@@ -40,10 +40,11 @@ export async function DELETE(request: Request, context: Context) {
     if (!profile) return NextResponse.json({ error: "Business profile is required." }, { status: 422 });
     const { id } = await context.params;
     const db = createAdminSupabase();
-    const { data: existing, error: findError } = await db.from("bills").select("id,pdf_storage_path").eq("id", id).eq("profile_id", profile.id).single();
+    const { data: existing, error: findError } = await db.from("bills").select("id,pdf_storage_path,delivery_pdf_storage_path").eq("id", id).eq("profile_id", profile.id).single();
     if (findError || !existing) throw new Error("Bill not found in this account.");
-    if (existing.pdf_storage_path) {
-      const { error: removeError } = await db.storage.from("bill-pdfs").remove([existing.pdf_storage_path]);
+    const pdfPaths = [existing.pdf_storage_path, existing.delivery_pdf_storage_path].filter((path): path is string => typeof path === "string" && path.length > 0);
+    if (pdfPaths.length) {
+      const { error: removeError } = await db.storage.from("bill-pdfs").remove(pdfPaths);
       if (removeError) throw removeError;
     }
     const { data: deleted, error: deleteError } = await db.rpc("delete_bill", { p_owner_id: user.id, p_bill_id: id });

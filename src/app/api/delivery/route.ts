@@ -17,7 +17,9 @@ export async function GET(request: Request) {
     const { data, error } = await createAdminSupabase().from("bills").select("*, bill_items(*)").eq("profile_id", profile.id).eq("bill_number", billNumber).maybeSingle();
     if (error) throw error;
     if (!data) return NextResponse.json({ error: `Bill #${billNumber} was not found in this account.` }, { status: 404 });
-    return NextResponse.json({ bill: toBill({ ...data, items: data.bill_items }) }, { headers: { "cache-control": "no-store" } });
+    const { data: numbering, error: numberingError } = await createAdminSupabase().rpc("get_next_delivery_number", { p_owner_id: user.id, p_account_slot: accountSlot(request) });
+    if (numberingError) throw numberingError;
+    return NextResponse.json({ bill: toBill({ ...data, items: data.bill_items }), nextDeliveryNumber: numbering.number }, { headers: { "cache-control": "no-store" } });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Unable to find this bill." }, { status: 400 });
   }

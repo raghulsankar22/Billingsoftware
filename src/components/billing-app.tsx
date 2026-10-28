@@ -49,6 +49,7 @@ export function BillingApp() {
   const [view, setView] = useState<"dashboard" | "new" | "delivery" | "settings">("dashboard");
   const [selected, setSelected] = useState<Bill | null>(null);
   const [overviewBill, setOverviewBill] = useState<Bill | null>(null);
+  const [deliveryDocumentBill, setDeliveryDocumentBill] = useState<Bill | null>(null);
   const [error, setError] = useState("");
   const [excelNotice, setExcelNotice] = useState("");
   const [isRefreshingExcel, setIsRefreshingExcel] = useState(false);
@@ -127,6 +128,7 @@ export function BillingApp() {
     setQuery("");
     setSelected(null);
     setOverviewBill(null);
+    setDeliveryDocumentBill(null);
     setEditingSource(null);
     setView("dashboard");
     setError("");
@@ -174,6 +176,7 @@ export function BillingApp() {
       const result = await api(`/api/bills/${bill.id}`, accountSlot, { method: "DELETE" });
       if (selected?.id === bill.id) setSelected(null);
       if (overviewBill?.id === bill.id) setOverviewBill(null);
+      if (deliveryDocumentBill?.id === bill.id) setDeliveryDocumentBill(null);
       await load(query, accountSlot);
       if (result.warning) setError(result.warning);
       setExcelNotice(`Bill #${bill.billNumber} deleted. The next bill will be #${result.nextBillNumber}.`);
@@ -259,7 +262,7 @@ export function BillingApp() {
       {!accountLoaded && isLoading && <section className="panel setup-callout"><p>Loading Account {accountSlot}…</p></section>}
       {view === "settings" && accountLoaded && <ProfileForm key={accountSlot} profile={profile} accountSlot={accountSlot} onSaved={() => void load(query, accountSlot)} />}
       {view === "new" && profile && accountLoaded && <BillForm key={`${accountSlot}-${editingSource?.id ?? "new"}`} accountSlot={accountSlot} editingSource={editingSource} onCreated={issueSuccess} />}
-      {view === "delivery" && profile && accountLoaded && <BillDelivery key={accountSlot} accountSlot={accountSlot} onSaved={() => void load(query, accountSlot)} onOpen={setSelected} onOverview={setOverviewBill} />}
+      {view === "delivery" && profile && accountLoaded && <BillDelivery key={accountSlot} accountSlot={accountSlot} onSaved={(bill) => { setDeliveryDocumentBill(bill); void load(query, accountSlot); }} onOpen={setSelected} onOverview={setOverviewBill} onReceipt={setDeliveryDocumentBill} />}
       {view === "dashboard" && accountLoaded && profile && <section className="panel">
         <div className="section-heading history-heading">
           <div><p className="eyebrow">ACCOUNT {accountSlot} HISTORY</p><h2>Issued bills</h2></div>
@@ -290,5 +293,6 @@ export function BillingApp() {
 
     {selected && profile && accountLoaded && <BillDocument bill={selected} profile={profile} accountSlot={accountSlot} onClose={() => setSelected(null)} />}
     {overviewBill && accountLoaded && <BillOverview key={overviewBill.id} bill={overviewBill} onClose={() => setOverviewBill(null)} />}
+    {deliveryDocumentBill && profile && accountLoaded && <BillDocument key={`delivery-${deliveryDocumentBill.id}`} bill={deliveryDocumentBill} profile={profile} accountSlot={accountSlot} documentType="delivery" onClose={() => setDeliveryDocumentBill(null)} />}
   </main>;
 }

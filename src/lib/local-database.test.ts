@@ -101,13 +101,15 @@ describe("durable local ledger", () => {
     const before = (await db.from("bills").select("*, bill_items(*)").eq("id", first.data.id).single()).data;
     const recorded = await db.rpc("record_bill_delivery", { p_owner_id: localOwnerId, p_bill_id: first.data.id, p_account_slot: 1, p_delivery: { deliveryNo: " DEL-10 ", deliveryDate: "2026-10-28" } });
     expect(recorded.error).toBeNull();
-    expect(recorded.data).toEqual({ id: first.data.id, previousPdfPath });
+    expect(recorded.data).toMatchObject({ id: first.data.id, previousPdfPath });
     const after = (await db.from("bills").select("*, bill_items(*)").eq("id", first.data.id).single()).data;
-    expect(after).toMatchObject({ bill_number: 1, customer_name: before.customer_name, total_loan_amount: before.total_loan_amount, total_assessed_value: before.total_assessed_value, delivery_no: "DEL-10", delivery_date: "2026-10-28", status: "issued", excel_sync_status: "pending", pdf_storage_path: null });
+    expect(after).toMatchObject({ bill_number: 1, customer_name: before.customer_name, total_loan_amount: before.total_loan_amount, total_assessed_value: before.total_assessed_value, delivery_no: "1", delivery_date: "2026-10-28", status: "issued", excel_sync_status: "pending", pdf_storage_path: null });
     expect(after.bill_items).toEqual(before.bill_items);
     expect((await db.from("business_profiles").select().eq("id", saved.id).single()).data.next_bill_number).toBe(2);
     expect((await db.rpc("record_bill_delivery", { p_owner_id: localOwnerId, p_bill_id: first.data.id, p_account_slot: 1, p_delivery: { deliveryNo: "DEL-11", deliveryDate: "2026-10-29" } })).error).toBeNull();
     expect((await db.from("bills").select()).data).toHaveLength(1);
+    expect((await db.from("bills").select().eq("id", first.data.id).single()).data.delivery_no).toBe("1");
+    expect((await db.from("business_profiles").select().eq("id", saved.id).single()).data.next_delivery_number).toBe(2);
   });
   it("rejects delivery for another account or invalid dates, but records delivery on a voided bill", async () => {
     const db = open(); await profile(db); await profile(db, 2); const first = await issue(db);
@@ -120,9 +122,43 @@ describe("durable local ledger", () => {
     const voided = (await db.from("bills").select("*, bill_items(*)").eq("id", first.data.id).single()).data;
     expect((await db.rpc("record_bill_delivery", parameters)).error).toBeNull();
     const delivered = (await db.from("bills").select("*, bill_items(*)").eq("id", first.data.id).single()).data;
-    expect(delivered).toMatchObject({ status: "void", voided_at: voided.voided_at, bill_number: 1, delivery_no: "DEL-1", delivery_date: "2026-10-28", total_loan_amount: voided.total_loan_amount });
+    expect(delivered).toMatchObject({ status: "void", voided_at: voided.voided_at, bill_number: 1, delivery_no: "1", delivery_date: "2026-10-28", total_loan_amount: voided.total_loan_amount });
     expect(delivered.bill_items).toEqual(voided.bill_items);
     expect((await db.from("bills").select()).data).toHaveLength(1);
+  });
+  it("allocates delivery numbers per account and saves the agreed monthly collection amounts", async () => {
+    const db = open(); await profile(db); await profile(db, 2);
+    const loan = { ...bill, billDate: "2026-10-28", items: [{ metal: "Gold", particulars: "Ring", grams: 5, assessedValue: 15000, loanAmount: 10000 }] };
+    const first = await issue(db, loan); const second = await issue(db, loan); const other = await issue(db, { ...loan, accountSlot: 2 });
+    const parameters = (id: string, account = 1) => ({ p_owner_id: localOwnerId, p_bill_id: id, p_account_slot: account, p_delivery: { deliveryDate: "2026-11-29" } });
+    const results = await Promise.all([db.rpc("record_bill_delivery", parameters(first.data.id)), db.rpc("record_bill_delivery", parameters(second.data.id)), db.rpc("record_bill_delivery", parameters(other.data.id, 2))]);
+    expect(results.every(result => !result.error)).toBe(true);
+    const saved = await Promise.all([first, second, other].map(result => db.from("bills").select().eq("id", result.data.id).single()));
+    expect(saved.map(result => result.data.delivery_no)).toEqual(["1", "2", "1"]);
+    expect(saved[0].data.delivery_summary).toMatchObject({ chargedMonths: 1, principal: 10000, initialInterest: 200, interest: 200, total: 10200 });
+    await db.rpc("record_bill_delivery", { ...parameters(first.data.id), p_delivery: { deliveryDate: "2026-12-29" } });
+    expect((await db.from("bills").select().eq("id", first.data.id).single()).data).toMatchObject({ delivery_no: "1", delivery_summary: { interest: 400, total: 10400 } });
+    expect((await db.rpc("get_next_delivery_number", { p_owner_id: localOwnerId, p_account_slot: 1 })).data.number).toBe(3);
+  });
+  it("continues after existing numeric delivery numbers and keeps old delivery references", async () => {
+    const db = open(); await profile(db);
+    const original = await issue(db, { ...bill, deliveryNo: "15", deliveryDate: "2026-10-28" });
+    const next = await issue(db);
+    expect((await db.rpc("get_next_delivery_number", { p_owner_id: localOwnerId, p_account_slot: 1 })).data.number).toBe(16);
+    await db.rpc("record_bill_delivery", { p_owner_id: localOwnerId, p_bill_id: next.data.id, p_account_slot: 1, p_delivery: { deliveryDate: "2026-10-28" } });
+    expect((await db.from("bills").select().eq("id", original.data.id).single()).data.delivery_no).toBe("15");
+    expect((await db.from("bills").select().eq("id", next.data.id).single()).data.delivery_no).toBe("16");
+  });
+  it("lets an older voided bill supply missing metals before calculating delivery interest", async () => {
+    const db = open(); const saved = await profile(db); const first = await issue(db);
+    const stored = new DatabaseSync(join(opened[0].directory, "billing.sqlite"));
+    stored.prepare("UPDATE records SET body=json_remove(body,'$.metal') WHERE table_name='bill_items'").run(); stored.close();
+    await db.from("bills").update({ status: "void" }).eq("id", first.data.id);
+    const parameters = { p_owner_id: localOwnerId, p_bill_id: first.data.id, p_account_slot: 1, p_delivery: { deliveryDate: "2026-10-28" } };
+    expect((await db.rpc("record_bill_delivery", parameters)).error?.message).toContain("Choose Gold or Silver");
+    expect((await db.from("business_profiles").select().eq("id", saved.id).single()).data.next_delivery_number).toBe(1);
+    expect((await db.rpc("record_bill_delivery", { ...parameters, p_delivery: { ...parameters.p_delivery, itemMetals: ["Gold", "Silver"] } })).error).toBeNull();
+    expect((await db.from("bills").select().eq("id", first.data.id).single()).data).toMatchObject({ status: "void", delivery_no: "1", delivery_summary: { missingMetal: false, total: 17.03 } });
   });
   it("reuses a deleted latest bill number, including a voided bill", async () => {
     const db = open(); const saved = await profile(db); const first = await issue(db); const second = await issue(db);

@@ -3,7 +3,7 @@ import { persistBillPdf } from "./bill-pdf-storage";
 import { syncAccountRegister } from "./register-sync";
 import { createAdminSupabase } from "./supabase";
 
-export async function refreshUpdatedBillOutputs(profile: BusinessSnapshot & { id: string }, bill: Bill, previousPdfPath?: string | null) {
+export async function refreshUpdatedBillOutputs(profile: BusinessSnapshot & { id: string }, bill: Bill, previousPdfPath?: string | null, previousDeliveryPdfPath?: string | null) {
   const db = createAdminSupabase();
   const warnings: string[] = [];
   let pdfSaved = false;
@@ -21,6 +21,22 @@ export async function refreshUpdatedBillOutputs(profile: BusinessSnapshot & { id
       await db.from("bills").update({ pdf_error: `Previous PDF cleanup failed: ${error.message}` }).eq("id", bill.id).eq("profile_id", profile.id);
       warnings.push("The updated PDF is saved, but its previous copy could not be removed.");
     }
+  }
+  if (bill.deliveryNo && bill.deliveryDate && bill.deliverySummary && !bill.deliverySummary.missingMetal) {
+    try {
+      await persistBillPdf(profile, bill, true, "delivery");
+      if (previousDeliveryPdfPath) {
+        const { error } = await db.storage.from("bill-pdfs").remove([previousDeliveryPdfPath]);
+        if (error) warnings.push("The delivery bill is saved, but its previous PDF could not be removed.");
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Delivery PDF storage failed";
+      await db.from("bills").update({ delivery_pdf_error: message }).eq("id", bill.id).eq("profile_id", profile.id);
+      warnings.push(`Delivery PDF needs a retry: ${message}`);
+    }
+  } else if (previousDeliveryPdfPath) {
+    const { error } = await db.storage.from("bill-pdfs").remove([previousDeliveryPdfPath]);
+    if (error) warnings.push("The previous delivery PDF could not be removed.");
   }
   try {
     await syncAccountRegister(profile.id);
