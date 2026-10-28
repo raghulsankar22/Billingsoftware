@@ -3,7 +3,7 @@ import { accountSlot } from "@/lib/accounts";
 import { requireOwnerProfile, requireUser } from "@/lib/auth";
 import { createAdminSupabase } from "@/lib/supabase";
 import { toBill } from "@/lib/bills";
-import { syncBillToGoogleDrive } from "@/lib/google-drive";
+import { syncBillToRegister } from "@/lib/register-sync";
 
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
   try {
@@ -16,7 +16,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     const { error: pendingError } = await supabase.from("bills").update({ excel_sync_status: "pending", excel_sync_error: null }).eq("id", id).eq("profile_id", profile.id);
     if (pendingError) throw new Error("Unable to record Excel retry. Please try again.");
     try {
-      await syncBillToGoogleDrive(profile.id, bill);
+      await syncBillToRegister(profile.id, bill);
     } catch (syncError) {
       const message = syncError instanceof Error ? syncError.message : "Excel sync failed";
       const { error: failureError } = await supabase.from("bills").update({ excel_sync_status: "failed", excel_sync_error: message }).eq("id", id).eq("profile_id", profile.id);

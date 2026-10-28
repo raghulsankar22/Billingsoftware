@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { formatINR } from "@/lib/money";
-import { createBrowserSupabase } from "@/lib/supabase";
+import { requestHeaders } from "./api";
 import type { Bill } from "@/lib/types";
 
 type Profile = { business_name: string; address: string; phone: string; logo_url?: string | null };
@@ -15,10 +15,7 @@ export function BillDocument({ bill, profile, onClose }: { bill: SnapshottedBill
   async function downloadPdf() {
     setError("");
     try {
-      const { data } = await createBrowserSupabase().auth.getSession();
-      const token = data.session?.access_token;
-      if (!token) throw new Error("Please sign in again.");
-      const response = await fetch(`/api/bills/${bill.id}/pdf`, { headers: { Authorization: `Bearer ${token}` } });
+      const response = await fetch(`/api/bills/${bill.id}/pdf`, { headers: await requestHeaders() });
       if (!response.ok) {
         const body = await response.json();
         throw new Error(body.error ?? "Unable to download PDF.");

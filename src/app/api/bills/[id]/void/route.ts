@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { accountSlot } from "@/lib/accounts";
 import { requireOwnerProfile, requireUser } from "@/lib/auth";
 import { createAdminSupabase } from "@/lib/supabase";
-import { markBillVoidInGoogleDrive } from "@/lib/google-drive";
+import { markBillVoidInRegister } from "@/lib/register-sync";
 
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
   try {
@@ -14,7 +14,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     if (error) throw error;
     if (!data) throw new Error("Only issued bills can be voided.");
     try {
-      await markBillVoidInGoogleDrive(profile.id, data.bill_number);
+      await markBillVoidInRegister(profile.id, data.bill_number);
       await supabase.from("bills").update({ excel_sync_status: "synced", excel_sync_error: null }).eq("id", id);
       return NextResponse.json({ ok: true, excelSyncStatus: "synced" });
     } catch (syncError) {

@@ -8,6 +8,11 @@ if (existsSync('.env.local')) {
   }
 }
 const missing = [];
+if (settings.NEXT_PUBLIC_BILLING_STORAGE !== 'cloud') {
+  console.log('Local billing is enabled. No Supabase or Google credentials are required.');
+  console.log(`Data directory: ${settings.LOCAL_DATA_DIR || 'data (inside the app folder)'}`);
+  process.exit(0);
+}
 for (const key of ['NEXT_PUBLIC_SUPABASE_URL', 'NEXT_PUBLIC_SUPABASE_ANON_KEY', 'SUPABASE_SERVICE_ROLE_KEY', 'BILLING_OWNER_EMAIL', 'GOOGLE_CLIENT_SECRET']) {
   if (!settings[key]) missing.push(key);
 }

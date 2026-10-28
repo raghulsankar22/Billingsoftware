@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { createBrowserSupabase } from "@/lib/supabase";
+import { createBrowserSupabase } from "@/lib/supabase-browser";
 
 export function SignIn({ onSignedIn }: { onSignedIn: () => void }) {
   const [email, setEmail] = useState("");

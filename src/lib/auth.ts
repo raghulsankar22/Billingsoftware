@@ -1,4 +1,5 @@
 import { createAdminSupabase } from "./supabase";
+import { localStorageEnabled } from "./storage-mode";
 
 export function assertOwnerEmail(actual: string | undefined, configured: string | undefined) {
   const ownerEmail = configured?.trim().toLowerCase();
@@ -7,6 +8,13 @@ export function assertOwnerEmail(actual: string | undefined, configured: string 
 }
 
 export async function requireUser(request: Request) {
+  if (localStorageEnabled) {
+    const url = new URL(request.url);
+    if (!["localhost", "127.0.0.1", "[::1]"].includes(url.hostname)) throw new Error("Local billing is available only on this computer.");
+    const origin = request.headers.get("origin");
+    if ((origin && origin !== url.origin) || request.headers.get("sec-fetch-site") === "cross-site") throw new Error("Open billing directly on this computer.");
+    return { id: "local-owner", email: "local@localhost" };
+  }
   const token = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
   if (!token) throw new Error("Sign in is required.");
   const supabase = createAdminSupabase();

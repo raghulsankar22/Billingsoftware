@@ -4,7 +4,7 @@ import { billSchema } from "@/lib/validation";
 import { requireOwnerProfile, requireUser } from "@/lib/auth";
 import { createAdminSupabase } from "@/lib/supabase";
 import { toBill, totals } from "@/lib/bills";
-import { syncBillToGoogleDrive } from "@/lib/google-drive";
+import { syncBillToRegister } from "@/lib/register-sync";
 import { persistBillPdf } from "@/lib/bill-pdf-storage";
 import { loadBillHistory } from "@/lib/bill-history";
 
@@ -38,7 +38,7 @@ export async function POST(request: Request) {
       await supabase.from("bills").update({ pdf_error: pdfError instanceof Error ? pdfError.message : "PDF storage failed" }).eq("id", bill.id);
     }
     try {
-      await syncBillToGoogleDrive(profile.id, bill);
+      await syncBillToRegister(profile.id, bill);
       await supabase.from("bills").update({ excel_sync_status: "synced", excel_sync_error: null }).eq("id", bill.id);
       bill.excelSyncStatus = "synced";
     } catch (syncError) {

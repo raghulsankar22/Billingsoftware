@@ -4,7 +4,7 @@ import { billSchema } from "@/lib/validation";
 import { requireOwnerProfile, requireUser } from "@/lib/auth";
 import { createAdminSupabase } from "@/lib/supabase";
 import { toBill, totals } from "@/lib/bills";
-import { markBillVoidInGoogleDrive, syncBillToGoogleDrive } from "@/lib/google-drive";
+import { markBillVoidInRegister, syncBillToRegister } from "@/lib/register-sync";
 import { persistBillPdf } from "@/lib/bill-pdf-storage";
 
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
@@ -36,7 +36,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     try {
       const { data: original, error: originalError } = await supabase.from("bills").select("bill_number").eq("id", id).eq("profile_id", profile.id).single();
       if (originalError) throw originalError;
-      await markBillVoidInGoogleDrive(profile.id, original.bill_number);
+      await markBillVoidInRegister(profile.id, original.bill_number);
       await supabase.from("bills").update({ excel_sync_status: "synced", excel_sync_error: null }).eq("id", id);
     } catch (syncError) {
       await supabase.from("bills").update({ excel_sync_status: "failed", excel_sync_error: syncError instanceof Error ? syncError.message : "Excel sync failed" }).eq("id", id);
@@ -47,7 +47,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       await supabase.from("bills").update({ pdf_error: pdfError instanceof Error ? pdfError.message : "PDF storage failed" }).eq("id", bill.id);
     }
     try {
-      await syncBillToGoogleDrive(profile.id, bill);
+      await syncBillToRegister(profile.id, bill);
       const { error: statusError } = await supabase.from("bills").update({ excel_sync_status: "synced", excel_sync_error: null }).eq("id", bill.id);
       if (statusError) throw statusError;
       bill.excelSyncStatus = "synced";
