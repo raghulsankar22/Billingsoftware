@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { withAccountSlot, type AccountSlot } from "@/lib/account-url";
 import { formatINR } from "@/lib/money";
 import { requestHeaders } from "./api";
 import type { Bill } from "@/lib/types";
@@ -8,14 +9,14 @@ import type { Bill } from "@/lib/types";
 type Profile = { business_name: string; address: string; phone: string; logo_url?: string | null };
 type SnapshottedBill = Bill & { businessSnapshot?: Profile };
 
-export function BillDocument({ bill, profile, onClose }: { bill: SnapshottedBill; profile: Profile; onClose: () => void }) {
+export function BillDocument({ bill, profile, accountSlot, onClose }: { bill: SnapshottedBill; profile: Profile; accountSlot: AccountSlot; onClose: () => void }) {
   const [error, setError] = useState("");
   const business = bill.businessSnapshot ?? profile;
 
   async function downloadPdf() {
     setError("");
     try {
-      const response = await fetch(`/api/bills/${bill.id}/pdf`, { headers: await requestHeaders() });
+      const response = await fetch(withAccountSlot(`/api/bills/${bill.id}/pdf`, accountSlot), { headers: await requestHeaders() });
       if (!response.ok) {
         const body = await response.json();
         throw new Error(body.error ?? "Unable to download PDF.");
