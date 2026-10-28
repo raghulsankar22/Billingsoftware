@@ -47,6 +47,8 @@ export function BillingApp() {
   const [view, setView] = useState<"dashboard" | "new" | "settings">("dashboard");
   const [selected, setSelected] = useState<Bill | null>(null);
   const [error, setError] = useState("");
+  const [excelNotice, setExcelNotice] = useState("");
+  const [isRefreshingExcel, setIsRefreshingExcel] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [editingSource, setEditingSource] = useState<Bill | null>(null);
   const loadGeneration = useRef(0);
@@ -124,6 +126,7 @@ export function BillingApp() {
     setEditingSource(null);
     setView("dashboard");
     setError("");
+    setExcelNotice("");
   }
 
   const issueSuccess = (bill: Bill) => {
@@ -174,11 +177,17 @@ export function BillingApp() {
   }
 
   async function refreshExcel() {
+    if (isRefreshingExcel) return;
+    setIsRefreshingExcel(true);
+    setExcelNotice("");
     try {
-      await api("/api/reports/excel", accountSlot, { method: "POST" });
+      const result = await api("/api/reports/excel", accountSlot, { method: "POST" });
       await load(query, accountSlot);
+      setExcelNotice(`Excel refreshed and saved to ${result.savedTo}. If you opened a downloaded copy, use Download Excel to get the latest version.`);
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : "Unable to refresh Excel register.");
+    } finally {
+      setIsRefreshingExcel(false);
     }
   }
 
@@ -219,7 +228,7 @@ export function BillingApp() {
       </div>
       <div className="top-actions">
         <button className="secondary" onClick={exportExcel} disabled={!profile}>Download Excel</button>
-        <button className="secondary" onClick={() => void refreshExcel()} disabled={!profile}>Refresh Excel</button>
+        <button className="secondary" onClick={() => void refreshExcel()} disabled={!profile || isRefreshingExcel}>{isRefreshingExcel ? "Refreshing…" : "Refresh Excel"}</button>
         {localStorageEnabled
           ? <span className="notice">Saved on this computer</span>
           : <><button className="secondary" onClick={connectGoogleDrive}>Connect Google Drive</button><button className="secondary" onClick={() => createBrowserSupabase().auth.signOut().then(() => setSignedIn(false))}>Sign out</button></>}
@@ -227,13 +236,14 @@ export function BillingApp() {
     </header>
 
     <nav>
-      <button className={view === "dashboard" ? "active" : ""} onClick={() => setView("dashboard")}>Bills</button>
-      <button className={view === "new" ? "active" : ""} onClick={() => { setEditingSource(null); setView("new"); }}>New bill</button>
-      <button className={view === "settings" ? "active" : ""} onClick={() => setView("settings")}>Business profile</button>
+      <button className={view === "dashboard" ? "active" : ""} onClick={() => { setExcelNotice(""); setView("dashboard"); }}>Bills</button>
+      <button className={view === "new" ? "active" : ""} onClick={() => { setExcelNotice(""); setEditingSource(null); setView("new"); }}>New bill</button>
+      <button className={view === "settings" ? "active" : ""} onClick={() => { setExcelNotice(""); setView("settings"); }}>Business profile</button>
     </nav>
 
     <div className="content">
       {error && <p className="error">{error}</p>}
+      {excelNotice && <p className="excel-notice" role="status">{excelNotice}</p>}
       {accountLoaded && !profile && view !== "settings" && <section className="panel setup-callout">
         <h2>Set up Account {accountSlot} before issuing the first bill</h2>
         <p>Add this business&apos;s name, address, phone, logo and first bill number. Each account has separate details and bill history.</p>

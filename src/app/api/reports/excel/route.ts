@@ -3,6 +3,9 @@ import { accountSlot } from "@/lib/accounts";
 import { requireOwnerProfile, requireUser } from "@/lib/auth";
 import { buildReportRegister, loadReportBills, reportFilters } from "@/lib/excel-report";
 import { syncAccountRegister } from "@/lib/register-sync";
+import { localStorageEnabled } from "@/lib/storage-mode";
+import { localDataDirectory } from "@/lib/local-database";
+import { join } from "node:path";
 
 export async function GET(request: Request) {
   try {
@@ -21,7 +24,7 @@ export async function POST(request: Request) {
     const profile = await requireOwnerProfile(user.id, accountSlot(request));
     if (!profile) throw new Error("Business profile is required.");
     await syncAccountRegister(profile.id);
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true, savedTo: localStorageEnabled ? join(localDataDirectory(), "registers", `${profile.id}.xlsx`) : "the connected Google Drive workbook" });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Unable to refresh Excel register" }, { status: 400 });
   }

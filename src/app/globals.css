@@ -2,3 +2,24 @@
 .topbar-brand{display:flex;align-items:center;gap:32px}.account-picker{display:grid;gap:5px;min-width:230px}.account-picker label{font-size:12px;font-weight:700;color:#d7e4f2}.account-picker select{border:1px solid #8196ad;border-radius:7px;padding:9px 11px;background:#fff;color:var(--navy);font:inherit;max-width:360px}.account-picker span{font-size:11px;color:#b8c9da}
 @media(max-width:700px){.topbar-brand{align-items:flex-start;flex-direction:column;gap:14px;width:100%}.account-picker{width:100%}.account-picker select{max-width:none}}
 .field-label{display:flex;align-items:baseline;justify-content:space-between;gap:8px}.field-label .muted{white-space:nowrap}
+
+/* Dark application chrome; the bill itself stays white like printed paper. */
+:root{color-scheme:dark;--navy:#101b2b;--blue:#84bfff;--sky:#20364e;--ink:#edf3fa;--muted:#acbad0;--line:#34475e;--danger:#ff9b9b;--success:#76dfb3}
+body{background:#0b1420}
+button{background:#3474b4;color:#fff}
+button.secondary{background:#1c2c40;color:var(--ink);border-color:#526984}
+button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+.topbar{background:#101d2f;border-bottom:1px solid #31445b}
+.top-actions .secondary{background:#1b2d43;border-color:#536c8a;color:var(--ink)}
+nav{background:#121f2f}
+.panel,.auth-card{background:#162437;box-shadow:0 10px 28px #0003}
+.form-grid input,.form-grid textarea,.search input,.item-table input,.auth-card input,.account-picker select{background:#0e1a2a;color:var(--ink);border-color:#4a607b}
+.form-grid input::placeholder,.search input::placeholder,.item-table input::placeholder{color:#879ab0}
+.item-table th,.history-table th{background:#1c2d42}
+.danger,.error{background:#48242a;color:#ffd0d0}
+.sync.pending{color:#ffcb7a}
+.void-row{opacity:.72}
+.modal-actions{background:#162437}
+.auth-shell{background:linear-gradient(135deg,#0a1422,#193250)}
+.excel-notice{margin:0 0 16px;padding:12px 14px;border:1px solid #357c61;border-radius:9px;background:#17372f;color:#bdf5dc;line-height:1.45;overflow-wrap:anywhere}
+@media print{:root{color-scheme:light;--line:#cfd8e2;--ink:#111;--muted:#444}body{background:#fff}.print-bill{background:#fff;color:#111}}
