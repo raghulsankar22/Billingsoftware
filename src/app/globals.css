@@ -2,6 +2,7 @@
 .topbar-brand{display:flex;align-items:center;gap:32px}.account-picker{display:grid;gap:5px;min-width:230px}.account-picker label{font-size:12px;font-weight:700;color:#d7e4f2}.account-picker select{border:1px solid #8196ad;border-radius:7px;padding:9px 11px;background:#fff;color:var(--navy);font:inherit;max-width:360px}.account-picker span{font-size:11px;color:#b8c9da}
 @media(max-width:700px){.topbar-brand{align-items:flex-start;flex-direction:column;gap:14px;width:100%}.account-picker{width:100%}.account-picker select{max-width:none}}
 .field-label{display:flex;align-items:baseline;justify-content:space-between;gap:8px}.field-label .muted{white-space:nowrap}
+.bill-form-heading{flex-wrap:wrap}.bill-date-field{display:grid;gap:7px;margin-left:auto;min-width:180px;font-size:13px;font-weight:700}.bill-date-field input{width:100%;border:1px solid #4a607b;border-radius:7px;padding:10px;background:#0e1a2a;color:var(--ink)}
 
 /* Dark application chrome; the bill itself stays white like printed paper. */
 :root{color-scheme:dark;--navy:#101b2b;--blue:#84bfff;--sky:#20364e;--ink:#edf3fa;--muted:#acbad0;--line:#34475e;--danger:#ff9b9b;--success:#76dfb3}
