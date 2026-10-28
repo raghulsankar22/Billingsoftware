@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
+import { DatabaseSync } from "node:sqlite";
 import { createLocalDatabase, localOwnerId } from "./local-database";
 
 const bill = { billDate: "2026-10-03", customerName: "A,B (Gold)", fatherName: "Parent", address: "123 Main Street", phone: "1234567890", items: [{ metal: "Gold", particulars: "Gold ring", grams: 1.125, assessedValue: 10.11, loanAmount: 8.01 }, { metal: "Silver", particulars: "Silver ring", grams: 2, assessedValue: 20.22, loanAmount: 9.02 }] };
@@ -13,6 +14,30 @@ async function issue(db: ReturnType<typeof open>, input: Record<string, unknown>
 afterEach(() => { for (const { directory, db } of opened.splice(0)) { db.close(); rmSync(directory, { recursive: true, force: true }); } });
 
 describe("durable local ledger", () => {
+  it("starts an empty account at one even when its saved starting number is higher", async () => {
+    const db = open(); await profile(db, 1, 100);
+    const created = await issue(db);
+    expect(created.error).toBeNull();
+    expect((await db.from("bills").select().eq("id", created.data.id).single()).data.bill_number).toBe(1);
+  });
+  it("resets to one after every bill has been deleted out of order", async () => {
+    const db = open(); const saved = await profile(db);
+    const created = [await issue(db), await issue(db), await issue(db)];
+    for (const result of created) expect((await db.rpc("delete_bill", { p_owner_id: localOwnerId, p_bill_id: result.data.id })).error).toBeNull();
+    expect((await db.from("business_profiles").select().eq("id", saved.id).single()).data.next_bill_number).toBe(1);
+    const next = await issue(db);
+    expect((await db.from("bills").select().eq("id", next.data.id).single()).data.bill_number).toBe(1);
+  });
+  it("repairs an older empty account's saved counter on reopen", async () => {
+    const db = open(); const saved = await profile(db);
+    const entry = opened[0];
+    db.close();
+    const stored = new DatabaseSync(join(entry.directory, "billing.sqlite"));
+    stored.prepare("UPDATE records SET body=json_set(body,'$.next_bill_number',5) WHERE table_name='business_profiles' AND id=?").run(saved.id);
+    stored.close();
+    entry.db = createLocalDatabase(entry.directory);
+    expect((await entry.db.from("business_profiles").select().eq("id", saved.id).single()).data.next_bill_number).toBe(1);
+  });
   it("requires a Gold or Silver choice for new local bills", async () => {
     const db = open(); await profile(db);
     const missingMetal = { ...bill, items: [{ particulars: "Ring", grams: 1, assessedValue: 100, loanAmount: 80 }] };
@@ -36,11 +61,11 @@ describe("durable local ledger", () => {
     const results = await Promise.all(Array.from({ length: 12 }, () => issue(db)));
     expect(results.every(result => !result.error)).toBe(true);
     const rows = await db.from("bills").select("*, bill_items(*)").eq("profile_id", first.id).order("bill_number");
-    expect(rows.data.map((row: any) => row.bill_number)).toEqual(Array.from({ length: 12 }, (_, index) => index + 100));
+    expect(rows.data.map((row: any) => row.bill_number)).toEqual(Array.from({ length: 12 }, (_, index) => index + 1));
     expect(rows.data[0]).toMatchObject({ total_assessed_value: 30.33, total_loan_amount: 17.03, business_snapshot: { business_name: "Finance" } });
     expect(rows.data[0].bill_items).toHaveLength(2);
     expect(rows.data[0].bill_items.map((item: { metal: string }) => item.metal)).toEqual(["Gold", "Silver"]);
-    expect((await profile(db, 1, 1)).next_bill_number).toBe(112);
+    expect((await profile(db, 1, 1)).next_bill_number).toBe(13);
     expect((await db.from("bills").select().eq("profile_id", second.id)).data).toEqual([]);
   });
   it("rolls back a failed replacement and never consumes its number", async () => {

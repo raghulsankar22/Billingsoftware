@@ -2,8 +2,10 @@ import ExcelJS from "exceljs";
 import { itemSummary } from "./money";
 import { registerHeaders, type Bill } from "./types";
 
+const optionalCell = (value?: string | null) => value?.trim() || null;
+
 export function billRegisterRow(bill: Bill) {
-  return [bill.deliveryNo ?? "", bill.deliveryDate ?? "", bill.billDate, bill.billNumber, bill.address, bill.customerName, `${bill.status === "void" ? "VOID — " : ""}${itemSummary(bill.items)}`, bill.phone, bill.totalLoanAmount];
+  return [optionalCell(bill.deliveryNo), optionalCell(bill.deliveryDate), bill.billDate, bill.billNumber, bill.address, bill.customerName, `${bill.status === "void" ? "VOID — " : ""}${itemSummary(bill.items)}`, optionalCell(bill.phone), bill.totalLoanAmount];
 }
 
 export function createRegister() {
@@ -15,6 +17,7 @@ export function createRegister() {
   sheet.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } };
   sheet.getRow(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF1E3A5F" } };
   sheet.getColumn(9).numFmt = '₹#,##0.00';
+  for (const column of [1, 2, 8]) sheet.getColumn(column).numFmt = "@";
   return workbook;
 }
 

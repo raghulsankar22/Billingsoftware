@@ -12,15 +12,15 @@ for (const account of [1, 2, 3]) {
   assert.equal((await api(`/api/profile?account=${account}`)).profile, null, 'Use a disposable empty data directory');
 }
 await api('/api/profile', 'POST', { businessName: 'Local verification', address: '123 Test Street', phone: '1234567890', nextBillNumber: 100 });
-const input = { billDate: '2026-10-03', customerName: 'Test customer', fatherName: 'Test parent', address: '123 Test Street', phone: '1234567890', items: [{ particulars: 'Test ring', grams: 1, assessedValue: 100, loanAmount: 80 }] };
+const input = { billDate: '2026-10-03', customerName: 'Test customer', fatherName: 'Test parent', address: '123 Test Street', phone: '1234567890', deliveryNo: 'D-01', deliveryDate: '2026-10-15', items: [{ metal: 'Gold', particulars: 'Test ring', grams: 1, assessedValue: 100, loanAmount: 80 }] };
 const issued = (await api('/api/bills', 'POST', input)).bill;
-assert.equal(issued.billNumber, 100);
+assert.equal(issued.billNumber, 1);
 assert.equal(issued.excelSyncStatus, 'synced');
 const pdf = await fetch(`${base}/api/bills/${issued.id}/pdf`);
 assert.equal(pdf.status, 200);
 assert.equal(Buffer.from(await pdf.arrayBuffer()).subarray(0, 4).toString(), '%PDF');
 const replaced = (await api(`/api/bills/${issued.id}/replace`, 'POST', input)).bill;
-assert.equal(replaced.billNumber, 101);
+assert.equal(replaced.billNumber, 2);
 assert.equal(replaced.replacementForId, issued.id);
 await api(`/api/bills/${replaced.id}/void`, 'POST');
 const history = await api('/api/bills?q=Test');
@@ -43,8 +43,10 @@ for (const [account, startingNumber] of [[2, 1], [3, 500]]) {
     ...input,
     customerName: `Account ${account} customer`,
     phone: account === 3 ? '' : input.phone,
+    deliveryNo: account === 3 ? '' : input.deliveryNo,
+    deliveryDate: account === 3 ? '' : input.deliveryDate,
   })).bill;
-  assert.equal(bill.billNumber, startingNumber);
+  assert.equal(bill.billNumber, 1);
   assert.equal(bill.phone, account === 3 ? '' : input.phone);
   assert.equal(bill.excelSyncStatus, 'synced');
   const accountHistory = await api(`/api/bills?account=${account}`);
@@ -59,9 +61,21 @@ for (const [account, startingNumber] of [[2, 1], [3, 500]]) {
   await workbook.xlsx.load(Buffer.from(await register.arrayBuffer()));
   const rows = workbook.getWorksheet('Bills');
   assert.ok(rows);
-  assert.equal(rows.getRow(2).getCell(4).value, startingNumber);
+  assert.equal(rows.getRow(2).getCell(4).value, 1);
   assert.equal(rows.getRow(2).getCell(6).value, `Account ${account} customer`);
-  assert.equal(rows.getRow(2).getCell(8).value, account === 3 ? '' : input.phone);
+  assert.equal(rows.getRow(2).getCell(1).value, account === 3 ? null : input.deliveryNo);
+  assert.equal(rows.getRow(2).getCell(2).value, account === 3 ? null : input.deliveryDate);
+  assert.equal(rows.getRow(2).getCell(8).value, account === 3 ? null : input.phone);
   assert.equal(rows.getRow(3).getCell(4).value, null);
 }
-console.log('Local HTTP flow passed: three account profiles, independent numbers and Excel reports, PDF, replacement, void, history, and cross-origin rejection.');
+await api(`/api/bills/${issued.id}`, 'DELETE');
+await api(`/api/bills/${replaced.id}`, 'DELETE');
+assert.equal((await api('/api/profile')).profile.next_bill_number, 1);
+const restarted = (await api('/api/bills', 'POST', input)).bill;
+assert.equal(restarted.billNumber, 1);
+await api(`/api/bills/${restarted.id}`, 'PATCH', { ...input, phone: '', deliveryNo: '', deliveryDate: '' });
+const refreshed = await api('/api/reports/excel', 'POST');
+const saved = new ExcelJS.Workbook();
+await saved.xlsx.readFile(refreshed.savedTo);
+for (const cell of ['A2', 'B2', 'H2']) assert.equal(saved.getWorksheet('Bills').getCell(cell).value, null, `${cell} must stay empty after clearing and refreshing`);
+console.log('Local HTTP flow passed: three accounts start at one, numbering resets after all bills are deleted, optional Excel cells stay empty, saved register refreshes, and PDF/edit/void flows work.');

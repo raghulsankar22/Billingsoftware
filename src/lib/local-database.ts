@@ -20,6 +20,7 @@ export function createLocalDatabase(directory = localDataDirectory()) {
   if (!db) {
     db = new DatabaseSync(filename);
     db.exec("PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA busy_timeout=10000; CREATE TABLE IF NOT EXISTS records (table_name TEXT NOT NULL, id TEXT NOT NULL, body TEXT NOT NULL CHECK(json_valid(body)), PRIMARY KEY(table_name,id)); CREATE UNIQUE INDEX IF NOT EXISTS profile_account ON records(json_extract(body,'$.owner_id'), json_extract(body,'$.account_slot')) WHERE table_name='business_profiles'; CREATE UNIQUE INDEX IF NOT EXISTS bill_number ON records(json_extract(body,'$.profile_id'), json_extract(body,'$.bill_number')) WHERE table_name='bills'; CREATE UNIQUE INDEX IF NOT EXISTS replacement ON records(json_extract(body,'$.replacement_for_id')) WHERE table_name='bills' AND json_extract(body,'$.replacement_for_id') IS NOT NULL;");
+    db.prepare("UPDATE records AS profile SET body=json_set(body,'$.next_bill_number',1,'$.updated_at',?) WHERE table_name='business_profiles' AND json_extract(body,'$.next_bill_number') IS NOT 1 AND NOT EXISTS (SELECT 1 FROM records AS bill WHERE bill.table_name='bills' AND json_extract(bill.body,'$.profile_id')=profile.id)").run(new Date().toISOString());
     connections.set(filename, db);
   }
   const database = db;
@@ -35,17 +36,19 @@ export function createLocalDatabase(directory = localDataDirectory()) {
   };
   const slot = (value: unknown) => { const n = value === undefined ? 1 : Number(value); if (![1, 2, 3].includes(n)) throw new Error("Choose account 1, 2 or 3."); return n; };
   const owner = (value: unknown) => { if (value !== localOwnerId) throw new Error("Invalid local owner."); return localOwnerId; };
+  const hasBills = (profileId: string) => rows("bills").some(bill => bill.profile_id === profileId);
   const issue = (ownerId: string, input: Row) => {
     const bill = billSchema.parse(input);
     if (bill.items.some(item => !item.metal)) throw new Error("Choose Gold or Silver for every item.");
     const profile = rows("business_profiles").find(p => p.owner_id === ownerId && p.account_slot === slot(input.accountSlot));
     if (!profile) throw new Error("Business profile is required");
-    if (profile.next_bill_number >= 2147483647) throw new Error("Bill number limit reached");
+    const nextBillNumber = hasBills(profile.id) ? profile.next_bill_number : 1;
+    if (nextBillNumber >= 2147483647) throw new Error("Bill number limit reached");
     const now = new Date().toISOString(); const id = randomUUID();
     const cents = (key: "assessedValue" | "loanAmount") => bill.items.reduce((sum, item) => sum + Math.round(item[key] * 100), 0) / 100;
-    save("bills", { id, profile_id: profile.id, bill_number: profile.next_bill_number, bill_date: bill.billDate, delivery_no: bill.deliveryNo || null, delivery_date: bill.deliveryDate || null, customer_name: bill.customerName, father_name: bill.fatherName, address: bill.address, phone: bill.phone, government_id: bill.governmentId || null, total_assessed_value: cents("assessedValue"), total_loan_amount: cents("loanAmount"), status: "issued", replacement_for_id: null, excel_sync_status: "pending", excel_sync_error: null, pdf_storage_path: null, pdf_error: null, created_at: now, voided_at: null, business_snapshot: { business_name: profile.business_name, address: profile.address, phone: profile.phone, logo_url: profile.logo_url } });
+    save("bills", { id, profile_id: profile.id, bill_number: nextBillNumber, bill_date: bill.billDate, delivery_no: bill.deliveryNo || null, delivery_date: bill.deliveryDate || null, customer_name: bill.customerName, father_name: bill.fatherName, address: bill.address, phone: bill.phone, government_id: bill.governmentId || null, total_assessed_value: cents("assessedValue"), total_loan_amount: cents("loanAmount"), status: "issued", replacement_for_id: null, excel_sync_status: "pending", excel_sync_error: null, pdf_storage_path: null, pdf_error: null, created_at: now, voided_at: null, business_snapshot: { business_name: profile.business_name, address: profile.address, phone: profile.phone, logo_url: profile.logo_url } });
     bill.items.forEach((item, index) => save("bill_items", { id: randomUUID(), bill_id: id, metal: item.metal, particulars: item.particulars, grams: item.grams, assessed_value: item.assessedValue, loan_amount: item.loanAmount, sort_order: index }));
-    save("business_profiles", { ...profile, next_bill_number: profile.next_bill_number + 1, updated_at: now });
+    save("business_profiles", { ...profile, next_bill_number: nextBillNumber + 1, updated_at: now });
     return { id };
   };
   const billOwner = (ownerId: string, id: string) => {
@@ -123,11 +126,10 @@ export function createLocalDatabase(directory = localDataDirectory()) {
       try { const data = transaction(() => {
         const ownerId = owner(parameters.p_owner_id);
         if (name === "save_business_profile") {
-          const input = parameters.p_profile; const account = slot(input.accountSlot); const first = input.nextBillNumber ?? 1;
-          if (!Number.isInteger(first) || first < 1 || first >= 2147483647) throw new Error("Invalid first bill number");
+          const input = parameters.p_profile; const account = slot(input.accountSlot);
           for (const key of ["businessName", "address", "phone"]) if (typeof input[key] !== "string" || !input[key].trim()) throw new Error("Business details are required");
           const previous = rows("business_profiles").find(row => row.owner_id === ownerId && row.account_slot === account); const now = new Date().toISOString();
-          const profile = { id: previous?.id ?? randomUUID(), owner_id: ownerId, account_slot: account, business_name: input.businessName, address: input.address, phone: input.phone, logo_url: input.logoUrl || null, next_bill_number: previous?.next_bill_number ?? first, created_at: previous?.created_at ?? now, updated_at: now }; save("business_profiles", profile); return profile;
+          const profile = { id: previous?.id ?? randomUUID(), owner_id: ownerId, account_slot: account, business_name: input.businessName, address: input.address, phone: input.phone, logo_url: input.logoUrl || null, next_bill_number: previous && hasBills(previous.id) ? previous.next_bill_number : 1, created_at: previous?.created_at ?? now, updated_at: now }; save("business_profiles", profile); return profile;
         }
         if (name === "create_bill") return issue(ownerId, parameters.p_bill);
         if (name === "edit_bill") {
@@ -148,8 +150,9 @@ export function createLocalDatabase(directory = localDataDirectory()) {
           database.prepare("DELETE FROM records WHERE table_name='bill_items' AND json_extract(body,'$.bill_id')=?").run(bill.id);
           for (const replacement of rows("bills").filter(row => row.replacement_for_id === bill.id)) save("bills", { ...replacement, replacement_for_id: null });
           database.prepare("DELETE FROM records WHERE table_name='bills' AND id=?").run(bill.id);
-          if (reuseNumber) save("business_profiles", { ...profile, next_bill_number: bill.bill_number, updated_at: new Date().toISOString() });
-          return { id: bill.id, billNumber: bill.bill_number, nextBillNumber: reuseNumber ? bill.bill_number : profile.next_bill_number, previousPdfPath: bill.pdf_storage_path };
+          const nextBillNumber = !hasBills(profile.id) ? 1 : reuseNumber ? bill.bill_number : profile.next_bill_number;
+          if (nextBillNumber !== profile.next_bill_number) save("business_profiles", { ...profile, next_bill_number: nextBillNumber, updated_at: new Date().toISOString() });
+          return { id: bill.id, billNumber: bill.bill_number, nextBillNumber, previousPdfPath: bill.pdf_storage_path };
         }
         if (name === "replace_bill") {
           const original = rows("bills").find(row => row.id === parameters.p_original_id); const profile = rows("business_profiles").find(row => row.id === original?.profile_id && row.owner_id === ownerId);

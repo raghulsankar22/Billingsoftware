@@ -37,22 +37,32 @@ it("uses literal search, valid date filters, and exact numeric bill matching", a
 });
 
 it("roundtrips the required nine columns, leading-zero phones, numeric money, and visible void rows", async () => {
-  db.rows = [row(1), { ...row(2), status: "void", customer_name: "=1+1" }];
+  db.rows = [{ ...row(1), delivery_no: "D-01", delivery_date: "2026-10-15" }, { ...row(2), status: "void", customer_name: "=1+1" }];
   const workbook = buildReportRegister(await loadReportBills("owner", { query: "" }));
   const loaded = new ExcelJS.Workbook(); await loaded.xlsx.load(await workbook.xlsx.writeBuffer() as never);
   const sheet = loaded.getWorksheet("Bills")!;
   expect(sheet.getRow(1).values).toEqual([undefined, ...registerHeaders]);
   expect(sheet.getTable("Bills")).toMatchObject({ table: { tableRef: "A1:I3" } });
   expect(sheet.getCell("H2").value).toBe("0123456789"); expect(sheet.getCell("I2").value).toBe(80);
+  expect(sheet.getCell("A2").value).toBe("D-01"); expect(sheet.getCell("B2").value).toBe("2026-10-15");
+  expect(sheet.getCell("H2").numFmt).toBe("@"); expect(sheet.getCell("B2").numFmt).toBe("@");
   expect(sheet.getCell("F3").value).toBe("=1+1"); expect(sheet.getCell("G3").value).toMatch(/^VOID — /);
   expect(sheet.getRow(3).font.strike).toBe(true);
 });
 
-it("leaves the Phone cell blank when the customer mobile number is not provided", async () => {
-  db.rows = [{ ...row(1), phone: "" }];
+it("exports genuinely empty optional cells for blank or missing customer details", async () => {
+  db.rows = [
+    { ...row(1), delivery_no: "", delivery_date: "", phone: "" },
+    { ...row(2), delivery_no: null, delivery_date: null, phone: null },
+    { ...row(3), phone: undefined },
+  ];
   const workbook = buildReportRegister(await loadReportBills("owner", { query: "" }));
   const loaded = new ExcelJS.Workbook(); await loaded.xlsx.load(await workbook.xlsx.writeBuffer() as never);
-  expect(loaded.getWorksheet("Bills")!.getCell("H2").value).toBe("");
+  const sheet = loaded.getWorksheet("Bills")!;
+  for (const rowNumber of [2, 3, 4]) {
+    for (const column of ["A", "B", "H"]) expect(sheet.getCell(`${column}${rowNumber}`).value).toBeNull();
+    expect(sheet.getCell(`I${rowNumber}`).value).toBe(80);
+  }
 });
 
 it("fails the download on a database error instead of silently exporting partial history", async () => {

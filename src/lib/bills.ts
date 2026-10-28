@@ -15,7 +15,7 @@ export function toBill(row: Record<string, unknown>): Bill {
     customerName: String(row.customer_name),
     fatherName: String(row.father_name),
     address: String(row.address),
-    phone: String(row.phone),
+    phone: String(row.phone ?? ""),
     governmentId: String(row.government_id ?? ""),
     items: items.map((item) => {
       const source = item as Record<string, unknown>;
