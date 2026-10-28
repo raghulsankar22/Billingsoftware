@@ -47,6 +47,12 @@ export function createLocalDatabase(directory = localDataDirectory()) {
     save("business_profiles", { ...profile, next_bill_number: profile.next_bill_number + 1, updated_at: now });
     return { id };
   };
+  const billOwner = (ownerId: string, id: string) => {
+    const bill = rows("bills").find(row => row.id === id);
+    const profile = rows("business_profiles").find(row => row.id === bill?.profile_id && row.owner_id === ownerId);
+    if (!bill || !profile) throw new Error("Bill not found in this account.");
+    return { bill, profile };
+  };
   class Query {
     private filters: ((row: Row) => boolean)[] = [];
     private orders: { key: string; ascending: boolean }[] = [];
@@ -76,7 +82,7 @@ export function createLocalDatabase(directory = localDataDirectory()) {
         if (this.patch) transaction(() => {
           const patch = this.patch!;
           const allowed = new Set(["status", "voided_at", "excel_sync_status", "excel_sync_error", "pdf_storage_path", "pdf_error"]);
-          if (this.table !== "bills" || Object.keys(patch).some(key => !allowed.has(key))) throw new Error("Finalized ledger data is immutable. Use a replacement bill to correct it.");
+          if (this.table !== "bills" || Object.keys(patch).some(key => !allowed.has(key))) throw new Error("Direct ledger updates are blocked. Use Edit bill to make corrections.");
           if (patch.status !== undefined && patch.status !== "void") throw new Error("A void bill cannot be reissued.");
           if (patch.voided_at !== undefined && patch.status !== "void") throw new Error("Void timestamp requires voiding the bill.");
           if (patch.excel_sync_status !== undefined && !["pending", "synced", "failed"].includes(patch.excel_sync_status)) throw new Error("Invalid register status.");
@@ -84,7 +90,9 @@ export function createLocalDatabase(directory = localDataDirectory()) {
             if (patch.status === "void" && row.status !== "issued") throw new Error("Only issued bills can be voided.");
             if (patch.pdf_storage_path != null) {
               pdfPath("bill-pdfs", patch.pdf_storage_path);
-              if (patch.pdf_storage_path !== `${row.profile_id}/${row.id}.pdf`) throw new Error("PDF must belong to its bill.");
+              const prefix = `${row.profile_id}/${row.id}`;
+              const suffix = patch.pdf_storage_path.startsWith(prefix) ? patch.pdf_storage_path.slice(prefix.length) : "";
+              if (suffix !== ".pdf" && !/^-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.pdf$/i.test(suffix)) throw new Error("PDF must belong to its bill.");
             }
             const changed = { ...row, ...patch, ...(patch.status === "void" ? { voided_at: patch.voided_at || new Date().toISOString() } : {}) };
             save(this.table, changed); return changed;
@@ -121,6 +129,24 @@ export function createLocalDatabase(directory = localDataDirectory()) {
           const profile = { id: previous?.id ?? randomUUID(), owner_id: ownerId, account_slot: account, business_name: input.businessName, address: input.address, phone: input.phone, logo_url: input.logoUrl || null, next_bill_number: previous?.next_bill_number ?? first, created_at: previous?.created_at ?? now, updated_at: now }; save("business_profiles", profile); return profile;
         }
         if (name === "create_bill") return issue(ownerId, parameters.p_bill);
+        if (name === "edit_bill") {
+          const { bill: original, profile } = billOwner(ownerId, parameters.p_bill_id);
+          if (original.status !== "issued") throw new Error("Only issued bills can be edited.");
+          if (parameters.p_bill.accountSlot !== undefined && slot(parameters.p_bill.accountSlot) !== profile.account_slot) throw new Error("A bill must remain in its original account.");
+          const input = billSchema.parse(parameters.p_bill);
+          const total = (key: "assessedValue" | "loanAmount") => input.items.reduce((sum, item) => sum + Math.round(item[key] * 100), 0) / 100;
+          save("bills", { ...original, bill_date: input.billDate, delivery_no: input.deliveryNo || null, delivery_date: input.deliveryDate || null, customer_name: input.customerName, father_name: input.fatherName, address: input.address, phone: input.phone, government_id: null, total_assessed_value: total("assessedValue"), total_loan_amount: total("loanAmount"), excel_sync_status: "pending", excel_sync_error: null, pdf_storage_path: null, pdf_error: null, updated_at: new Date().toISOString() });
+          database.prepare("DELETE FROM records WHERE table_name='bill_items' AND json_extract(body,'$.bill_id')=?").run(original.id);
+          input.items.forEach((item, index) => save("bill_items", { id: randomUUID(), bill_id: original.id, particulars: item.particulars, grams: item.grams, assessed_value: item.assessedValue, loan_amount: item.loanAmount, sort_order: index }));
+          return { id: original.id, previousPdfPath: original.pdf_storage_path };
+        }
+        if (name === "delete_bill") {
+          const { bill } = billOwner(ownerId, parameters.p_bill_id);
+          database.prepare("DELETE FROM records WHERE table_name='bill_items' AND json_extract(body,'$.bill_id')=?").run(bill.id);
+          for (const replacement of rows("bills").filter(row => row.replacement_for_id === bill.id)) save("bills", { ...replacement, replacement_for_id: null });
+          database.prepare("DELETE FROM records WHERE table_name='bills' AND id=?").run(bill.id);
+          return { id: bill.id, billNumber: bill.bill_number, previousPdfPath: bill.pdf_storage_path };
+        }
         if (name === "replace_bill") {
           const original = rows("bills").find(row => row.id === parameters.p_original_id); const profile = rows("business_profiles").find(row => row.id === original?.profile_id && row.owner_id === ownerId);
           if (!original || !profile) throw new Error("Original bill not found");
@@ -152,6 +178,7 @@ export function createLocalDatabase(directory = localDataDirectory()) {
         } catch (error) { return failure(error); }
       },
       download: async (path: string) => { try { return { data: new Blob([new Uint8Array(readFileSync(pdfPath(bucket, path)))]), error: null }; } catch (error) { return failure(error); } },
+      remove: async (paths: string[]) => { try { for (const path of paths) { try { unlinkSync(pdfPath(bucket, path)); } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; } } return { data: paths, error: null }; } catch (error) { return failure(error); } },
     }) },
     close: () => { database.close(); connections.delete(filename); },
   };

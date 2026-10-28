@@ -29,3 +29,7 @@ export async function markBillVoidInRegister(profileId: string, number: number) 
   if (localStorageEnabled) return localRegister(profileId);
   return markBillVoidInGoogleDrive(profileId, number);
 }
+export async function syncAccountRegister(profileId: string) {
+  if (localStorageEnabled) return localRegister(profileId);
+  return markBillVoidInGoogleDrive(profileId, 0);
+}

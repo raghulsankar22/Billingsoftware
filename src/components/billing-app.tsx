@@ -48,7 +48,7 @@ export function BillingApp() {
   const [selected, setSelected] = useState<Bill | null>(null);
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [replacementSource, setReplacementSource] = useState<Bill | null>(null);
+  const [editingSource, setEditingSource] = useState<Bill | null>(null);
   const loadGeneration = useRef(0);
   const configured = localStorageEnabled || Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
 
@@ -121,13 +121,13 @@ export function BillingApp() {
     setBills([]);
     setQuery("");
     setSelected(null);
-    setReplacementSource(null);
+    setEditingSource(null);
     setView("dashboard");
     setError("");
   }
 
   const issueSuccess = (bill: Bill) => {
-    setReplacementSource(null);
+    setEditingSource(null);
     setSelected(bill);
     setView("dashboard");
     void load(query, accountSlot);
@@ -158,6 +158,27 @@ export function BillingApp() {
       await load(query, accountSlot);
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : "Unable to void bill.");
+    }
+  }
+
+  async function deleteBill(bill: Bill) {
+    if (!window.confirm(`Permanently delete bill #${bill.billNumber}? It will be removed from history, its PDF and the Excel register. This cannot be undone; its number will not be reused.`)) return;
+    try {
+      const result = await api(`/api/bills/${bill.id}`, accountSlot, { method: "DELETE" });
+      if (selected?.id === bill.id) setSelected(null);
+      await load(query, accountSlot);
+      if (result.warning) setError(result.warning);
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : "Unable to delete bill.");
+    }
+  }
+
+  async function refreshExcel() {
+    try {
+      await api("/api/reports/excel", accountSlot, { method: "POST" });
+      await load(query, accountSlot);
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : "Unable to refresh Excel register.");
     }
   }
 
@@ -198,6 +219,7 @@ export function BillingApp() {
       </div>
       <div className="top-actions">
         <button className="secondary" onClick={exportExcel} disabled={!profile}>Download Excel</button>
+        <button className="secondary" onClick={() => void refreshExcel()} disabled={!profile}>Refresh Excel</button>
         {localStorageEnabled
           ? <span className="notice">Saved on this computer</span>
           : <><button className="secondary" onClick={connectGoogleDrive}>Connect Google Drive</button><button className="secondary" onClick={() => createBrowserSupabase().auth.signOut().then(() => setSignedIn(false))}>Sign out</button></>}
@@ -206,7 +228,7 @@ export function BillingApp() {
 
     <nav>
       <button className={view === "dashboard" ? "active" : ""} onClick={() => setView("dashboard")}>Bills</button>
-      <button className={view === "new" ? "active" : ""} onClick={() => { setReplacementSource(null); setView("new"); }}>New bill</button>
+      <button className={view === "new" ? "active" : ""} onClick={() => { setEditingSource(null); setView("new"); }}>New bill</button>
       <button className={view === "settings" ? "active" : ""} onClick={() => setView("settings")}>Business profile</button>
     </nav>
 
@@ -219,7 +241,7 @@ export function BillingApp() {
       </section>}
       {!accountLoaded && isLoading && <section className="panel setup-callout"><p>Loading Account {accountSlot}…</p></section>}
       {view === "settings" && accountLoaded && <ProfileForm key={accountSlot} profile={profile} accountSlot={accountSlot} onSaved={() => void load(query, accountSlot)} />}
-      {view === "new" && profile && accountLoaded && <BillForm key={`${accountSlot}-${replacementSource?.id ?? "new"}`} accountSlot={accountSlot} replacementSource={replacementSource} onCreated={issueSuccess} />}
+      {view === "new" && profile && accountLoaded && <BillForm key={`${accountSlot}-${editingSource?.id ?? "new"}`} accountSlot={accountSlot} editingSource={editingSource} onCreated={issueSuccess} />}
       {view === "dashboard" && accountLoaded && profile && <section className="panel">
         <div className="section-heading history-heading">
           <div><p className="eyebrow">ACCOUNT {accountSlot} HISTORY</p><h2>Issued bills</h2></div>
@@ -239,7 +261,8 @@ export function BillingApp() {
             <td><span className={`sync ${bill.excelSyncStatus}`}>{bill.excelSyncStatus}</span>{bill.excelSyncStatus === "failed" && <button className="text-button" onClick={() => void retryExcel(bill.id)}>Retry</button>}</td>
             <td className="row-actions">
               <button className="text-button" onClick={() => setSelected(bill)}>Open</button>
-              {bill.status === "issued" && <><button className="text-button" onClick={() => { setReplacementSource(bill); setView("new"); }}>Replace</button><button className="text-button danger-text" onClick={() => void voidBill(bill.id)}>Void</button></>}
+              {bill.status === "issued" && <><button className="text-button" onClick={() => { setEditingSource(bill); setView("new"); }}>{localStorageEnabled ? "Edit" : "Replace"}</button><button className="text-button danger-text" onClick={() => void voidBill(bill.id)}>Void</button></>}
+              {localStorageEnabled && <button className="text-button danger-text" onClick={() => void deleteBill(bill)}>Delete</button>}
             </td>
           </tr>) : <tr><td colSpan={7} className="empty">No bills found.</td></tr>}</tbody>
         </table></div>
