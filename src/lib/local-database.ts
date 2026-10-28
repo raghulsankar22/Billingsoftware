@@ -1,6 +1,6 @@
 import { DatabaseSync } from "node:sqlite";
 import { randomUUID } from "node:crypto";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync, openSync, fsyncSync, closeSync, linkSync, unlinkSync } from "node:fs";
 import { resolve, dirname, isAbsolute } from "node:path";
 import { billSchema } from "./validation";
 
@@ -73,7 +73,23 @@ export function createLocalDatabase(directory = localDataDirectory()) {
     private execute(mode?: "single" | "maybeSingle"): Result {
       try {
         let result = rows(this.table).filter(row => this.filters.every(filter => filter(row))); const count = result.length;
-        if (this.patch) transaction(() => { result = result.map(row => { const changed = { ...row, ...this.patch }; save(this.table, changed); return changed; }); });
+        if (this.patch) transaction(() => {
+          const patch = this.patch!;
+          const allowed = new Set(["status", "voided_at", "excel_sync_status", "excel_sync_error", "pdf_storage_path", "pdf_error"]);
+          if (this.table !== "bills" || Object.keys(patch).some(key => !allowed.has(key))) throw new Error("Finalized ledger data is immutable. Use a replacement bill to correct it.");
+          if (patch.status !== undefined && patch.status !== "void") throw new Error("A void bill cannot be reissued.");
+          if (patch.voided_at !== undefined && patch.status !== "void") throw new Error("Void timestamp requires voiding the bill.");
+          if (patch.excel_sync_status !== undefined && !["pending", "synced", "failed"].includes(patch.excel_sync_status)) throw new Error("Invalid register status.");
+          result = result.map(row => {
+            if (patch.status === "void" && row.status !== "issued") throw new Error("Only issued bills can be voided.");
+            if (patch.pdf_storage_path != null) {
+              pdfPath("bill-pdfs", patch.pdf_storage_path);
+              if (patch.pdf_storage_path !== `${row.profile_id}/${row.id}.pdf`) throw new Error("PDF must belong to its bill.");
+            }
+            const changed = { ...row, ...patch, ...(patch.status === "void" ? { voided_at: patch.voided_at || new Date().toISOString() } : {}) };
+            save(this.table, changed); return changed;
+          });
+        });
         result.sort((a, b) => { for (const order of this.orders) { if (a[order.key] !== b[order.key]) return (a[order.key] < b[order.key] ? -1 : 1) * (order.ascending ? 1 : -1); } return 0; });
         result = result.slice(this.start, this.end === Infinity ? undefined : this.end + 1).map(row => {
           const joined = this.columns.includes("bill_items(") ? { ...row, bill_items: rows("bill_items").filter(item => item.bill_id === row.id).sort((a, b) => a.sort_order - b.sort_order) } : row;
@@ -117,7 +133,24 @@ export function createLocalDatabase(directory = localDataDirectory()) {
       }); return { data, error: null }; } catch (error) { return failure(error); }
     },
     storage: { from: (bucket: string) => ({
-      upload: async (path: string, bytes: Uint8Array, _options?: unknown) => { try { const destination = pdfPath(bucket, path); if (bytes.byteLength > 10485760) throw new Error("PDF exceeds 10 MB"); mkdirSync(dirname(destination), { recursive: true }); writeFileSync(destination, bytes, { flag: "wx" }); return { data: { path }, error: null }; } catch (error) { return failure(error); } },
+      upload: async (path: string, bytes: Uint8Array, _options?: unknown) => {
+        try {
+          const destination = pdfPath(bucket, path);
+          if (bytes.byteLength > 10485760) throw new Error("PDF exceeds 10 MB");
+          mkdirSync(dirname(destination), { recursive: true });
+          const temporary = `${destination}.${randomUUID()}.tmp`;
+          try {
+            writeFileSync(temporary, bytes, { flag: "wx" });
+            const descriptor = openSync(temporary, "r+");
+            try { fsyncSync(descriptor); } finally { closeSync(descriptor); }
+            // Publish only complete bytes, without replacing an existing immutable PDF.
+            linkSync(temporary, destination);
+          } finally {
+            try { unlinkSync(temporary); } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
+          }
+          return { data: { path }, error: null };
+        } catch (error) { return failure(error); }
+      },
       download: async (path: string) => { try { return { data: new Blob([new Uint8Array(readFileSync(pdfPath(bucket, path)))]), error: null }; } catch (error) { return failure(error); } },
     }) },
     close: () => { database.close(); connections.delete(filename); },

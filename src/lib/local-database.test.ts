@@ -12,6 +12,18 @@ async function issue(db: ReturnType<typeof open>, input = bill) { return db.rpc(
 afterEach(() => { for (const { directory, db } of opened.splice(0)) { db.close(); rmSync(directory, { recursive: true, force: true }); } });
 
 describe("durable local ledger", () => {
+  it("rejects changes to finalized financial data and prevents unvoiding", async () => {
+    const db = open(); await profile(db); const created = await issue(db);
+    for (const patch of [{ customer_name: "Changed" }, { bill_number: 100 }, { total_loan_amount: 0 }, { id: "changed" }]) {
+      expect((await db.from("bills").update(patch).eq("id", created.data.id)).error).toBeTruthy();
+    }
+    const item = (await db.from("bill_items").select().eq("bill_id", created.data.id)).data[0];
+    expect((await db.from("bill_items").update({ loan_amount: 0 }).eq("id", item.id)).error).toBeTruthy();
+    expect((await db.from("business_profiles").update({ next_bill_number: 1 })).error).toBeTruthy();
+    expect((await db.from("bills").update({ status: "void" }).eq("id", created.data.id)).error).toBeNull();
+    expect((await db.from("bills").update({ status: "issued" }).eq("id", created.data.id)).error).toBeTruthy();
+    expect((await db.from("bills").select().eq("id", created.data.id).single()).data).toMatchObject({ customer_name: bill.customerName, bill_number: 1, status: "void" });
+  });
   it("serializes numbering, calculates exact cents, keeps snapshots and isolates accounts", async () => {
     const db = open(); const first = await profile(db, 1, 100); const second = await profile(db, 2, 50);
     const results = await Promise.all(Array.from({ length: 12 }, () => issue(db)));
