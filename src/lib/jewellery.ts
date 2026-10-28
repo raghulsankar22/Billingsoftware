@@ -19,7 +19,7 @@ export function appendJewelleryParticulars(current: string, name: string, quanti
   const count = z.coerce.number().finite().int("Quantity must be a whole number.")
     .min(1, "Quantity must be at least 1.").max(9999, "Quantity can be up to 9999.").parse(quantity);
   const description = [current.trim(), `${jewellery} ${count}`].filter(Boolean).join(", ");
-  if (description.length > 180) throw new Error("Particulars can have up to 180 characters. Shorten the description or use another pledge row.");
+  if (description.length > 180) throw new Error("Particulars can have up to 180 characters. Shorten the description before adding more jewellery.");
   return description;
 }
 

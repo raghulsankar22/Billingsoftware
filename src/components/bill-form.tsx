@@ -139,7 +139,7 @@ export function BillForm({ onCreated, editingSource, accountSlot }: { onCreated:
         <td><div className="currency-input"><span aria-hidden="true">₹</span><input type="number" inputMode="decimal" aria-label={`Assessed value in rupees for item ${index + 1}`} step="0.01" min="0" value={row.assessedValue || ""} onChange={(e) => item(index, "assessedValue", e.target.value)} required /></div></td>
         <td><div className="currency-input"><span aria-hidden="true">₹</span><input type="number" inputMode="decimal" aria-label={`Loan amount in rupees for item ${index + 1}`} step="0.01" min="0" value={row.loanAmount || ""} onChange={(e) => item(index, "loanAmount", e.target.value)} required /></div></td>
         <td>{form.items.length > 1 && <button type="button" className="icon-button danger" aria-label="Remove item" disabled={busy || newJewellery !== null} onClick={() => removeItem(index)}>×</button>}</td>
-      </tr>)}</tbody></table><button className="secondary" type="button" onClick={() => set("items", [...form.items, blankItem()])}>+ Add item</button></div>
+      </tr>)}</tbody></table></div>
       {jewelleryNotice && <p className="notice" role="status">{jewelleryNotice}</p>}
       <div className="total-bar"><span>Assessed total <strong>{formatINR(totals.value)}</strong></span><span>Loan total <strong>{formatINR(totals.loan)}</strong></span><button disabled={busy || newJewellery !== null}>{busy ? "Saving…" : editingSource ? localStorageEnabled ? "Save changes" : "Issue replacement" : "Issue bill"}</button></div>{error && <p className="error">{error}</p>}
     </form>

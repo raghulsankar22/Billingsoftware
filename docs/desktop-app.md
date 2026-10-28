@@ -1,6 +1,6 @@
 # Windows desktop app
 
-Run the Finance Billing shortcut or install `release/1.0.5/Finance-Billing-Setup-1.0.5.exe`.
+Run the Finance Billing shortcut or install `release/1.0.6/Finance-Billing-Setup-1.0.6.exe`.
 The app opens its own window and starts its loopback-only billing server automatically.
 No internet, separate Node installation, Microsoft 365 login or web hosting is needed for daily use.
 
@@ -47,6 +47,10 @@ Select a jewellery name, enter a whole quantity and click **Add**; repeat for mo
 (for example, `Ring 2, Studs 1`). The description can also be edited directly. Gram,
 assessed value and loan amount remain totals for the pledge row. The combined description
 is saved in the bill, PDF and Excel register and retained when editing an existing bill.
+
+Version 1.0.6 removes the bottom **+ Add item** button and stacks the Gold and Silver
+choices vertically in the Metal column. Several jewellery names and quantities can
+still be added inside the same Particulars box.
 
 The installer is not digitally signed. Distribution with a verified publisher identity
 requires a separate Windows code-signing certificate. No online updater is configured.
