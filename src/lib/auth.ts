@@ -7,12 +7,26 @@ export function assertOwnerEmail(actual: string | undefined, configured: string 
   if (actual?.toLowerCase() !== ownerEmail) throw new Error("This account is not authorized to access billing.");
 }
 
+const localHosts = new Set(["localhost", "127.0.0.1", "[::1]"]);
+
+function sameLocalOrigin(value: string, requestUrl: URL) {
+  try {
+    const origin = new URL(value);
+    return origin.origin === value
+      && localHosts.has(origin.hostname)
+      && origin.protocol === requestUrl.protocol
+      && origin.port === requestUrl.port;
+  } catch {
+    return false;
+  }
+}
+
 export async function requireUser(request: Request) {
   if (localStorageEnabled) {
     const url = new URL(request.url);
-    if (!["localhost", "127.0.0.1", "[::1]"].includes(url.hostname)) throw new Error("Local billing is available only on this computer.");
+    if (!localHosts.has(url.hostname)) throw new Error("Local billing is available only on this computer.");
     const origin = request.headers.get("origin");
-    if ((origin && origin !== url.origin) || request.headers.get("sec-fetch-site") === "cross-site") throw new Error("Open billing directly on this computer.");
+    if ((origin && !sameLocalOrigin(origin, url)) || request.headers.get("sec-fetch-site") === "cross-site") throw new Error("Open billing directly on this computer.");
     return { id: "local-owner", email: "local@localhost" };
   }
   const token = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
