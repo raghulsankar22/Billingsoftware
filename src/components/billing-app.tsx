@@ -9,6 +9,7 @@ import { createBrowserSupabase } from "@/lib/supabase-browser";
 import { api, requestHeaders } from "./api";
 import { localStorageEnabled } from "@/lib/storage-mode";
 import { BillDocument } from "./bill-document";
+import { BillOverview } from "./bill-overview";
 import { BillForm } from "./bill-form";
 import { ProfileForm } from "./profile-form";
 import { SignIn } from "./sign-in";
@@ -46,6 +47,7 @@ export function BillingApp() {
   const [query, setQuery] = useState("");
   const [view, setView] = useState<"dashboard" | "new" | "settings">("dashboard");
   const [selected, setSelected] = useState<Bill | null>(null);
+  const [overviewBill, setOverviewBill] = useState<Bill | null>(null);
   const [error, setError] = useState("");
   const [excelNotice, setExcelNotice] = useState("");
   const [isRefreshingExcel, setIsRefreshingExcel] = useState(false);
@@ -123,6 +125,7 @@ export function BillingApp() {
     setBills([]);
     setQuery("");
     setSelected(null);
+    setOverviewBill(null);
     setEditingSource(null);
     setView("dashboard");
     setError("");
@@ -169,6 +172,7 @@ export function BillingApp() {
     try {
       const result = await api(`/api/bills/${bill.id}`, accountSlot, { method: "DELETE" });
       if (selected?.id === bill.id) setSelected(null);
+      if (overviewBill?.id === bill.id) setOverviewBill(null);
       await load(query, accountSlot);
       if (result.warning) setError(result.warning);
       setExcelNotice(`Bill #${bill.billNumber} deleted. The next bill will be #${result.nextBillNumber}.`);
@@ -271,6 +275,7 @@ export function BillingApp() {
             <td>{formatINR(bill.totalLoanAmount)}</td>
             <td><span className={`sync ${bill.excelSyncStatus}`}>{bill.excelSyncStatus}</span>{bill.excelSyncStatus === "failed" && <button className="text-button" onClick={() => void retryExcel(bill.id)}>Retry</button>}</td>
             <td className="row-actions">
+              <button className="text-button" onClick={() => setOverviewBill(bill)}>Overview</button>
               <button className="text-button" onClick={() => setSelected(bill)}>Open</button>
               {bill.status === "issued" && <><button className="text-button" onClick={() => { setEditingSource(bill); setView("new"); }}>{localStorageEnabled ? "Edit" : "Replace"}</button><button className="text-button danger-text" onClick={() => void voidBill(bill.id)}>Void</button></>}
               {localStorageEnabled && <button className="text-button danger-text" onClick={() => void deleteBill(bill)}>Delete</button>}
@@ -281,5 +286,6 @@ export function BillingApp() {
     </div>
 
     {selected && profile && accountLoaded && <BillDocument bill={selected} profile={profile} accountSlot={accountSlot} onClose={() => setSelected(null)} />}
+    {overviewBill && accountLoaded && <BillOverview key={overviewBill.id} bill={overviewBill} onClose={() => setOverviewBill(null)} />}
   </main>;
 }
