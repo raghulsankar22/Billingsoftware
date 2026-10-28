@@ -259,7 +259,7 @@ export function BillingApp() {
       {localStorageEnabled && <button className={view === "delivery" ? "active" : ""} onClick={() => { setExcelNotice(""); setView("delivery"); }}>Delivery</button>}
       {localStorageEnabled && <button className={view === "delivery-bills" ? "active" : ""} onClick={() => { setExcelNotice(""); setView("delivery-bills"); }}>Delivery Bills</button>}
       {localStorageEnabled && <button className={view === "updates" ? "active" : ""} onClick={() => { setExcelNotice(""); setView("updates"); }}>Updates</button>}
-      <button className={view === "settings" ? "active" : ""} onClick={() => { setExcelNotice(""); setView("settings"); }}>Business profile</button>
+      <button className={`business-profile-tab${view === "settings" ? " active" : ""}`} onClick={() => { setExcelNotice(""); setView("settings"); }}>Business profile</button>
     </nav>
 
     <div className="content">
