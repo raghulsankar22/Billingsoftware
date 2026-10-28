@@ -1,26 +1,32 @@
 import { jsPDF } from "jspdf";
+import { PDFDocument } from "pdf-lib";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { currencyFont } from "./currency-font";
 import { amountInWords } from "./money";
 import type { Bill } from "./types";
 import { calculateRepayment } from "./interest";
+import { createConditionsBlock } from "./bill-conditions-pdf";
+import { billPdfTemplateVersion } from "./bill-conditions";
 
 type BusinessDetails = { business_name: string; address: string; phone: string; logo_url?: string | null };
 type SnapshottedBill = Bill & { businessSnapshot?: BusinessDetails };
 
 const money = (value: number) => `₹ ${new Intl.NumberFormat("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value)}`;
 
-export function createBillPdf(bill: SnapshottedBill, currentProfile: BusinessDetails, documentType: "finance" | "delivery" = "finance"): Uint8Array {
+export async function createBillPdf(bill: SnapshottedBill, currentProfile: BusinessDetails, documentType: "finance" | "delivery" = "finance"): Promise<Uint8Array> {
   const delivery = documentType === "delivery";
   if (delivery && (!bill.deliveryNo || !bill.deliveryDate)) throw new Error("Save delivery before printing the delivery bill.");
   const repayment = delivery ? bill.deliverySummary ?? calculateRepayment(bill.items, bill.billDate, bill.deliveryDate!) : null;
   if (repayment?.missingMetal) throw new Error("Choose Gold or Silver for every item before printing the delivery bill.");
   const business = bill.businessSnapshot ?? currentProfile;
   const pdf = new jsPDF({ unit: "mm", format: "a4", compress: true });
+  pdf.setProperties({ subject: billPdfTemplateVersion });
   pdf.addFileToVFS("BillCurrency.ttf", currencyFont);
   pdf.addFont("BillCurrency.ttf", "BillCurrency", "normal");
   const left = 15;
+  const logo = new Uint8Array(readFileSync(join(process.cwd(), "public", "business-logo.jpg")));
+  pdf.addImage(logo, "JPEG", left, 10, 24, 24);
   let y = 17;
 
   function currency(text: string, right: number, width: number, size = 9) {
@@ -64,13 +70,13 @@ export function createBillPdf(bill: SnapshottedBill, currentProfile: BusinessDet
 
   pdf.setFont("helvetica", "bold");
   pdf.setFontSize(18);
-  pdf.text(business.business_name, 105, y, { align: "center", maxWidth: 175 });
+  pdf.text(business.business_name, 120, y, { align: "center", maxWidth: 145 });
   y += 7;
   pdf.setFont("helvetica", "normal");
   pdf.setFontSize(9);
-  pdf.text(pdf.splitTextToSize(business.address, 175), 105, y, { align: "center" });
-  y += Math.max(5, (pdf.splitTextToSize(business.address, 175) as string[]).length * 4);
-  pdf.text(`Phone: ${business.phone}`, 105, y, { align: "center" });
+  pdf.text(pdf.splitTextToSize(business.address, 145), 120, y, { align: "center" });
+  y += Math.max(5, (pdf.splitTextToSize(business.address, 145) as string[]).length * 4);
+  pdf.text(`Phone: ${business.phone}`, 120, y, { align: "center" });
   y += 9;
   pdf.setLineWidth(0.4);
   pdf.line(left, y, 195, y);
@@ -146,14 +152,20 @@ export function createBillPdf(bill: SnapshottedBill, currentProfile: BusinessDet
   pdf.text("Customer Signature", 161, y, { align: "center" });
 
   if (!delivery) {
-    // Preserve the supplied English and Tamil conditions verbatim, including typography.
-    const conditions = new Uint8Array(readFileSync(join(process.cwd(), "public", "bill-conditions.jpeg")));
-    const image = pdf.getImageProperties(conditions);
-    const width = 174;
-    const height = width * image.height / image.width;
-    y += 6;
-    if (y + height > 282) newPage();
-    pdf.addImage(conditions, "JPEG", (210 - width) / 2, y, width, height);
+    const conditions = await createConditionsBlock();
+    const pointsPerMillimetre = 72 / 25.4;
+    y += 7;
+    if (y + conditions.height / pointsPerMillimetre > 282) newPage();
+    const document = await PDFDocument.load(pdf.output("arraybuffer"));
+    const source = await PDFDocument.load(conditions.bytes);
+    const sourcePage = source.getPage(0);
+    const block = await document.embedPage(sourcePage, {
+      left: 0, right: conditions.width,
+      bottom: sourcePage.getHeight() - conditions.height, top: sourcePage.getHeight(),
+    });
+    const page = document.getPages().at(-1)!;
+    page.drawPage(block, { x: left * pointsPerMillimetre, y: page.getHeight() - y * pointsPerMillimetre - conditions.height });
+    return document.save({ useObjectStreams: false });
   }
 
   return new Uint8Array(pdf.output("arraybuffer"));

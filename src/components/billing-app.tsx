@@ -223,9 +223,12 @@ export function BillingApp() {
   return <main className="app-shell">
     <header className="topbar">
       <div className="topbar-brand">
-        <div>
+        <div className="app-brand-title">
+          <img className="app-header-logo" src="/business-logo.jpg" alt="Business logo" />
+          <div>
           <p className="eyebrow">FINANCE BILLING</p>
           <h1>{accountLoaded ? profile?.business_name || `Account ${accountSlot}` : `Account ${accountSlot}`}</h1>
+          </div>
         </div>
         <div className="account-picker">
           <label htmlFor="business-account">Business account</label>

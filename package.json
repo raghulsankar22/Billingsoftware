@@ -18,12 +18,15 @@
     "jspdf": "^3.0.1",
     "next": "^15.3.1",
     "number-to-words": "^1.2.4",
+    "pdf-lib": "1.17.1",
+    "pdfkit": "0.17.2",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "zod": "^3.24.4"
   },
   "devDependencies": {
     "@types/node": "^22.15.3",
+    "@types/pdfkit": "0.17.3",
     "@types/react": "^19.1.2",
     "@types/react-dom": "^19.1.2",
     "typescript": "^5.8.3",

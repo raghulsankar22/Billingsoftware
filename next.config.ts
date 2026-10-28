@@ -2,7 +2,7 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
-  serverExternalPackages: ["node:sqlite"],
-  outputFileTracingIncludes: { "/api/bills/**": ["./public/bill-conditions.jpeg"] },
+  serverExternalPackages: ["node:sqlite", "pdfkit"],
+  outputFileTracingIncludes: { "/api/bills/**": ["./public/fonts/*.ttf", "./public/business-logo.jpg"] },
 };
 export default nextConfig;

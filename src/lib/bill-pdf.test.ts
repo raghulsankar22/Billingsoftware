@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { createBillPdf } from "./bill-pdf";
 import type { Bill } from "./types";
+import { PDFDocument } from "pdf-lib";
+import { billPdfTemplateVersion } from "./bill-conditions";
 
 const bill: Bill = {
   id: "bill-1",
@@ -24,25 +26,29 @@ const bill: Bill = {
 };
 
 describe("bill PDF", () => {
-  it("creates a delivery bill PDF and requires a saved delivery number and date", () => {
-    const bytes = createBillPdf(bill, bill.businessSnapshot!, "delivery");
+  it("creates a delivery bill PDF and requires a saved delivery number and date", async () => {
+    const bytes = await createBillPdf(bill, bill.businessSnapshot!, "delivery");
     expect(Buffer.from(bytes.subarray(0, 4)).toString()).toBe("%PDF");
     expect(Buffer.from(bytes).toString("latin1")).toContain("/ToUnicode");
-    expect(Buffer.from(bytes).toString("latin1")).not.toContain("/Subtype /Image");
-    expect(() => createBillPdf({ ...bill, deliveryNo: "" }, bill.businessSnapshot!, "delivery")).toThrow("Save delivery");
+    expect(Buffer.from(bytes).toString("latin1").match(/\/Subtype \/Image/g)).toHaveLength(1);
+    await expect(createBillPdf({ ...bill, deliveryNo: "" }, bill.businessSnapshot!, "delivery")).rejects.toThrow("Save delivery");
   });
-  it("creates an A4 PDF from the issued business snapshot", () => {
-    const bytes = createBillPdf(bill, { business_name: "Changed Name", address: "Other Address", phone: "000" });
+  it("creates an A4 PDF with typed conditions and a header logo", async () => {
+    const bytes = await createBillPdf(bill, { business_name: "Changed Name", address: "Other Address", phone: "000" });
     expect(Buffer.from(bytes.subarray(0, 4)).toString()).toBe("%PDF");
     expect(bytes.length).toBeGreaterThan(3000);
     // A Unicode character map is required for ₹ to survive PDF text extraction.
     expect(Buffer.from(bytes).toString("latin1")).toContain("/ToUnicode");
     expect(Buffer.from(bytes).toString("latin1")).toContain("/Subtype /Image");
     expect(Buffer.from(bytes).toString("latin1")).toContain("/DCTDecode");
+    // Only the logo is an image. Conditions are embedded, shaped, selectable text.
+    expect(Buffer.from(bytes).toString("latin1").match(/\/Subtype \/Image/g)).toHaveLength(1);
+    expect((await PDFDocument.load(bytes)).getSubject()).toBe(billPdfTemplateVersion);
+    expect(bytes.length).toBeLessThan(200_000);
   });
-  it("keeps the complete original conditions on long multi-page bills", () => {
+  it("keeps the complete typed conditions on long multi-page bills", async () => {
     const longBill = { ...bill, items: Array.from({ length: 50 }, () => ({ ...bill.items[0] })) };
-    const bytes = createBillPdf(longBill, bill.businessSnapshot!);
+    const bytes = await createBillPdf(longBill, bill.businessSnapshot!);
     const document = Buffer.from(bytes).toString("latin1");
     expect(document.match(/\/Subtype \/Image/g)).toHaveLength(1);
     expect(document.match(/\/Type \/Page\b/g)!.length).toBeGreaterThan(1);
