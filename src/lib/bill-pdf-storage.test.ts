@@ -45,4 +45,11 @@ describe("bill PDF template upgrades", () => {
     expect(storage.upload.mock.calls[0][2]).toEqual({ contentType: "application/pdf", upsert: false });
     expect(storage.update).toHaveBeenCalledWith({ pdf_storage_path: storage.upload.mock.calls[0][0], pdf_error: null });
   });
+  it("refreshes a legacy bill PDF after its business license is added", async () => {
+    const old = await createBillPdf(bill, profile);
+    storage.download.mockResolvedValue({ data: new Blob([Buffer.from(old)]), error: null });
+    const bytes = await loadBillPdf({ ...profile, license_number: "TN-123" }, bill, "profile/old.pdf");
+    expect((await PDFDocument.load(bytes)).getKeywords()).toBe(JSON.stringify({ businessLicenseNumber: "TN-123" }));
+    expect(storage.upload).toHaveBeenCalledOnce();
+  });
 });

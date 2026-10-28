@@ -11,10 +11,12 @@ async function api(path, method = 'GET', body) {
 for (const account of [1, 2, 3]) {
   assert.equal((await api(`/api/profile?account=${account}`)).profile, null, 'Use a disposable empty data directory');
 }
-await api('/api/profile', 'POST', { businessName: 'Local verification', address: '123 Test Street', phone: '1234567890', nextBillNumber: 100 });
+await api('/api/profile', 'POST', { businessName: 'Local verification', address: '123 Test Street', phone: '1234567890', licenseNumber: 'TEST-LIC-1', nextBillNumber: 100 });
+assert.equal((await api('/api/profile')).profile.license_number, 'TEST-LIC-1');
 const input = { billDate: '2026-10-03', customerName: 'Test customer', fatherName: 'Test parent', address: '123 Test Street', phone: '1234567890', deliveryNo: 'D-01', deliveryDate: '2026-10-15', items: [{ metal: 'Gold', particulars: 'Test ring', grams: 1, assessedValue: 100, loanAmount: 80 }] };
 const issued = (await api('/api/bills', 'POST', input)).bill;
 assert.equal(issued.billNumber, 1);
+assert.equal(issued.businessSnapshot.license_number, 'TEST-LIC-1');
 assert.equal(issued.excelSyncStatus, 'synced');
 const pdf = await fetch(`${base}/api/bills/${issued.id}/pdf`);
 assert.equal(pdf.status, 200);
@@ -37,6 +39,7 @@ for (const [account, startingNumber] of [[2, 1], [3, 500]]) {
     businessName: `Local verification ${account}`,
     address: `${account} Test Street`,
     phone: '1234567890',
+    licenseNumber: `TEST-LIC-${account}`,
     nextBillNumber: startingNumber,
   });
   const bill = (await api(`/api/bills?account=${account}`, 'POST', {

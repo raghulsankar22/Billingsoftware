@@ -4,6 +4,7 @@ node_modules/
 .env*.local
 coverage/
 data/
+backups/
 supabase/.temp/
 mattpocock-skills-source/
 *.tsbuildinfo

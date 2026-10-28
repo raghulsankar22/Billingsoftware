@@ -1,6 +1,6 @@
 # Windows desktop app
 
-Run the Finance Billing shortcut or install `release/Finance-Billing-Setup-1.0.0.exe`.
+Run the Finance Billing shortcut or install `release/1.0.2/Finance-Billing-Setup-1.0.2.exe`.
 The app opens its own window and starts its loopback-only billing server automatically.
 No internet, separate Node installation, Microsoft 365 login or web hosting is needed for daily use.
 
@@ -26,6 +26,15 @@ and PDF/Excel downloads use a Save dialog.
 3. Run `node scripts/verify-desktop.mjs` for isolated local billing integration checks.
 4. Run `pnpm desktop:start` to test the desktop window.
 5. Run `pnpm desktop:package` to create the per-user Windows installer and unpacked app.
+
+Builds are stored under `release/<version>/`, so creating a new version never replaces
+program files in an older running build. Close the installed app before running the new
+installer, then reopen the Finance Billing shortcut. Version 1.0.1 adds per-account business
+license numbers in profile/header/PDF and a searchable Delivery Bills receipt-history tab.
+Version 1.0.2 adds one Updates tab with Daily, Weekly (Monday–Sunday), and calendar-month
+activity reports. Loan summaries exclude voided loans; delivery summaries include recorded
+deliveries even when the original loan is voided. Delivery totals are saved receipt balances,
+not confirmations that cash was received.
 
 The installer is not digitally signed. Distribution with a verified publisher identity
 requires a separate Windows code-signing certificate. No online updater is configured.

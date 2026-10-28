@@ -1,4 +1,6 @@
-import { cp, mkdir, readdir, rm } from 'node:fs/promises';
+import { cp, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import yaml from 'js-yaml';
+import { productionLockfile } from './production-lock.cjs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawn } from 'node:child_process';
@@ -6,7 +8,7 @@ import { spawn } from 'node:child_process';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const runtime = path.join(root, '.desktop-runtime');
 if (path.dirname(runtime) !== root || path.basename(runtime) !== '.desktop-runtime') throw new Error('Invalid desktop staging directory.');
-await new Promise((resolve, reject) => {
+if (!process.argv.includes('--stage-only')) await new Promise((resolve, reject) => {
   const build = spawn(process.execPath, [path.join(root, 'node_modules/next/dist/bin/next'), 'build'], {
     cwd: root, env: { ...process.env, NEXT_PUBLIC_BILLING_STORAGE: 'local', NEXT_TELEMETRY_DISABLED: '1' }, stdio: 'inherit', windowsHide: true,
   });
@@ -21,8 +23,10 @@ await mkdir(serverDirectory, { recursive: true });
 await cp(path.join(root, '.next'), path.join(serverDirectory, '.next'), { recursive: true, filter: source => !['cache', 'standalone', 'types'].includes(path.relative(path.join(root, '.next'), source).split(path.sep)[0]) });
 await cp(path.join(root, 'desktop/web-server.cjs'), path.join(serverDirectory, 'server.js'));
 await cp(path.join(root, 'public'), path.join(runtime, 'server/public'), { recursive: true });
-await cp(path.join(root, 'package.json'), path.join(serverDirectory, 'package.json'));
-await cp(path.join(root, 'pnpm-lock.yaml'), path.join(serverDirectory, 'pnpm-lock.yaml'));
+const project = JSON.parse(await readFile(path.join(root, 'package.json'), 'utf8'));
+const locked = productionLockfile(yaml.load(await readFile(path.join(root, 'pnpm-lock.yaml'), 'utf8')));
+await writeFile(path.join(serverDirectory, 'package.json'), JSON.stringify({ name: project.name, version: project.version, private: true, dependencies: project.dependencies }, null, 2));
+await writeFile(path.join(serverDirectory, 'pnpm-lock.yaml'), yaml.dump(locked, { noRefs: true, lineWidth: -1 }));
 // Hoisted production dependencies are real directories: Windows needs no symlink privilege.
 await new Promise((resolve, reject) => {
   const command = 'pnpm install --prod --frozen-lockfile --ignore-scripts --ignore-workspace --node-linker=hoisted';

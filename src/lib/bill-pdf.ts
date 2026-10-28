@@ -8,8 +8,9 @@ import type { Bill } from "./types";
 import { calculateRepayment } from "./interest";
 import { createConditionsBlock } from "./bill-conditions-pdf";
 import { billPdfTemplateVersion } from "./bill-conditions";
+import { billLicenseNumber, billLicenseMetadata } from "./business-license";
 
-type BusinessDetails = { business_name: string; address: string; phone: string; logo_url?: string | null };
+type BusinessDetails = { business_name: string; address: string; phone: string; logo_url?: string | null; license_number?: string | null };
 type SnapshottedBill = Bill & { businessSnapshot?: BusinessDetails };
 
 const money = (value: number) => `₹ ${new Intl.NumberFormat("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value)}`;
@@ -21,13 +22,21 @@ export async function createBillPdf(bill: SnapshottedBill, currentProfile: Busin
   if (repayment?.missingMetal) throw new Error("Choose Gold or Silver for every item before printing the delivery bill.");
   const business = bill.businessSnapshot ?? currentProfile;
   const pdf = new jsPDF({ unit: "mm", format: "a4", compress: true });
-  pdf.setProperties({ subject: billPdfTemplateVersion });
+  pdf.setProperties({ subject: billPdfTemplateVersion, keywords: billLicenseMetadata(bill, currentProfile) });
   pdf.addFileToVFS("BillCurrency.ttf", currencyFont);
   pdf.addFont("BillCurrency.ttf", "BillCurrency", "normal");
   const left = 15;
   const logo = new Uint8Array(readFileSync(join(process.cwd(), "public", "business-logo.jpg")));
   pdf.addImage(logo, "JPEG", left, 10, 24, 24);
   let y = 17;
+  const licenseNumber = billLicenseNumber(bill, currentProfile);
+  if (licenseNumber) {
+    pdf.setFont("helvetica", "normal");
+    pdf.setFontSize(8);
+    const licenseLines = pdf.splitTextToSize(`License No.: ${licenseNumber}`, 140) as string[];
+    pdf.text(licenseLines, 195, 10, { align: "right" });
+    y += Math.max(0, (licenseLines.length - 1) * 3.5);
+  }
 
   function currency(text: string, right: number, width: number, size = 9) {
     pdf.setFont("BillCurrency", "normal");

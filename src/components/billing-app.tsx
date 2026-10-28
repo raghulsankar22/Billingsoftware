@@ -12,6 +12,8 @@ import { BillDocument } from "./bill-document";
 import { BillOverview } from "./bill-overview";
 import { BillForm } from "./bill-form";
 import { BillDelivery } from "./bill-delivery";
+import { DeliveryBills } from "./delivery-bills";
+import { BusinessUpdates } from "./business-updates";
 import { ProfileForm } from "./profile-form";
 import { SignIn } from "./sign-in";
 
@@ -22,6 +24,7 @@ type Profile = {
   address: string;
   phone: string;
   logo_url?: string | null;
+  license_number?: string | null;
   next_bill_number: number;
 };
 
@@ -46,7 +49,7 @@ export function BillingApp() {
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [bills, setBills] = useState<Bill[]>([]);
   const [query, setQuery] = useState("");
-  const [view, setView] = useState<"dashboard" | "new" | "delivery" | "settings">("dashboard");
+  const [view, setView] = useState<"dashboard" | "new" | "delivery" | "delivery-bills" | "updates" | "settings">("dashboard");
   const [selected, setSelected] = useState<Bill | null>(null);
   const [overviewBill, setOverviewBill] = useState<Bill | null>(null);
   const [deliveryDocumentBill, setDeliveryDocumentBill] = useState<Bill | null>(null);
@@ -238,6 +241,8 @@ export function BillingApp() {
           <span>{localStorageEnabled ? "Three separate profiles, bill histories and Excel registers" : "One login · three separate business profiles and bill histories"}</span>
         </div>
       </div>
+      <div className="topbar-controls">
+        {accountLoaded && profile?.license_number && <p className="app-license-number">License No.: {profile.license_number}</p>}
       <div className="top-actions">
         <button className="secondary" onClick={exportExcel} disabled={!profile}>Download Excel</button>
         <button className="secondary" onClick={() => void refreshExcel()} disabled={!profile || isRefreshingExcel}>{isRefreshingExcel ? "Refreshing…" : "Refresh Excel"}</button>
@@ -245,12 +250,15 @@ export function BillingApp() {
           ? <span className="notice">Saved on this computer</span>
           : <><button className="secondary" onClick={connectGoogleDrive}>Connect Google Drive</button><button className="secondary" onClick={() => createBrowserSupabase().auth.signOut().then(() => setSignedIn(false))}>Sign out</button></>}
       </div>
+      </div>
     </header>
 
     <nav>
       <button className={view === "dashboard" ? "active" : ""} onClick={() => { setExcelNotice(""); setView("dashboard"); }}>Bills</button>
       <button className={view === "new" ? "active" : ""} onClick={() => { setExcelNotice(""); setEditingSource(null); setView("new"); }}>New bill</button>
       {localStorageEnabled && <button className={view === "delivery" ? "active" : ""} onClick={() => { setExcelNotice(""); setView("delivery"); }}>Delivery</button>}
+      {localStorageEnabled && <button className={view === "delivery-bills" ? "active" : ""} onClick={() => { setExcelNotice(""); setView("delivery-bills"); }}>Delivery Bills</button>}
+      {localStorageEnabled && <button className={view === "updates" ? "active" : ""} onClick={() => { setExcelNotice(""); setView("updates"); }}>Updates</button>}
       <button className={view === "settings" ? "active" : ""} onClick={() => { setExcelNotice(""); setView("settings"); }}>Business profile</button>
     </nav>
 
@@ -266,6 +274,8 @@ export function BillingApp() {
       {view === "settings" && accountLoaded && <ProfileForm key={accountSlot} profile={profile} accountSlot={accountSlot} onSaved={() => void load(query, accountSlot)} />}
       {view === "new" && profile && accountLoaded && <BillForm key={`${accountSlot}-${editingSource?.id ?? "new"}`} accountSlot={accountSlot} editingSource={editingSource} onCreated={issueSuccess} />}
       {view === "delivery" && profile && accountLoaded && <BillDelivery key={accountSlot} accountSlot={accountSlot} onSaved={(bill) => { setDeliveryDocumentBill(bill); void load(query, accountSlot); }} onOpen={setSelected} onOverview={setOverviewBill} onReceipt={setDeliveryDocumentBill} />}
+      {view === "delivery-bills" && profile && accountLoaded && <DeliveryBills key={accountSlot} accountSlot={accountSlot} onOpen={setDeliveryDocumentBill} onOriginal={setSelected} />}
+      {view === "updates" && profile && accountLoaded && <BusinessUpdates key={accountSlot} accountSlot={accountSlot} onBill={setSelected} onDelivery={setDeliveryDocumentBill} />}
       {view === "dashboard" && accountLoaded && profile && <section className="panel">
         <div className="section-heading history-heading">
           <div><p className="eyebrow">ACCOUNT {accountSlot} HISTORY</p><h2>Issued bills</h2></div>

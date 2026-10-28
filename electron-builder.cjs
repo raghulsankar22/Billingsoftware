@@ -1,6 +1,6 @@
 module.exports = {
   appId: 'in.financebilling.desktop', productName: 'Finance Billing',
-  directories: { app: '.', output: '../release', buildResources: 'assets' },
+  directories: { app: '.', output: `../release/${require('./desktop/package.json').version}`, buildResources: 'assets' },
   electronVersion: '45.1.0', npmRebuild: false,
   files: ['main.cjs', 'server.cjs', 'security.cjs', 'package.json', 'assets/icon.png'],
   extraResources: [{ from: '../.desktop-runtime', to: 'billing-runtime', filter: ['**/*', '!**/.env*'] }],

@@ -14,6 +14,20 @@ async function issue(db: ReturnType<typeof open>, input: Record<string, unknown>
 afterEach(() => { for (const { directory, db } of opened.splice(0)) { db.close(); rmSync(directory, { recursive: true, force: true }); } });
 
 describe("durable local ledger", () => {
+  it("saves separate account licenses, preserves issue snapshots and allows clearing the field", async () => {
+    const db = open();
+    const save = (accountSlot: number, licenseNumber?: string) => db.rpc("save_business_profile", { p_owner_id: localOwnerId, p_profile: { businessName: "Finance", address: "123 Main Street", phone: "1234567890", accountSlot, ...(licenseNumber === undefined ? {} : { licenseNumber }) } });
+    const first = await save(1, " TN/ONE "); const second = await save(2, "TN/TWO");
+    expect(first.data.license_number).toBe("TN/ONE");
+    expect(second.data.license_number).toBe("TN/TWO");
+    const issued = await issue(db);
+    await save(1, "NEW/ONE");
+    expect((await db.from("bills").select().eq("id", issued.data.id).single()).data.business_snapshot.license_number).toBe("TN/ONE");
+    expect((await save(1)).data.license_number).toBe("NEW/ONE");
+    expect((await save(1, "")).data.license_number).toBeNull();
+    expect((await db.from("business_profiles").select().eq("id", second.data.id).single()).data.license_number).toBe("TN/TWO");
+    expect((await save(1, "X".repeat(81))).error).toBeTruthy();
+  });
   it("starts an empty account at one even when its saved starting number is higher", async () => {
     const db = open(); await profile(db, 1, 100);
     const created = await issue(db);

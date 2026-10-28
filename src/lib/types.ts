@@ -1,6 +1,6 @@
 export type BillStatus = "issued" | "void" | "sync_pending" | "sync_failed";
 
-export type BusinessSnapshot = { business_name: string; address: string; phone: string; logo_url?: string | null };
+export type BusinessSnapshot = { business_name: string; address: string; phone: string; logo_url?: string | null; license_number?: string | null };
 
 export type BillItemInput = {
   metal?: "Gold" | "Silver";

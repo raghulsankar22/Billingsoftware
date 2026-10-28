@@ -26,6 +26,10 @@ const bill: Bill = {
 };
 
 describe("bill PDF", () => {
+  it("includes the snapshotted license rather than another current license", async () => {
+    const bytes = await createBillPdf({ ...bill, businessSnapshot: { ...bill.businessSnapshot!, license_number: "TN-OLD-123" } }, { ...bill.businessSnapshot!, license_number: "TN-NEW-456" });
+    expect((await PDFDocument.load(bytes)).getKeywords()).toBe(JSON.stringify({ businessLicenseNumber: "TN-OLD-123" }));
+  });
   it("creates a delivery bill PDF and requires a saved delivery number and date", async () => {
     const bytes = await createBillPdf(bill, bill.businessSnapshot!, "delivery");
     expect(Buffer.from(bytes.subarray(0, 4)).toString()).toBe("%PDF");

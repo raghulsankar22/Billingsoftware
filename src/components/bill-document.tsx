@@ -8,13 +8,15 @@ import { RepaymentDetails } from "./repayment-details";
 import { requestHeaders } from "./api";
 import type { Bill } from "@/lib/types";
 import { BillConditions } from "./bill-conditions";
+import { billLicenseNumber } from "@/lib/business-license";
 
-type Profile = { business_name: string; address: string; phone: string; logo_url?: string | null };
+type Profile = { business_name: string; address: string; phone: string; logo_url?: string | null; license_number?: string | null };
 type SnapshottedBill = Bill & { businessSnapshot?: Profile };
 
 export function BillDocument({ bill, profile, accountSlot, onClose, documentType = "finance" }: { bill: SnapshottedBill; profile: Profile; accountSlot: AccountSlot; onClose: () => void; documentType?: "finance" | "delivery" }) {
   const [error, setError] = useState("");
   const business = bill.businessSnapshot ?? profile;
+  const licenseNumber = billLicenseNumber(bill, profile);
   const delivery = documentType === "delivery";
   const repayment = delivery && bill.deliveryDate ? bill.deliverySummary ?? calculateRepayment(bill.items, bill.billDate, bill.deliveryDate) : null;
 
@@ -40,7 +42,7 @@ export function BillDocument({ bill, profile, accountSlot, onClose, documentType
   return <div className="modal-backdrop"><section className="bill-modal">
     <div className="modal-actions"><button className="secondary" onClick={onClose}>Close</button><button className="secondary" onClick={() => window.print()}>Print</button><button onClick={downloadPdf}>Download PDF</button></div>
     {error && <p className="error">{error}</p>}
-    <article className="print-bill"><header className="bill-document-header"><img className="bill-header-logo" src="/business-logo.jpg" alt="Business logo" /><h1>{business.business_name}</h1><p>{business.address} · {business.phone}</p><h2>{delivery ? "DELIVERY BILL" : "FINANCE BILL"}</h2></header>
+    <article className="print-bill"><header className="bill-document-header"><img className="bill-header-logo" src="/business-logo.jpg" alt="Business logo" />{licenseNumber && <p className="bill-license-number">License No.: {licenseNumber}</p>}<h1>{business.business_name}</h1><p>{business.address} · {business.phone}</p><h2>{delivery ? "DELIVERY BILL" : "FINANCE BILL"}</h2></header>
       <div className="bill-meta"><span>{delivery ? "Delivery No." : "Bill No."} <b>{delivery ? bill.deliveryNo : bill.billNumber}</b></span><span>Date <b>{delivery ? bill.deliveryDate : bill.billDate}</b></span></div>
       {delivery ? <p>Original Bill No. {bill.billNumber} &nbsp; Bill Date {bill.billDate}{bill.status === "void" && <> · Original bill voided; delivery recorded</>}</p> : (bill.deliveryNo || bill.deliveryDate) && <p>Delivery No. {bill.deliveryNo || "—"} &nbsp; Delivery Date {bill.deliveryDate || "—"}</p>}
       <section className="customer-box"><p><b>Name:</b> {bill.customerName}</p><p><b>Father&apos;s Name:</b> {bill.fatherName}</p><p><b>Address:</b> {bill.address}</p>{(bill.phone || bill.governmentId) && <p>{bill.phone && <><b>Phone:</b> {bill.phone}</>}{bill.governmentId && <> &nbsp; <b>ID:</b> {bill.governmentId}</>}</p>}</section>
