@@ -71,14 +71,14 @@ export function BillDelivery({ accountSlot, onSaved, onOpen, onOverview }: { acc
     {message && <p className="excel-notice delivery-notice" role="status">{message}</p>}
     {warnings.map((warning) => <p className="overview-warning" key={warning}>{warning}</p>)}
     {bill && <div className="delivery-details">
-      <div className="section-heading"><div><h2>Bill #{bill.billNumber} · {bill.customerName}</h2><p className="muted">Bill date: {bill.billDate}</p></div><span className="pill">{bill.status === "void" ? "Voided" : bill.deliveryNo && bill.deliveryDate ? "Delivered" : "Awaiting delivery"}</span></div>
+      <div className="section-heading"><div><h2>Bill #{bill.billNumber} · {bill.customerName}</h2><p className="muted">Bill date: {bill.billDate}</p></div><span className="pill">{bill.status === "void" ? bill.deliveryNo && bill.deliveryDate ? "Voided · Delivered" : "Voided" : bill.deliveryNo && bill.deliveryDate ? "Delivered" : "Awaiting delivery"}</span></div>
       <div className="delivery-customer"><p><b>Father&apos;s name:</b> {bill.fatherName}</p><p><b>Address:</b> {bill.address}</p>{bill.phone && <p><b>Mobile:</b> {bill.phone}</p>}<p><b>Loan amount:</b> {formatINR(bill.totalLoanAmount)}</p></div>
       <div className="item-table-wrap"><table className="history-table"><thead><tr><th>Metal</th><th>Particulars</th><th>Gram</th><th>Assessed value</th><th>Loan amount</th></tr></thead><tbody>{bill.items.map((item, index) => <tr key={index}><td>{item.metal ?? "—"}</td><td>{item.particulars}</td><td>{item.grams}</td><td>{formatINR(item.assessedValue)}</td><td>{formatINR(item.loanAmount)}</td></tr>)}</tbody></table></div>
       <div className="delivery-bill-actions"><button type="button" className="secondary" onClick={() => onOpen(bill)}>Open bill</button><button type="button" className="secondary" onClick={() => onOverview(bill)}>Repayment overview</button></div>
-      {bill.status === "void" ? <p className="overview-warning">This bill was voided. Delivery cannot be recorded for it.</p> : <form className="delivery-entry" onSubmit={saveDelivery}>
+      <form className="delivery-entry" onSubmit={saveDelivery}>
         <div className="form-grid"><label>Delivery bill number<input value={deliveryNo} maxLength={60} disabled={Boolean(busy)} onChange={(event) => { setDeliveryNo(event.target.value); setMessage(""); }} required /></label><label>Delivery bill date<input type="date" min={bill.billDate} value={deliveryDate} disabled={Boolean(busy)} onChange={(event) => { setDeliveryDate(event.target.value); setMessage(""); }} required /></label></div>
         <button disabled={Boolean(busy)}>{busy === "save" ? "Saving…" : bill.deliveryNo && bill.deliveryDate ? "Update delivery" : "Save delivery"}</button>
-      </form>}
+      </form>
     </div>}
   </section>;
 }

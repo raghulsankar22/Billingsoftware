@@ -109,7 +109,7 @@ describe("durable local ledger", () => {
     expect((await db.rpc("record_bill_delivery", { p_owner_id: localOwnerId, p_bill_id: first.data.id, p_account_slot: 1, p_delivery: { deliveryNo: "DEL-11", deliveryDate: "2026-10-29" } })).error).toBeNull();
     expect((await db.from("bills").select()).data).toHaveLength(1);
   });
-  it("rejects delivery for another account, voided bills, or invalid dates", async () => {
+  it("rejects delivery for another account or invalid dates, but records delivery on a voided bill", async () => {
     const db = open(); await profile(db); await profile(db, 2); const first = await issue(db);
     const parameters = { p_owner_id: localOwnerId, p_bill_id: first.data.id, p_account_slot: 1, p_delivery: { deliveryNo: "DEL-1", deliveryDate: "2026-10-28" } };
     expect((await db.rpc("record_bill_delivery", { ...parameters, p_account_slot: 2 })).error?.message).toContain("this account");
@@ -117,7 +117,12 @@ describe("durable local ledger", () => {
     expect((await db.rpc("record_bill_delivery", { ...parameters, p_delivery: { deliveryNo: "", deliveryDate: "2026-02-30" } })).error).toBeTruthy();
     expect((await db.from("bills").select().eq("id", first.data.id).single()).data.delivery_no).toBeNull();
     await db.from("bills").update({ status: "void" }).eq("id", first.data.id);
-    expect((await db.rpc("record_bill_delivery", parameters)).error?.message).toContain("voided bill");
+    const voided = (await db.from("bills").select("*, bill_items(*)").eq("id", first.data.id).single()).data;
+    expect((await db.rpc("record_bill_delivery", parameters)).error).toBeNull();
+    const delivered = (await db.from("bills").select("*, bill_items(*)").eq("id", first.data.id).single()).data;
+    expect(delivered).toMatchObject({ status: "void", voided_at: voided.voided_at, bill_number: 1, delivery_no: "DEL-1", delivery_date: "2026-10-28", total_loan_amount: voided.total_loan_amount });
+    expect(delivered.bill_items).toEqual(voided.bill_items);
+    expect((await db.from("bills").select()).data).toHaveLength(1);
   });
   it("reuses a deleted latest bill number, including a voided bill", async () => {
     const db = open(); const saved = await profile(db); const first = await issue(db); const second = await issue(db);

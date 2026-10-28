@@ -135,7 +135,7 @@ export function createLocalDatabase(directory = localDataDirectory()) {
         if (name === "record_bill_delivery") {
           const { bill, profile } = billOwner(ownerId, parameters.p_bill_id);
           if (slot(parameters.p_account_slot) !== profile.account_slot) throw new Error("Bill not found in this account.");
-          if (bill.status !== "issued") throw new Error("A voided bill cannot be delivered.");
+          if (!["issued", "void"].includes(bill.status)) throw new Error("Delivery cannot be recorded for this bill status.");
           const input = deliverySchema.parse(parameters.p_delivery);
           if (input.deliveryDate < bill.bill_date) throw new Error("Delivery date cannot be before the bill date.");
           save("bills", { ...bill, delivery_no: input.deliveryNo, delivery_date: input.deliveryDate, excel_sync_status: "pending", excel_sync_error: null, pdf_storage_path: null, pdf_error: null, updated_at: new Date().toISOString() });

@@ -271,7 +271,7 @@ export function BillingApp() {
         <div className="item-table-wrap"><table className="history-table">
           <thead><tr><th>Bill</th><th>Date</th><th>Customer</th><th>Particulars</th><th>Amount</th><th>Excel</th><th /></tr></thead>
           <tbody>{bills.length ? bills.map((bill) => <tr key={bill.id} className={bill.status === "void" ? "void-row" : ""}>
-            <td>#{bill.billNumber}<small>{bill.status === "void" ? "Voided" : bill.deliveryNo && bill.deliveryDate ? "Delivered" : "Issued"}</small>{bill.status !== "void" && bill.deliveryNo && bill.deliveryDate && <small className="delivery-recorded">Delivery #{bill.deliveryNo} · {bill.deliveryDate}</small>}</td>
+            <td>#{bill.billNumber}<small>{bill.status === "void" ? bill.deliveryNo && bill.deliveryDate ? "Voided · Delivered" : "Voided" : bill.deliveryNo && bill.deliveryDate ? "Delivered" : "Issued"}</small>{bill.deliveryNo && bill.deliveryDate && <small className="delivery-recorded">Delivery #{bill.deliveryNo} · {bill.deliveryDate}</small>}</td>
             <td>{bill.billDate}</td>
             <td><b>{bill.customerName}</b>{bill.phone && <small>{bill.phone}</small>}</td>
             <td>{bill.items.map((item) => `${item.metal ? `${item.metal}: ` : ""}${item.particulars}`).join(", ")}</td>
