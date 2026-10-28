@@ -66,6 +66,8 @@ for (const [account, startingNumber] of [[2, 1], [3, 500]]) {
   assert.equal(rows.getRow(2).getCell(1).value, account === 3 ? null : input.deliveryNo);
   assert.equal(rows.getRow(2).getCell(2).value, account === 3 ? null : input.deliveryDate);
   assert.equal(rows.getRow(2).getCell(8).value, account === 3 ? null : input.phone);
+  assert.equal(rows.getRow(2).getCell(9).value, 80);
+  assert.equal(rows.getRow(2).getCell(9).numFmt, '"₹" #,##0.00');
   assert.equal(rows.getRow(3).getCell(4).value, null);
 }
 await api(`/api/bills/${issued.id}`, 'DELETE');
@@ -78,4 +80,5 @@ const refreshed = await api('/api/reports/excel', 'POST');
 const saved = new ExcelJS.Workbook();
 await saved.xlsx.readFile(refreshed.savedTo);
 for (const cell of ['A2', 'B2', 'H2']) assert.equal(saved.getWorksheet('Bills').getCell(cell).value, null, `${cell} must stay empty after clearing and refreshing`);
+assert.equal(saved.getWorksheet('Bills').getCell('I2').numFmt, '"₹" #,##0.00');
 console.log('Local HTTP flow passed: three accounts start at one, numbering resets after all bills are deleted, optional Excel cells stay empty, saved register refreshes, and PDF/edit/void flows work.');

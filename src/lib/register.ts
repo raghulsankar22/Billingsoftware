@@ -1,5 +1,5 @@
 import ExcelJS from "exceljs";
-import { itemSummary } from "./money";
+import { excelINRFormat, itemSummary } from "./money";
 import { registerHeaders, type Bill } from "./types";
 
 const optionalCell = (value?: string | null) => value?.trim() || null;
@@ -16,7 +16,7 @@ export function createRegister() {
   sheet.addTable({ name: "Bills", ref: "A1", headerRow: true, totalsRow: false, columns: registerHeaders.map((name) => ({ name })), rows: [] });
   sheet.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } };
   sheet.getRow(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF1E3A5F" } };
-  sheet.getColumn(9).numFmt = '₹#,##0.00';
+  sheet.getColumn(9).numFmt = excelINRFormat;
   for (const column of [1, 2, 8]) sheet.getColumn(column).numFmt = "@";
   return workbook;
 }
@@ -48,5 +48,5 @@ export function appendRegisterBill(workbook: ExcelJS.Workbook, bill: Bill) {
   // Rebuild from worksheet rows to repair registers created with stale tables.
   if (sheet.getTable("Bills")) sheet.removeTable("Bills");
   sheet.addTable({ name: "Bills", ref: "A1", headerRow: true, totalsRow: false, columns: registerHeaders.map((name) => ({ name })), rows });
-  sheet.getColumn(9).numFmt = '₹#,##0.00';
+  sheet.getColumn(9).numFmt = excelINRFormat;
 }

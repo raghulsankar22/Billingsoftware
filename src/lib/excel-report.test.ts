@@ -46,6 +46,8 @@ it("roundtrips the required nine columns, leading-zero phones, numeric money, an
   expect(sheet.getCell("H2").value).toBe("0123456789"); expect(sheet.getCell("I2").value).toBe(80);
   expect(sheet.getCell("A2").value).toBe("D-01"); expect(sheet.getCell("B2").value).toBe("2026-10-15");
   expect(sheet.getCell("H2").numFmt).toBe("@"); expect(sheet.getCell("B2").numFmt).toBe("@");
+  expect(sheet.getCell("I2").numFmt).toBe('"₹" #,##0.00');
+  expect(sheet.getCell("I3").numFmt).toBe('"₹" #,##0.00');
   expect(sheet.getCell("F3").value).toBe("=1+1"); expect(sheet.getCell("G3").value).toMatch(/^VOID — /);
   expect(sheet.getRow(3).font.strike).toBe(true);
 });
