@@ -28,6 +28,7 @@ describe("bill PDF", () => {
     const bytes = createBillPdf(bill, bill.businessSnapshot!, "delivery");
     expect(Buffer.from(bytes.subarray(0, 4)).toString()).toBe("%PDF");
     expect(Buffer.from(bytes).toString("latin1")).toContain("/ToUnicode");
+    expect(Buffer.from(bytes).toString("latin1")).not.toContain("/Subtype /Image");
     expect(() => createBillPdf({ ...bill, deliveryNo: "" }, bill.businessSnapshot!, "delivery")).toThrow("Save delivery");
   });
   it("creates an A4 PDF from the issued business snapshot", () => {
@@ -36,5 +37,14 @@ describe("bill PDF", () => {
     expect(bytes.length).toBeGreaterThan(3000);
     // A Unicode character map is required for ₹ to survive PDF text extraction.
     expect(Buffer.from(bytes).toString("latin1")).toContain("/ToUnicode");
+    expect(Buffer.from(bytes).toString("latin1")).toContain("/Subtype /Image");
+    expect(Buffer.from(bytes).toString("latin1")).toContain("/DCTDecode");
+  });
+  it("keeps the complete original conditions on long multi-page bills", () => {
+    const longBill = { ...bill, items: Array.from({ length: 50 }, () => ({ ...bill.items[0] })) };
+    const bytes = createBillPdf(longBill, bill.businessSnapshot!);
+    const document = Buffer.from(bytes).toString("latin1");
+    expect(document.match(/\/Subtype \/Image/g)).toHaveLength(1);
+    expect(document.match(/\/Type \/Page\b/g)!.length).toBeGreaterThan(1);
   });
 });

@@ -1,4 +1,6 @@
 import { jsPDF } from "jspdf";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { currencyFont } from "./currency-font";
 import { amountInWords } from "./money";
 import type { Bill } from "./types";
@@ -142,6 +144,17 @@ export function createBillPdf(bill: SnapshottedBill, currentProfile: BusinessDet
   pdf.setFontSize(9);
   pdf.text("Business Signature", 49, y, { align: "center" });
   pdf.text("Customer Signature", 161, y, { align: "center" });
+
+  if (!delivery) {
+    // Preserve the supplied English and Tamil conditions verbatim, including typography.
+    const conditions = new Uint8Array(readFileSync(join(process.cwd(), "public", "bill-conditions.jpeg")));
+    const image = pdf.getImageProperties(conditions);
+    const width = 174;
+    const height = width * image.height / image.width;
+    y += 6;
+    if (y + height > 282) newPage();
+    pdf.addImage(conditions, "JPEG", (210 - width) / 2, y, width, height);
+  }
 
   return new Uint8Array(pdf.output("arraybuffer"));
 }

@@ -46,6 +46,7 @@ export function BillDocument({ bill, profile, accountSlot, onClose, documentType
       <table className="print-table"><thead><tr><th>Metal</th><th>Particulars</th><th>Gram</th><th>Total Value</th><th>Amount</th></tr></thead><tbody>{bill.items.map((item, index) => <tr key={index}><td>{item.metal ?? ""}</td><td>{item.particulars}</td><td>{item.grams}</td><td>{formatINR(item.assessedValue)}</td><td>{formatINR(item.loanAmount)}</td></tr>)}</tbody><tfoot><tr><th colSpan={3}>Total</th><th>{formatINR(bill.totalAssessedValue)}</th><th>{formatINR(bill.totalLoanAmount)}</th></tr></tfoot></table>
       {repayment && <RepaymentDetails repayment={repayment} />}
       <p className="words"><b>Amount in words:</b> {repayment?.total !== undefined && repayment.total !== null ? amountInWords(repayment.total) : bill.amountInWords}</p><footer><div>Business Signature</div><div>Customer Signature</div></footer>
+      {!delivery && <section className="bill-conditions" aria-label="Conditions"><img src="/bill-conditions.jpeg" alt="Original English and Tamil pledge conditions, redemption period, holidays and working hours, reproduced unchanged from the supplied document." /></section>}
     </article>
   </section></div>;
 }
