@@ -7,7 +7,10 @@ import { formatINR } from "@/lib/money";
 import { api } from "./api";
 
 const blankItem = (): BillItemInput => ({ particulars: "", grams: 0, assessedValue: 0, loanAmount: 0 });
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => {
+  const date = new Date();
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+};
 
 export function BillForm({ onCreated, replacementSource, accountSlot }: { onCreated: (bill: Bill) => void; replacementSource?: Bill | null; accountSlot: AccountSlot }) {
   const [form, setForm] = useState<BillInput>(() => replacementSource ? {
