@@ -1,6 +1,6 @@
 # Windows desktop app
 
-Run the Finance Billing shortcut or install `release/1.0.2/Finance-Billing-Setup-1.0.2.exe`.
+Run the Finance Billing shortcut or install `release/1.0.3/Finance-Billing-Setup-1.0.3.exe`.
 The app opens its own window and starts its loopback-only billing server automatically.
 No internet, separate Node installation, Microsoft 365 login or web hosting is needed for daily use.
 
@@ -32,8 +32,9 @@ program files in an older running build. Close the installed app before running 
 installer, then reopen the Finance Billing shortcut. Version 1.0.1 adds per-account business
 license numbers in profile/header/PDF and a searchable Delivery Bills receipt-history tab.
 Version 1.0.2 adds one Updates tab with Daily, Weekly (Monday–Sunday), and calendar-month
-activity reports. Loan summaries exclude voided loans; delivery summaries include recorded
-deliveries even when the original loan is voided. Delivery totals are saved receipt balances,
+activity reports. Version 1.0.3 fixes reports that hid all bills when their status was voided:
+all dated loan bills are listed, with recorded, active, and voided amounts identified separately.
+Delivery summaries include recorded deliveries even when the original loan is voided. Delivery totals are saved receipt balances,
 not confirmations that cash was received.
 
 The installer is not digitally signed. Distribution with a verified publisher identity

@@ -30,14 +30,20 @@ export function billingPeriod(period: UpdatePeriod, anchor: string): PeriodRange
 
 export function businessUpdates(bills: Bill[], range: PeriodRange) {
   const within = (date?: string) => Boolean(date && date >= range.from && date <= range.to);
-  const loans = bills.filter(bill => bill.status !== "void" && within(bill.billDate)).sort((first, second) => second.billDate.localeCompare(first.billDate) || second.billNumber - first.billNumber);
+  const loans = bills.filter(bill => within(bill.billDate)).sort((first, second) => second.billDate.localeCompare(first.billDate) || second.billNumber - first.billNumber);
+  const activeLoans = loans.filter(bill => bill.status !== "void");
+  const voidedLoans = loans.filter(bill => bill.status === "void");
   const deliveries = deliveryBillHistory(bills).filter(bill => within(bill.deliveryDate)).map(bill => ({ bill, collection: deliveryCollection(bill) }));
   // Sum integer paise to avoid accumulating floating-point rounding errors.
   const sum = (values: number[]) => values.reduce((total, value) => total + Math.round(value * 100), 0) / 100;
   return {
     loans,
+    activeLoans,
+    voidedLoans,
     deliveries,
-    loanAmount: sum(loans.map(bill => bill.totalLoanAmount)),
+    loanAmount: sum(activeLoans.map(bill => bill.totalLoanAmount)),
+    voidedLoanAmount: sum(voidedLoans.map(bill => bill.totalLoanAmount)),
+    recordedLoanAmount: sum(loans.map(bill => bill.totalLoanAmount)),
     deliveryPrincipal: sum(deliveries.map(({ bill, collection }) => collection?.principal ?? bill.totalLoanAmount)),
     deliveryInterest: sum(deliveries.flatMap(({ collection }) => collection?.interest == null ? [] : [collection.interest])),
     deliveryTotal: sum(deliveries.flatMap(({ collection }) => collection?.total == null ? [] : [collection.total])),

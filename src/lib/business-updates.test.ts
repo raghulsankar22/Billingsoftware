@@ -32,7 +32,7 @@ describe("daily, weekly and monthly business updates", () => {
   it.each(["", "2026-02-30", "not-a-date"])("rejects invalid date %s", date => {
     expect(() => billingPeriod("daily", date)).toThrow("valid date");
   });
-  it("includes period boundaries and excludes voided loans", () => {
+  it("shows all dated bills, including voided ones, while keeping active and voided totals separate", () => {
     const bills = [
       { ...loan, id: "monday", billDate: "2026-10-26" },
       { ...loan, id: "sunday", billDate: "2026-11-01" },
@@ -41,8 +41,22 @@ describe("daily, weekly and monthly business updates", () => {
       { ...loan, id: "voided", status: "void" as const },
     ];
     const report = businessUpdates(bills, billingPeriod("weekly", "2026-10-28"));
-    expect(report.loans.map(bill => bill.id)).toEqual(["sunday", "monday"]);
+    expect(report.loans.map(bill => bill.id)).toEqual(["sunday", "voided", "monday"]);
     expect(report.loanAmount).toBe(20000);
+    expect(report.activeLoans).toHaveLength(2);
+    expect(report.voidedLoans).toHaveLength(1);
+    expect(report.voidedLoanAmount).toBe(10000);
+    expect(report.recordedLoanAmount).toBe(30000);
+  });
+  it.each(["daily", "weekly", "monthly"] as const)("does not hide all-voided bills in the %s report", period => {
+    const datedBills = Array.from({ length: 5 }, (_, index) => ({ ...loan, id: `void-${index}`, billNumber: index + 1, status: "void" as const }));
+    const report = businessUpdates(datedBills, billingPeriod(period, "2026-10-28"));
+    expect(report.loans).toHaveLength(5);
+    expect(report.activeLoans).toHaveLength(0);
+    expect(report.voidedLoans).toHaveLength(5);
+    expect(report.loanAmount).toBe(0);
+    expect(report.voidedLoanAmount).toBe(50000);
+    expect(report.recordedLoanAmount).toBe(50000);
   });
   it("counts delivery by delivery date even for an older voided loan", () => {
     const delivered = { ...loan, status: "void" as const, deliveryNo: "1", deliveryDate: "2026-11-29" };
