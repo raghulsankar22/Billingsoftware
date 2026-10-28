@@ -1,0 +1,29 @@
+import { NextResponse } from "next/server";
+import { requireUser } from "@/lib/auth";
+import { createLocalDatabase } from "@/lib/local-database";
+import { localStorageEnabled } from "@/lib/storage-mode";
+
+async function catalogue(request: Request) {
+  await requireUser(request);
+  if (!localStorageEnabled) throw new Error("The jewellery list is available in offline billing.");
+  return createLocalDatabase().jewellery;
+}
+
+export async function GET(request: Request) {
+  try {
+    const jewellery = await catalogue(request);
+    return NextResponse.json({ items: jewellery.list() }, { headers: { "cache-control": "no-store" } });
+  } catch (error) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : "Unable to load jewellery." }, { status: 400 });
+  }
+}
+
+export async function POST(request: Request) {
+  try {
+    const jewellery = await catalogue(request);
+    const input = await request.json();
+    return NextResponse.json(jewellery.add(input?.name));
+  } catch (error) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : "Unable to save jewellery." }, { status: 400 });
+  }
+}

@@ -11,6 +11,18 @@ async function api(path, method = 'GET', body) {
 for (const account of [1, 2, 3]) {
   assert.equal((await api(`/api/profile?account=${account}`)).profile, null, 'Use a disposable empty data directory');
 }
+const jewellery = await api('/api/jewellery');
+for (const name of ['Ring', 'Necklace', 'Haram']) assert.ok(jewellery.items.includes(name));
+const customJewellery = await api('/api/jewellery?account=1', 'POST', { name: '  Test   Jhumka ' });
+assert.equal(customJewellery.name, 'Test Jhumka');
+assert.equal((await api('/api/jewellery?account=2', 'POST', { name: 'test jhumka' })).name, 'Test Jhumka');
+assert.equal((await api('/api/jewellery?account=3')).items.filter(name => name === 'Test Jhumka').length, 1);
+for (const name of ['', 'X'.repeat(181), null]) {
+  assert.equal((await fetch(base + '/api/jewellery', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name }) })).status, 400);
+}
+const rejectedJewellery = await fetch(base + '/api/jewellery', { method: 'POST', headers: { origin: 'https://unrelated.example', 'content-type': 'application/json' }, body: JSON.stringify({ name: 'Should not be saved' }) });
+assert.equal(rejectedJewellery.status, 400);
+assert.ok(!(await api('/api/jewellery')).items.includes('Should not be saved'));
 await api('/api/profile', 'POST', { businessName: 'Local verification', address: '123 Test Street', phone: '1234567890', licenseNumber: 'TEST-LIC-1', nextBillNumber: 100 });
 assert.equal((await api('/api/profile')).profile.license_number, 'TEST-LIC-1');
 const input = { billDate: '2026-10-03', customerName: 'Test customer', fatherName: 'Test parent', address: '123 Test Street', phone: '1234567890', deliveryNo: 'D-01', deliveryDate: '2026-10-15', items: [{ metal: 'Gold', particulars: 'Test ring', grams: 1, assessedValue: 100, loanAmount: 80 }] };

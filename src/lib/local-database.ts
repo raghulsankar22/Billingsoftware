@@ -4,6 +4,7 @@ import { mkdirSync, readFileSync, writeFileSync, openSync, fsyncSync, closeSync,
 import { resolve, dirname, isAbsolute } from "node:path";
 import { billSchema, deliverySchema } from "./validation";
 import { calculateRepayment } from "./interest";
+import { jewelleryChoices, jewelleryKey, jewelleryNameSchema } from "./jewellery";
 
 type Row = Record<string, any>;
 type Result = { data: any; error: Error | null; count?: number | null };
@@ -25,6 +26,8 @@ export function createLocalDatabase(directory = localDataDirectory()) {
     connections.set(filename, db);
   }
   const database = db;
+  database.exec("CREATE TABLE IF NOT EXISTS jewellery_items (name_key TEXT PRIMARY KEY, name TEXT NOT NULL)");
+  const jewelleryList = () => jewelleryChoices(database.prepare("SELECT name FROM jewellery_items ORDER BY name COLLATE NOCASE, name").all().map(row => String(row.name)));
   const rows = (table: string): Row[] => {
     if (!tables.has(table)) throw new Error(`Local storage does not support ${table}.`);
     return database.prepare("SELECT body FROM records WHERE table_name=?").all(table).map(row => JSON.parse(String(row.body)));
@@ -122,6 +125,18 @@ export function createLocalDatabase(directory = localDataDirectory()) {
     return resolve(root, "bill-pdfs", path);
   }
   return {
+    jewellery: {
+      list: jewelleryList,
+      add: (value: unknown) => {
+        const name = jewelleryNameSchema.parse(value);
+        return transaction(() => {
+          const existing = jewelleryList().find(choice => jewelleryKey(choice) === jewelleryKey(name));
+          if (existing) return { name: existing, items: jewelleryList() };
+          database.prepare("INSERT INTO jewellery_items(name_key,name) VALUES(?,?) ON CONFLICT(name_key) DO NOTHING").run(jewelleryKey(name), name);
+          return { name, items: jewelleryList() };
+        });
+      },
+    },
     from: (table: string) => new Query(table),
     auth: { getUser: async () => ({ data: { user: { id: localOwnerId } }, error: null }) },
     rpc: async (name: string, parameters: Row): Promise<Result> => {
