@@ -7,3 +7,5 @@ data/
 supabase/.temp/
 mattpocock-skills-source/
 *.tsbuildinfo
+.desktop-runtime/
+release/

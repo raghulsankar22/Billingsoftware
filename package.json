@@ -9,7 +9,10 @@
     "lint": "next lint",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "check:configuration": "node scripts/check-configuration.mjs"
+    "check:configuration": "node scripts/check-configuration.mjs",
+    "desktop:prepare": "node scripts/prepare-desktop.mjs",
+    "desktop:start": "electron desktop",
+    "desktop:package": "electron-builder --projectDir desktop --config ../electron-builder.cjs --win nsis --x64"
   },
   "dependencies": {
     "@azure/msal-browser": "^4.8.0",
@@ -29,6 +32,9 @@
     "@types/pdfkit": "0.17.3",
     "@types/react": "^19.1.2",
     "@types/react-dom": "^19.1.2",
+    "electron": "45.1.0",
+    "electron-builder": "26.18.0",
+    "npm": "11.6.2",
     "typescript": "^5.8.3",
     "vitest": "^3.1.2"
   }

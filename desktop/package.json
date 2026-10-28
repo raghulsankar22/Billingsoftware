@@ -1,0 +1,9 @@
+{
+  "name": "finance-billing-desktop",
+  "version": "1.0.0",
+  "description": "Offline finance billing with three accounts, PDF bills and Excel registers",
+  "productName": "Finance Billing",
+  "author": "Finance Billing",
+  "main": "main.cjs",
+  "private": true
+}
