@@ -18,6 +18,7 @@ export const billSchema = z.object({
   phone: z.string().trim().max(20).refine((phone) => !phone || phone.length >= 7, "Mobile numbers must have at least 7 characters.").default(""),
   governmentId: z.string().trim().max(80).optional().or(z.literal("")),
   items: z.array(z.object({
+    metal: z.enum(["Gold", "Silver"]).optional(),
     particulars: z.string().trim().min(2).max(180),
     grams: z.coerce.number().finite().min(0).max(100_000).refine((value) => precision(value, 1000), "Grams can have up to three decimal places."),
     assessedValue: moneySchema,

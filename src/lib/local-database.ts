@@ -37,13 +37,14 @@ export function createLocalDatabase(directory = localDataDirectory()) {
   const owner = (value: unknown) => { if (value !== localOwnerId) throw new Error("Invalid local owner."); return localOwnerId; };
   const issue = (ownerId: string, input: Row) => {
     const bill = billSchema.parse(input);
+    if (bill.items.some(item => !item.metal)) throw new Error("Choose Gold or Silver for every item.");
     const profile = rows("business_profiles").find(p => p.owner_id === ownerId && p.account_slot === slot(input.accountSlot));
     if (!profile) throw new Error("Business profile is required");
     if (profile.next_bill_number >= 2147483647) throw new Error("Bill number limit reached");
     const now = new Date().toISOString(); const id = randomUUID();
     const cents = (key: "assessedValue" | "loanAmount") => bill.items.reduce((sum, item) => sum + Math.round(item[key] * 100), 0) / 100;
     save("bills", { id, profile_id: profile.id, bill_number: profile.next_bill_number, bill_date: bill.billDate, delivery_no: bill.deliveryNo || null, delivery_date: bill.deliveryDate || null, customer_name: bill.customerName, father_name: bill.fatherName, address: bill.address, phone: bill.phone, government_id: bill.governmentId || null, total_assessed_value: cents("assessedValue"), total_loan_amount: cents("loanAmount"), status: "issued", replacement_for_id: null, excel_sync_status: "pending", excel_sync_error: null, pdf_storage_path: null, pdf_error: null, created_at: now, voided_at: null, business_snapshot: { business_name: profile.business_name, address: profile.address, phone: profile.phone, logo_url: profile.logo_url } });
-    bill.items.forEach((item, index) => save("bill_items", { id: randomUUID(), bill_id: id, particulars: item.particulars, grams: item.grams, assessed_value: item.assessedValue, loan_amount: item.loanAmount, sort_order: index }));
+    bill.items.forEach((item, index) => save("bill_items", { id: randomUUID(), bill_id: id, metal: item.metal, particulars: item.particulars, grams: item.grams, assessed_value: item.assessedValue, loan_amount: item.loanAmount, sort_order: index }));
     save("business_profiles", { ...profile, next_bill_number: profile.next_bill_number + 1, updated_at: now });
     return { id };
   };
@@ -134,10 +135,11 @@ export function createLocalDatabase(directory = localDataDirectory()) {
           if (original.status !== "issued") throw new Error("Only issued bills can be edited.");
           if (parameters.p_bill.accountSlot !== undefined && slot(parameters.p_bill.accountSlot) !== profile.account_slot) throw new Error("A bill must remain in its original account.");
           const input = billSchema.parse(parameters.p_bill);
+          if (input.items.some(item => !item.metal)) throw new Error("Choose Gold or Silver for every item.");
           const total = (key: "assessedValue" | "loanAmount") => input.items.reduce((sum, item) => sum + Math.round(item[key] * 100), 0) / 100;
           save("bills", { ...original, bill_date: input.billDate, delivery_no: input.deliveryNo || null, delivery_date: input.deliveryDate || null, customer_name: input.customerName, father_name: input.fatherName, address: input.address, phone: input.phone, government_id: null, total_assessed_value: total("assessedValue"), total_loan_amount: total("loanAmount"), excel_sync_status: "pending", excel_sync_error: null, pdf_storage_path: null, pdf_error: null, updated_at: new Date().toISOString() });
           database.prepare("DELETE FROM records WHERE table_name='bill_items' AND json_extract(body,'$.bill_id')=?").run(original.id);
-          input.items.forEach((item, index) => save("bill_items", { id: randomUUID(), bill_id: original.id, particulars: item.particulars, grams: item.grams, assessed_value: item.assessedValue, loan_amount: item.loanAmount, sort_order: index }));
+          input.items.forEach((item, index) => save("bill_items", { id: randomUUID(), bill_id: original.id, metal: item.metal, particulars: item.particulars, grams: item.grams, assessed_value: item.assessedValue, loan_amount: item.loanAmount, sort_order: index }));
           return { id: original.id, previousPdfPath: original.pdf_storage_path };
         }
         if (name === "delete_bill") {

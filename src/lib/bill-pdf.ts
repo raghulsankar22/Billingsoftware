@@ -47,7 +47,8 @@ export function createBillPdf(bill: SnapshottedBill, currentProfile: BusinessDet
     pdf.rect(left, y - 5, 180, 9, "F");
     pdf.setFont("helvetica", "bold");
     pdf.setFontSize(9);
-    pdf.text("Particulars", 18, y);
+    pdf.text("Metal", 18, y);
+    pdf.text("Particulars", 44, y);
     pdf.text("Gram", 112, y);
     pdf.text("Total Value", 132, y);
     pdf.text("Amount", 169, y);
@@ -89,12 +90,13 @@ export function createBillPdf(bill: SnapshottedBill, currentProfile: BusinessDet
   for (const item of bill.items) {
     pdf.setFont("helvetica", "normal");
     pdf.setFontSize(9);
-    const description = pdf.splitTextToSize(item.particulars, 86) as string[];
+    const description = pdf.splitTextToSize(item.particulars, 62) as string[];
     const height = Math.max(8, description.length * 4.5 + 3);
     if (y + height > 254) { newPage(); tableHeader(); }
     pdf.setFont("helvetica", "normal");
     pdf.setFontSize(9);
-    pdf.text(description, 18, y);
+    if (item.metal) pdf.text(item.metal, 18, y);
+    pdf.text(description, 44, y);
     pdf.text(String(item.grams), 112, y);
     currency(money(item.assessedValue), 162, 32);
     currency(money(item.loanAmount), 192, 27);

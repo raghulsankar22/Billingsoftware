@@ -19,4 +19,7 @@ describe("itemSummary", () => {
   it("keeps all pledged items in one Excel register cell", () => {
     expect(itemSummary([{ particulars: "Gold Ring", grams: 3.2, assessedValue: 10000, loanAmount: 8000 }, { particulars: "Chain", grams: 7, assessedValue: 22000, loanAmount: 18000 }])).toBe("Gold Ring (3.2 g), Chain (7 g)");
   });
+  it("includes the selected metal without changing older item descriptions", () => {
+    expect(itemSummary([{ metal: "Gold", particulars: "Ring", grams: 3.2, assessedValue: 100, loanAmount: 80 }, { metal: "Silver", particulars: "Chain", grams: 7, assessedValue: 200, loanAmount: 150 }])).toBe("Gold: Ring (3.2 g), Silver: Chain (7 g)");
+  });
 });

@@ -19,7 +19,7 @@ export function toBill(row: Record<string, unknown>): Bill {
     governmentId: String(row.government_id ?? ""),
     items: items.map((item) => {
       const source = item as Record<string, unknown>;
-      return { particulars: String(source.particulars), grams: Number(source.grams), assessedValue: Number(source.assessed_value), loanAmount: Number(source.loan_amount) };
+      return { metal: source.metal === "Gold" || source.metal === "Silver" ? source.metal : undefined, particulars: String(source.particulars), grams: Number(source.grams), assessedValue: Number(source.assessed_value), loanAmount: Number(source.loan_amount) };
     }),
     totalAssessedValue: Number(row.total_assessed_value ?? 0),
     totalLoanAmount,

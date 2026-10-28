@@ -14,7 +14,7 @@ const bill: Bill = {
   address: "12 Example Road, Chennai",
   phone: "9876543210",
   governmentId: "ID-123",
-  items: [{ particulars: "Gold ring", grams: 4.2, assessedValue: 12000, loanAmount: 8000 }],
+  items: [{ metal: "Gold", particulars: "Ring", grams: 4.2, assessedValue: 12000, loanAmount: 8000 }],
   totalAssessedValue: 12000,
   totalLoanAmount: 8000,
   amountInWords: "Rupees Eight Thousand Only",

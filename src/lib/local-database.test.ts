@@ -5,14 +5,20 @@ import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { createLocalDatabase, localOwnerId } from "./local-database";
 
-const bill = { billDate: "2026-10-03", customerName: "A,B (Gold)", fatherName: "Parent", address: "123 Main Street", phone: "1234567890", items: [{ particulars: "Gold ring", grams: 1.125, assessedValue: 10.11, loanAmount: 8.01 }, { particulars: "Silver ring", grams: 2, assessedValue: 20.22, loanAmount: 9.02 }] };
+const bill = { billDate: "2026-10-03", customerName: "A,B (Gold)", fatherName: "Parent", address: "123 Main Street", phone: "1234567890", items: [{ metal: "Gold", particulars: "Gold ring", grams: 1.125, assessedValue: 10.11, loanAmount: 8.01 }, { metal: "Silver", particulars: "Silver ring", grams: 2, assessedValue: 20.22, loanAmount: 9.02 }] };
 const opened: { directory: string; db: ReturnType<typeof createLocalDatabase> }[] = [];
 function open() { const directory = mkdtempSync(join(tmpdir(), "billing-local-")); const db = createLocalDatabase(directory); opened.push({ directory, db }); return db; }
 async function profile(db: ReturnType<typeof open>, accountSlot = 1, nextBillNumber = 1) { const result = await db.rpc("save_business_profile", { p_owner_id: localOwnerId, p_profile: { businessName: "Finance", address: "123 Main Street", phone: "1234567890", accountSlot, nextBillNumber } }); expect(result.error).toBeNull(); return result.data; }
-async function issue(db: ReturnType<typeof open>, input = bill) { return db.rpc("create_bill", { p_owner_id: localOwnerId, p_bill: input }); }
+async function issue(db: ReturnType<typeof open>, input: Record<string, unknown> = bill) { return db.rpc("create_bill", { p_owner_id: localOwnerId, p_bill: input }); }
 afterEach(() => { for (const { directory, db } of opened.splice(0)) { db.close(); rmSync(directory, { recursive: true, force: true }); } });
 
 describe("durable local ledger", () => {
+  it("requires a Gold or Silver choice for new local bills", async () => {
+    const db = open(); await profile(db);
+    const missingMetal = { ...bill, items: [{ particulars: "Ring", grams: 1, assessedValue: 100, loanAmount: 80 }] };
+    expect((await issue(db, missingMetal)).error?.message).toContain("Choose Gold or Silver");
+    expect((await db.from("bills").select()).data).toHaveLength(0);
+  });
   it("rejects changes to finalized financial data and prevents unvoiding", async () => {
     const db = open(); await profile(db); const created = await issue(db);
     for (const patch of [{ customer_name: "Changed" }, { bill_number: 100 }, { total_loan_amount: 0 }, { id: "changed" }]) {
@@ -33,6 +39,7 @@ describe("durable local ledger", () => {
     expect(rows.data.map((row: any) => row.bill_number)).toEqual(Array.from({ length: 12 }, (_, index) => index + 100));
     expect(rows.data[0]).toMatchObject({ total_assessed_value: 30.33, total_loan_amount: 17.03, business_snapshot: { business_name: "Finance" } });
     expect(rows.data[0].bill_items).toHaveLength(2);
+    expect(rows.data[0].bill_items.map((item: { metal: string }) => item.metal)).toEqual(["Gold", "Silver"]);
     expect((await profile(db, 1, 1)).next_bill_number).toBe(112);
     expect((await db.from("bills").select().eq("profile_id", second.id)).data).toEqual([]);
   });
@@ -52,10 +59,10 @@ describe("durable local ledger", () => {
     const bad = await db.rpc("edit_bill", { p_owner_id: localOwnerId, p_bill_id: first.data.id, p_bill: { ...bill, items: [{ ...bill.items[0], loanAmount: -1 }] } });
     expect(bad.error).toBeTruthy();
     expect((await db.from("bills").select().eq("id", first.data.id).single()).data.customer_name).toBe(bill.customerName);
-    const edited = await db.rpc("edit_bill", { p_owner_id: localOwnerId, p_bill_id: first.data.id, p_bill: { ...bill, customerName: "Corrected customer", items: [{ particulars: "New ring", grams: 3, assessedValue: 50, loanAmount: 25 }] } });
+    const edited = await db.rpc("edit_bill", { p_owner_id: localOwnerId, p_bill_id: first.data.id, p_bill: { ...bill, customerName: "Corrected customer", items: [{ metal: "Silver", particulars: "New ring", grams: 3, assessedValue: 50, loanAmount: 25 }] } });
     expect(edited.error).toBeNull();
     expect(edited.data.id).toBe(first.data.id);
-    expect((await db.from("bills").select("*, bill_items(*)").eq("id", first.data.id).single()).data).toMatchObject({ bill_number: 1, customer_name: "Corrected customer", total_loan_amount: 25, status: "issued", excel_sync_status: "pending", pdf_storage_path: null, bill_items: [{ particulars: "New ring" }] });
+    expect((await db.from("bills").select("*, bill_items(*)").eq("id", first.data.id).single()).data).toMatchObject({ bill_number: 1, customer_name: "Corrected customer", total_loan_amount: 25, status: "issued", excel_sync_status: "pending", pdf_storage_path: null, bill_items: [{ metal: "Silver", particulars: "New ring" }] });
     expect((await db.from("business_profiles").select().eq("id", saved.id).single()).data.next_bill_number).toBe(2);
     expect((await db.from("bills").select()).data).toHaveLength(1);
     expect((await db.rpc("edit_bill", { p_owner_id: localOwnerId, p_bill_id: first.data.id, p_bill: { ...bill, accountSlot: 2 } })).error).toBeTruthy();

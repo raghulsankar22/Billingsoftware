@@ -37,5 +37,5 @@ export function amountInWords(value: number): string {
 export const formatINR = (value: number) => new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", minimumFractionDigits: 2 }).format(value || 0);
 
 export function itemSummary(items: BillItemInput[]): string {
-  return items.map((item) => `${item.particulars} (${item.grams || 0} g)`).join(", ");
+  return items.map((item) => `${item.metal ? `${item.metal}: ` : ""}${item.particulars} (${item.grams || 0} g)`).join(", ");
 }

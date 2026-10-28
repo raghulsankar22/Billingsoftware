@@ -267,7 +267,7 @@ export function BillingApp() {
             <td>#{bill.billNumber}<small>{bill.status === "void" ? "Voided" : "Issued"}</small></td>
             <td>{bill.billDate}</td>
             <td><b>{bill.customerName}</b>{bill.phone && <small>{bill.phone}</small>}</td>
-            <td>{bill.items.map((item) => item.particulars).join(", ")}</td>
+            <td>{bill.items.map((item) => `${item.metal ? `${item.metal}: ` : ""}${item.particulars}`).join(", ")}</td>
             <td>{formatINR(bill.totalLoanAmount)}</td>
             <td><span className={`sync ${bill.excelSyncStatus}`}>{bill.excelSyncStatus}</span>{bill.excelSyncStatus === "failed" && <button className="text-button" onClick={() => void retryExcel(bill.id)}>Retry</button>}</td>
             <td className="row-actions">
