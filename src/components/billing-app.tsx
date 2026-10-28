@@ -165,12 +165,13 @@ export function BillingApp() {
   }
 
   async function deleteBill(bill: Bill) {
-    if (!window.confirm(`Permanently delete bill #${bill.billNumber}? It will be removed from history, its PDF and the Excel register. This cannot be undone; its number will not be reused.`)) return;
+    if (!window.confirm(`Permanently delete bill #${bill.billNumber}? It will be removed from history, its PDF and the Excel register. This cannot be undone. If this is the latest bill, the next bill will use #${bill.billNumber} again.`)) return;
     try {
       const result = await api(`/api/bills/${bill.id}`, accountSlot, { method: "DELETE" });
       if (selected?.id === bill.id) setSelected(null);
       await load(query, accountSlot);
       if (result.warning) setError(result.warning);
+      setExcelNotice(`Bill #${bill.billNumber} deleted. The next bill will be #${result.nextBillNumber}.`);
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : "Unable to delete bill.");
     }

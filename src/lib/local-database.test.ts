@@ -62,17 +62,27 @@ describe("durable local ledger", () => {
     expect((await db.from("bills").update({ status: "void" }).eq("id", first.data.id)).error).toBeNull();
     expect((await db.rpc("edit_bill", { p_owner_id: localOwnerId, p_bill_id: first.data.id, p_bill: bill })).error).toBeTruthy();
   });
-  it("deletes issued and voided bills without reusing their numbers", async () => {
+  it("reuses a deleted latest bill number, including a voided bill", async () => {
     const db = open(); const saved = await profile(db); const first = await issue(db); const second = await issue(db);
     expect((await db.from("bills").update({ status: "void" }).eq("id", second.data.id)).error).toBeNull();
-    expect((await db.rpc("delete_bill", { p_owner_id: localOwnerId, p_bill_id: first.data.id })).error).toBeNull();
     expect((await db.rpc("delete_bill", { p_owner_id: localOwnerId, p_bill_id: second.data.id })).error).toBeNull();
-    expect((await db.from("bills").select()).data).toEqual([]);
-    expect((await db.from("bill_items").select()).data).toEqual([]);
+    expect((await db.from("business_profiles").select().eq("id", saved.id).single()).data.next_bill_number).toBe(2);
+    const next = await issue(db);
+    expect((await db.from("bills").select().eq("id", next.data.id).single()).data.bill_number).toBe(2);
+    expect((await db.from("bills").select()).data).toHaveLength(2);
+    expect((await db.from("bill_items").select()).data).toHaveLength(4);
+    expect((await db.rpc("delete_bill", { p_owner_id: localOwnerId, p_bill_id: second.data.id })).error).toBeTruthy();
+  });
+  it("does not renumber existing bills when an older bill is deleted", async () => {
+    const db = open(); const saved = await profile(db);
+    const first = await issue(db); const second = await issue(db); const third = await issue(db);
+    expect((await db.rpc("delete_bill", { p_owner_id: localOwnerId, p_bill_id: second.data.id })).error).toBeNull();
+    expect((await db.from("business_profiles").select().eq("id", saved.id).single()).data.next_bill_number).toBe(4);
+    expect((await db.rpc("delete_bill", { p_owner_id: localOwnerId, p_bill_id: third.data.id })).error).toBeNull();
     expect((await db.from("business_profiles").select().eq("id", saved.id).single()).data.next_bill_number).toBe(3);
     const next = await issue(db);
     expect((await db.from("bills").select().eq("id", next.data.id).single()).data.bill_number).toBe(3);
-    expect((await db.rpc("delete_bill", { p_owner_id: localOwnerId, p_bill_id: second.data.id })).error).toBeTruthy();
+    expect((await db.from("bills").select().eq("id", first.data.id).single()).data.bill_number).toBe(1);
   });
   it("preserves SQLite and immutable PDFs across reopen and rejects traversal", async () => {
     const db = open(); await profile(db); await issue(db); const bytes = new Uint8Array([37, 80, 68, 70]);

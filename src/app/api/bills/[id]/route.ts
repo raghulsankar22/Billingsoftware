@@ -68,13 +68,13 @@ export async function DELETE(request: Request, context: Context) {
       const { error: removeError } = await db.storage.from("bill-pdfs").remove([existing.pdf_storage_path]);
       if (removeError) throw removeError;
     }
-    const { error: deleteError } = await db.rpc("delete_bill", { p_owner_id: user.id, p_bill_id: id });
+    const { data: deleted, error: deleteError } = await db.rpc("delete_bill", { p_owner_id: user.id, p_bill_id: id });
     if (deleteError) throw deleteError;
     try {
       await syncAccountRegister(profile.id);
-      return NextResponse.json({ ok: true, registerSyncStatus: "synced" });
+      return NextResponse.json({ ok: true, nextBillNumber: deleted.nextBillNumber, registerSyncStatus: "synced" });
     } catch (syncError) {
-      return NextResponse.json({ ok: true, registerSyncStatus: "failed", warning: `Bill deleted, but Excel needs a retry: ${syncError instanceof Error ? syncError.message : "sync failed"}` });
+      return NextResponse.json({ ok: true, nextBillNumber: deleted.nextBillNumber, registerSyncStatus: "failed", warning: `Bill deleted, but Excel needs a retry: ${syncError instanceof Error ? syncError.message : "sync failed"}` });
     }
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Unable to delete bill" }, { status: 400 });

@@ -141,11 +141,13 @@ export function createLocalDatabase(directory = localDataDirectory()) {
           return { id: original.id, previousPdfPath: original.pdf_storage_path };
         }
         if (name === "delete_bill") {
-          const { bill } = billOwner(ownerId, parameters.p_bill_id);
+          const { bill, profile } = billOwner(ownerId, parameters.p_bill_id);
+          const reuseNumber = bill.bill_number === profile.next_bill_number - 1;
           database.prepare("DELETE FROM records WHERE table_name='bill_items' AND json_extract(body,'$.bill_id')=?").run(bill.id);
           for (const replacement of rows("bills").filter(row => row.replacement_for_id === bill.id)) save("bills", { ...replacement, replacement_for_id: null });
           database.prepare("DELETE FROM records WHERE table_name='bills' AND id=?").run(bill.id);
-          return { id: bill.id, billNumber: bill.bill_number, previousPdfPath: bill.pdf_storage_path };
+          if (reuseNumber) save("business_profiles", { ...profile, next_bill_number: bill.bill_number, updated_at: new Date().toISOString() });
+          return { id: bill.id, billNumber: bill.bill_number, nextBillNumber: reuseNumber ? bill.bill_number : profile.next_bill_number, previousPdfPath: bill.pdf_storage_path };
         }
         if (name === "replace_bill") {
           const original = rows("bills").find(row => row.id === parameters.p_original_id); const profile = rows("business_profiles").find(row => row.id === original?.profile_id && row.owner_id === ownerId);

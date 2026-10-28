@@ -6,7 +6,7 @@ Bills and the three account profiles live in `data/billing.sqlite`. PDFs live be
 
 **Refresh Excel** rebuilds the saved register for the selected account and displays its exact file location. A copy previously downloaded to your Downloads folder does not change; use **Download Excel** to obtain a new copy.
 
-Bill issuance, same-number edits, and deletion use SQLite transactions. Editing an issued bill updates its PDF and its row in the account Excel register without allocating a new number. A voided bill cannot be edited, but both issued and voided bills can be permanently deleted after confirmation. Deleted bill numbers are never reused. Excel or PDF write failures retain the saved bill; use the on-screen retry or Refresh Excel action if needed.
+Bill issuance, same-number edits, and deletion use SQLite transactions. Editing an issued bill updates its PDF and its row in the account Excel register without allocating a new number. A voided bill cannot be edited, but both issued and voided bills can be permanently deleted after confirmation. Deleting the latest bill releases its number for the next bill; deleting an older bill does not renumber any existing bills. Excel or PDF write failures retain the saved bill; use the on-screen retry or Refresh Excel action if needed.
 
 Close the billing server before copying the entire data directory to a backup drive. Keep this directory when updating the app. Local access relies on your Windows account and the loopback server; anyone using this Windows session can open billing.
 
