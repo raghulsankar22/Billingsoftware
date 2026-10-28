@@ -12,6 +12,7 @@ function today() {
 
 export function BillOverview({ bill, onClose }: { bill: Bill; onClose: () => void }) {
   const [returnDate, setReturnDate] = useState(() => {
+    if (bill.deliveryNo && bill.deliveryDate) return bill.deliveryDate;
     const current = today();
     return current < bill.billDate ? bill.billDate : current;
   });

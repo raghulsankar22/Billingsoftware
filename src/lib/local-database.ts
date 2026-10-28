@@ -2,7 +2,7 @@ import { DatabaseSync } from "node:sqlite";
 import { randomUUID } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync, openSync, fsyncSync, closeSync, linkSync, unlinkSync } from "node:fs";
 import { resolve, dirname, isAbsolute } from "node:path";
-import { billSchema } from "./validation";
+import { billSchema, deliverySchema } from "./validation";
 
 type Row = Record<string, any>;
 type Result = { data: any; error: Error | null; count?: number | null };
@@ -132,6 +132,15 @@ export function createLocalDatabase(directory = localDataDirectory()) {
           const profile = { id: previous?.id ?? randomUUID(), owner_id: ownerId, account_slot: account, business_name: input.businessName, address: input.address, phone: input.phone, logo_url: input.logoUrl || null, next_bill_number: previous && hasBills(previous.id) ? previous.next_bill_number : 1, created_at: previous?.created_at ?? now, updated_at: now }; save("business_profiles", profile); return profile;
         }
         if (name === "create_bill") return issue(ownerId, parameters.p_bill);
+        if (name === "record_bill_delivery") {
+          const { bill, profile } = billOwner(ownerId, parameters.p_bill_id);
+          if (slot(parameters.p_account_slot) !== profile.account_slot) throw new Error("Bill not found in this account.");
+          if (bill.status !== "issued") throw new Error("A voided bill cannot be delivered.");
+          const input = deliverySchema.parse(parameters.p_delivery);
+          if (input.deliveryDate < bill.bill_date) throw new Error("Delivery date cannot be before the bill date.");
+          save("bills", { ...bill, delivery_no: input.deliveryNo, delivery_date: input.deliveryDate, excel_sync_status: "pending", excel_sync_error: null, pdf_storage_path: null, pdf_error: null, updated_at: new Date().toISOString() });
+          return { id: bill.id, previousPdfPath: bill.pdf_storage_path };
+        }
         if (name === "edit_bill") {
           const { bill: original, profile } = billOwner(ownerId, parameters.p_bill_id);
           if (original.status !== "issued") throw new Error("Only issued bills can be edited.");

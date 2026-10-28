@@ -8,6 +8,11 @@ const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use a date in YYYY-M
 const precision = (value: number, scale: number) => Math.abs(value * scale - Math.round(value * scale)) <= Number.EPSILON * Math.max(1, Math.abs(value * scale)) * 4;
 const moneySchema = z.coerce.number().finite().positive().max(100_000_000).refine((value) => precision(value, 100), "Amounts can have up to two decimal places.");
 
+export const deliverySchema = z.object({
+  deliveryNo: z.string().trim().min(1, "Enter a delivery number.").max(60),
+  deliveryDate: dateSchema,
+});
+
 export const billSchema = z.object({
   deliveryNo: z.string().max(60).optional().or(z.literal("")),
   deliveryDate: dateSchema.optional().or(z.literal("")),

@@ -11,6 +11,7 @@ import { localStorageEnabled } from "@/lib/storage-mode";
 import { BillDocument } from "./bill-document";
 import { BillOverview } from "./bill-overview";
 import { BillForm } from "./bill-form";
+import { BillDelivery } from "./bill-delivery";
 import { ProfileForm } from "./profile-form";
 import { SignIn } from "./sign-in";
 
@@ -45,7 +46,7 @@ export function BillingApp() {
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [bills, setBills] = useState<Bill[]>([]);
   const [query, setQuery] = useState("");
-  const [view, setView] = useState<"dashboard" | "new" | "settings">("dashboard");
+  const [view, setView] = useState<"dashboard" | "new" | "delivery" | "settings">("dashboard");
   const [selected, setSelected] = useState<Bill | null>(null);
   const [overviewBill, setOverviewBill] = useState<Bill | null>(null);
   const [error, setError] = useState("");
@@ -243,6 +244,7 @@ export function BillingApp() {
     <nav>
       <button className={view === "dashboard" ? "active" : ""} onClick={() => { setExcelNotice(""); setView("dashboard"); }}>Bills</button>
       <button className={view === "new" ? "active" : ""} onClick={() => { setExcelNotice(""); setEditingSource(null); setView("new"); }}>New bill</button>
+      {localStorageEnabled && <button className={view === "delivery" ? "active" : ""} onClick={() => { setExcelNotice(""); setView("delivery"); }}>Delivery</button>}
       <button className={view === "settings" ? "active" : ""} onClick={() => { setExcelNotice(""); setView("settings"); }}>Business profile</button>
     </nav>
 
@@ -257,6 +259,7 @@ export function BillingApp() {
       {!accountLoaded && isLoading && <section className="panel setup-callout"><p>Loading Account {accountSlot}…</p></section>}
       {view === "settings" && accountLoaded && <ProfileForm key={accountSlot} profile={profile} accountSlot={accountSlot} onSaved={() => void load(query, accountSlot)} />}
       {view === "new" && profile && accountLoaded && <BillForm key={`${accountSlot}-${editingSource?.id ?? "new"}`} accountSlot={accountSlot} editingSource={editingSource} onCreated={issueSuccess} />}
+      {view === "delivery" && profile && accountLoaded && <BillDelivery key={accountSlot} accountSlot={accountSlot} onSaved={() => void load(query, accountSlot)} onOpen={setSelected} onOverview={setOverviewBill} />}
       {view === "dashboard" && accountLoaded && profile && <section className="panel">
         <div className="section-heading history-heading">
           <div><p className="eyebrow">ACCOUNT {accountSlot} HISTORY</p><h2>Issued bills</h2></div>
@@ -268,7 +271,7 @@ export function BillingApp() {
         <div className="item-table-wrap"><table className="history-table">
           <thead><tr><th>Bill</th><th>Date</th><th>Customer</th><th>Particulars</th><th>Amount</th><th>Excel</th><th /></tr></thead>
           <tbody>{bills.length ? bills.map((bill) => <tr key={bill.id} className={bill.status === "void" ? "void-row" : ""}>
-            <td>#{bill.billNumber}<small>{bill.status === "void" ? "Voided" : "Issued"}</small></td>
+            <td>#{bill.billNumber}<small>{bill.status === "void" ? "Voided" : bill.deliveryNo && bill.deliveryDate ? "Delivered" : "Issued"}</small>{bill.status !== "void" && bill.deliveryNo && bill.deliveryDate && <small className="delivery-recorded">Delivery #{bill.deliveryNo} · {bill.deliveryDate}</small>}</td>
             <td>{bill.billDate}</td>
             <td><b>{bill.customerName}</b>{bill.phone && <small>{bill.phone}</small>}</td>
             <td>{bill.items.map((item) => `${item.metal ? `${item.metal}: ` : ""}${item.particulars}`).join(", ")}</td>
