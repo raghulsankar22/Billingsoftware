@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createLocalDatabase } from "./local-database";
-import { jewelleryNameSchema, starterJewellery } from "./jewellery";
+import { appendJewelleryParticulars, jewelleryNameSchema, starterJewellery } from "./jewellery";
 
 let directory: string;
 let database: ReturnType<typeof createLocalDatabase> | undefined;
@@ -18,6 +18,18 @@ function open() {
 }
 
 describe("offline jewellery catalogue", () => {
+  it("adds different jewellery and whole quantities to the same description", () => {
+    const first = appendJewelleryParticulars("", "Ring", "2");
+    expect(first).toBe("Ring 2");
+    expect(appendJewelleryParticulars(first, "Studs", 1)).toBe("Ring 2, Studs 1");
+  });
+  it("appends without guessing or rewriting an older bill's description", () => {
+    expect(appendJewelleryParticulars("Old ring description 2", "Necklace", 1)).toBe("Old ring description 2, Necklace 1");
+  });
+  it("rejects invalid quantities and descriptions that would exceed the bill limit", () => {
+    for (const quantity of ["", 0, -1, 1.5, 10000, Infinity, "abc"]) expect(() => appendJewelleryParticulars("Ring 2", "Studs", quantity)).toThrow();
+    expect(() => appendJewelleryParticulars("X".repeat(178), "Ring", 1)).toThrow("180 characters");
+  });
   it("provides starter choices and persists custom English and Tamil names after reopening", () => {
     const db = open();
     expect(db.jewellery.list()).toEqual(starterJewellery);
