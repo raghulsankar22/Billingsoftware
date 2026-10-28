@@ -42,8 +42,10 @@ for (const [account, startingNumber] of [[2, 1], [3, 500]]) {
   const bill = (await api(`/api/bills?account=${account}`, 'POST', {
     ...input,
     customerName: `Account ${account} customer`,
+    phone: account === 3 ? '' : input.phone,
   })).bill;
   assert.equal(bill.billNumber, startingNumber);
+  assert.equal(bill.phone, account === 3 ? '' : input.phone);
   assert.equal(bill.excelSyncStatus, 'synced');
   const accountHistory = await api(`/api/bills?account=${account}`);
   assert.equal(accountHistory.bills.length, 1);
@@ -59,6 +61,7 @@ for (const [account, startingNumber] of [[2, 1], [3, 500]]) {
   assert.ok(rows);
   assert.equal(rows.getRow(2).getCell(4).value, startingNumber);
   assert.equal(rows.getRow(2).getCell(6).value, `Account ${account} customer`);
+  assert.equal(rows.getRow(2).getCell(8).value, account === 3 ? '' : input.phone);
   assert.equal(rows.getRow(3).getCell(4).value, null);
 }
 console.log('Local HTTP flow passed: three account profiles, independent numbers and Excel reports, PDF, replacement, void, history, and cross-origin rejection.');

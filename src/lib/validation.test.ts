@@ -24,6 +24,12 @@ describe("bill validation", () => {
   it("accepts ordinary decimal currency", () => {
     expect(billSchema.safeParse({ ...input, items: [{ ...input.items[0], loanAmount: 19.99 }] }).success).toBe(true);
   });
+  it("accepts a blank or omitted customer mobile number", () => {
+    expect(billSchema.parse({ ...input, phone: " " }).phone).toBe("");
+    const { phone: _phone, ...withoutPhone } = input;
+    expect(billSchema.parse(withoutPhone).phone).toBe("");
+    expect(billSchema.safeParse({ ...input, phone: "123" }).success).toBe(false);
+  });
   it("rejects grams that cannot be preserved at three decimal places", () => {
     expect(billSchema.safeParse({ ...input, items: [{ ...input.items[0], grams: 1.2345 }] }).success).toBe(false);
   });

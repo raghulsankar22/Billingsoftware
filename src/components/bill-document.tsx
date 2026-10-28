@@ -38,7 +38,7 @@ export function BillDocument({ bill, profile, accountSlot, onClose }: { bill: Sn
     <article className="print-bill"><header><h1>{business.business_name}</h1><p>{business.address} · {business.phone}</p><h2>FINANCE BILL</h2></header>
       <div className="bill-meta"><span>Bill No. <b>{bill.billNumber}</b></span><span>Date <b>{bill.billDate}</b></span></div>
       {(bill.deliveryNo || bill.deliveryDate) && <p>Delivery No. {bill.deliveryNo || "—"} &nbsp; Delivery Date {bill.deliveryDate || "—"}</p>}
-      <section className="customer-box"><p><b>Name:</b> {bill.customerName}</p><p><b>Father&apos;s Name:</b> {bill.fatherName}</p><p><b>Address:</b> {bill.address}</p><p><b>Phone:</b> {bill.phone}{bill.governmentId && <> &nbsp; <b>ID:</b> {bill.governmentId}</>}</p></section>
+      <section className="customer-box"><p><b>Name:</b> {bill.customerName}</p><p><b>Father&apos;s Name:</b> {bill.fatherName}</p><p><b>Address:</b> {bill.address}</p>{(bill.phone || bill.governmentId) && <p>{bill.phone && <><b>Phone:</b> {bill.phone}</>}{bill.governmentId && <> &nbsp; <b>ID:</b> {bill.governmentId}</>}</p>}</section>
       <table className="print-table"><thead><tr><th>Particulars</th><th>Gram</th><th>Total Value</th><th>Amount</th></tr></thead><tbody>{bill.items.map((item, index) => <tr key={index}><td>{item.particulars}</td><td>{item.grams}</td><td>{formatINR(item.assessedValue)}</td><td>{formatINR(item.loanAmount)}</td></tr>)}</tbody><tfoot><tr><th colSpan={2}>Total</th><th>{formatINR(bill.totalAssessedValue)}</th><th>{formatINR(bill.totalLoanAmount)}</th></tr></tfoot></table>
       <p className="words"><b>Amount in words:</b> {bill.amountInWords}</p><footer><div>Business Signature</div><div>Customer Signature</div></footer>
     </article>

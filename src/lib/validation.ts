@@ -15,7 +15,7 @@ export const billSchema = z.object({
   customerName: z.string().trim().min(2).max(120),
   fatherName: z.string().trim().min(2).max(120),
   address: z.string().trim().min(5).max(500),
-  phone: z.string().trim().min(7).max(20),
+  phone: z.string().trim().max(20).refine((phone) => !phone || phone.length >= 7, "Mobile numbers must have at least 7 characters.").default(""),
   governmentId: z.string().trim().max(80).optional().or(z.literal("")),
   items: z.array(z.object({
     particulars: z.string().trim().min(2).max(180),

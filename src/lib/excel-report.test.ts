@@ -48,6 +48,13 @@ it("roundtrips the required nine columns, leading-zero phones, numeric money, an
   expect(sheet.getRow(3).font.strike).toBe(true);
 });
 
+it("leaves the Phone cell blank when the customer mobile number is not provided", async () => {
+  db.rows = [{ ...row(1), phone: "" }];
+  const workbook = buildReportRegister(await loadReportBills("owner", { query: "" }));
+  const loaded = new ExcelJS.Workbook(); await loaded.xlsx.load(await workbook.xlsx.writeBuffer() as never);
+  expect(loaded.getWorksheet("Bills")!.getCell("H2").value).toBe("");
+});
+
 it("fails the download on a database error instead of silently exporting partial history", async () => {
   db.error = { message: "database unavailable" };
   await expect(loadReportBills("owner", { query: "" })).rejects.toThrow(/retry the download/);

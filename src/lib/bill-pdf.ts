@@ -81,7 +81,8 @@ export function createBillPdf(bill: SnapshottedBill, currentProfile: BusinessDet
   line(`Name: ${bill.customerName}`, left, 180);
   line(`Father's Name: ${bill.fatherName}`, left, 180);
   line(`Address: ${bill.address}`, left, 180);
-  line(`Phone: ${bill.phone}${bill.governmentId ? `     Government ID: ${bill.governmentId}` : ""}`, left, 180);
+  const contactDetails = [bill.phone && `Phone: ${bill.phone}`, bill.governmentId && `Government ID: ${bill.governmentId}`].filter(Boolean).join("     ");
+  if (contactDetails) line(contactDetails, left, 180);
   y += 6;
   tableHeader();
 
