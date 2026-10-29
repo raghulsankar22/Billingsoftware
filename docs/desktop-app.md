@@ -1,6 +1,6 @@
 # Windows desktop app
 
-Run the Finance Billing shortcut or install `release/1.0.6/Finance-Billing-Setup-1.0.6.exe`.
+Run the Finance Billing shortcut or install `release/1.0.7/Finance-Billing-Setup-1.0.7.exe`.
 The app opens its own window and starts its loopback-only billing server automatically.
 No internet, separate Node installation, Microsoft 365 login or web hosting is needed for daily use.
 
@@ -51,6 +51,10 @@ is saved in the bill, PDF and Excel register and retained when editing an existi
 Version 1.0.6 removes the bottom **+ Add item** button and stacks the Gold and Silver
 choices vertically in the Metal column. Several jewellery names and quantities can
 still be added inside the same Particulars box.
+
+Version 1.0.7 uses the supplied gold-pot image for the Windows application icon, desktop
+and Start menu shortcuts, and the app-window icon. The app header, browser-tab icon
+and printed bill logo keep their existing appearance.
 
 The installer is not digitally signed. Distribution with a verified publisher identity
 requires a separate Windows code-signing certificate. No online updater is configured.
