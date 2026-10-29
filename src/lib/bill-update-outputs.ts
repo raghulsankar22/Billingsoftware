@@ -3,7 +3,7 @@ import { persistBillPdf } from "./bill-pdf-storage";
 import { syncAccountRegister } from "./register-sync";
 import { createAdminSupabase } from "./supabase";
 
-export async function refreshUpdatedBillOutputs(profile: BusinessSnapshot & { id: string }, bill: Bill, previousPdfPath?: string | null, previousDeliveryPdfPath?: string | null) {
+export async function refreshUpdatedBillOutputs(profile: BusinessSnapshot & { id: string }, bill: Bill, previousPdfPath?: string | null, previousDeliveryPdfPath?: string | null, options: { syncRegister?: boolean } = {}) {
   const db = createAdminSupabase();
   const warnings: string[] = [];
   let pdfSaved = false;
@@ -38,6 +38,7 @@ export async function refreshUpdatedBillOutputs(profile: BusinessSnapshot & { id
     const { error } = await db.storage.from("bill-pdfs").remove([previousDeliveryPdfPath]);
     if (error) warnings.push("The previous delivery PDF could not be removed.");
   }
+  if (options.syncRegister === false) return warnings;
   try {
     await syncAccountRegister(profile.id);
     const { error } = await db.from("bills").update({ excel_sync_status: "synced", excel_sync_error: null }).eq("id", bill.id).eq("profile_id", profile.id);

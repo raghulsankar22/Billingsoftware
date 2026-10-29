@@ -2,7 +2,7 @@ import { DatabaseSync } from "node:sqlite";
 import { randomUUID } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync, openSync, fsyncSync, closeSync, linkSync, unlinkSync } from "node:fs";
 import { resolve, dirname, isAbsolute } from "node:path";
-import { billSchema, deliverySchema } from "./validation";
+import { batchDeliverySchema, billSchema, deliverySchema } from "./validation";
 import { calculateRepayment } from "./interest";
 import { jewelleryChoices, jewelleryKey, jewelleryNameSchema } from "./jewellery";
 
@@ -61,6 +61,28 @@ export function createLocalDatabase(directory = localDataDirectory()) {
     const profile = rows("business_profiles").find(row => row.id === bill?.profile_id && row.owner_id === ownerId);
     if (!bill || !profile) throw new Error("Bill not found in this account.");
     return { bill, profile };
+  };
+  // Both single and multiple delivery operations call this inside one ledger transaction.
+  const recordDelivery = (ownerId: string, billId: string, account: unknown, delivery: unknown) => {
+    const { bill, profile } = billOwner(ownerId, billId);
+    if (slot(account) !== profile.account_slot) throw new Error("Bill not found in this account.");
+    if (!["issued", "void"].includes(bill.status)) throw new Error("Delivery cannot be recorded for this bill status.");
+    const input = deliverySchema.parse(delivery);
+    if (input.deliveryDate < bill.bill_date) throw new Error("Delivery date cannot be before the bill date.");
+    const savedItems = rows("bill_items").filter(item => item.bill_id === bill.id).sort((left, right) => left.sort_order - right.sort_order);
+    if (!savedItems.length) throw new Error("This bill has no pledged items.");
+    if (input.itemMetals && input.itemMetals.length !== savedItems.length) throw new Error("The item list changed. Find the bill again.");
+    const items = savedItems.map((item, index) => ({ metal: item.metal === "Gold" || item.metal === "Silver" ? item.metal : input.itemMetals?.[index] ?? undefined, particulars: String(item.particulars), grams: Number(item.grams), assessedValue: Number(item.assessed_value), loanAmount: Number(item.loan_amount) }));
+    if (items.some(item => !item.metal)) throw new Error("Choose Gold or Silver for each item before saving delivery.");
+    const summary = calculateRepayment(items, bill.bill_date, input.deliveryDate);
+    const nextNumber = nextDeliveryNumber(profile);
+    if (!bill.delivery_no && (!Number.isSafeInteger(nextNumber) || nextNumber >= 2147483647)) throw new Error("Delivery number limit reached.");
+    const deliveryNo = bill.delivery_no || String(nextNumber);
+    const now = new Date().toISOString();
+    if (!bill.delivery_no) save("business_profiles", { ...profile, next_delivery_number: nextNumber + 1, updated_at: now });
+    savedItems.forEach((item, index) => { if (!item.metal) save("bill_items", { ...item, metal: items[index].metal }); });
+    save("bills", { ...bill, delivery_no: deliveryNo, delivery_date: input.deliveryDate, delivery_summary: summary, excel_sync_status: "pending", excel_sync_error: null, pdf_storage_path: null, pdf_error: null, delivery_pdf_storage_path: null, delivery_pdf_error: null, updated_at: now });
+    return { id: bill.id, previousPdfPath: bill.pdf_storage_path, previousDeliveryPdfPath: bill.delivery_pdf_storage_path };
   };
   class Query {
     private filters: ((row: Row) => boolean)[] = [];
@@ -156,26 +178,10 @@ export function createLocalDatabase(directory = localDataDirectory()) {
           if (!profile) throw new Error("Business profile is required.");
           return { number: nextDeliveryNumber(profile) };
         }
-        if (name === "record_bill_delivery") {
-          const { bill, profile } = billOwner(ownerId, parameters.p_bill_id);
-          if (slot(parameters.p_account_slot) !== profile.account_slot) throw new Error("Bill not found in this account.");
-          if (!["issued", "void"].includes(bill.status)) throw new Error("Delivery cannot be recorded for this bill status.");
-          const input = deliverySchema.parse(parameters.p_delivery);
-          if (input.deliveryDate < bill.bill_date) throw new Error("Delivery date cannot be before the bill date.");
-          const savedItems = rows("bill_items").filter(item => item.bill_id === bill.id).sort((left, right) => left.sort_order - right.sort_order);
-          if (!savedItems.length) throw new Error("This bill has no pledged items.");
-          if (input.itemMetals && input.itemMetals.length !== savedItems.length) throw new Error("The item list changed. Find the bill again.");
-          const items = savedItems.map((item, index) => ({ metal: item.metal === "Gold" || item.metal === "Silver" ? item.metal : input.itemMetals?.[index] ?? undefined, particulars: String(item.particulars), grams: Number(item.grams), assessedValue: Number(item.assessed_value), loanAmount: Number(item.loan_amount) }));
-          if (items.some(item => !item.metal)) throw new Error("Choose Gold or Silver for each item before saving delivery.");
-          const summary = calculateRepayment(items, bill.bill_date, input.deliveryDate);
-          const nextNumber = nextDeliveryNumber(profile);
-          if (!bill.delivery_no && (!Number.isSafeInteger(nextNumber) || nextNumber >= 2147483647)) throw new Error("Delivery number limit reached.");
-          const deliveryNo = bill.delivery_no || String(nextNumber);
-          const now = new Date().toISOString();
-          if (!bill.delivery_no) save("business_profiles", { ...profile, next_delivery_number: nextNumber + 1, updated_at: now });
-          savedItems.forEach((item, index) => { if (!item.metal) save("bill_items", { ...item, metal: items[index].metal }); });
-          save("bills", { ...bill, delivery_no: deliveryNo, delivery_date: input.deliveryDate, delivery_summary: summary, excel_sync_status: "pending", excel_sync_error: null, pdf_storage_path: null, pdf_error: null, delivery_pdf_storage_path: null, delivery_pdf_error: null, updated_at: now });
-          return { id: bill.id, previousPdfPath: bill.pdf_storage_path, previousDeliveryPdfPath: bill.delivery_pdf_storage_path };
+        if (name === "record_bill_delivery") return recordDelivery(ownerId, parameters.p_bill_id, parameters.p_account_slot, parameters.p_delivery);
+        if (name === "record_bill_deliveries") {
+          const input = batchDeliverySchema.parse(parameters.p_delivery);
+          return input.deliveries.map(delivery => recordDelivery(ownerId, delivery.billId, parameters.p_account_slot, { deliveryDate: input.deliveryDate, itemMetals: delivery.itemMetals }));
         }
         if (name === "edit_bill") {
           const { bill: original, profile } = billOwner(ownerId, parameters.p_bill_id);

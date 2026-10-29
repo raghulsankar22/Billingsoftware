@@ -13,6 +13,15 @@ export const deliverySchema = z.object({
   itemMetals: z.array(z.enum(["Gold", "Silver"]).nullable()).max(30).optional(),
 });
 
+export const batchDeliverySchema = z.object({
+  deliveryDate: dateSchema,
+  deliveries: z.array(z.object({
+    billId: z.string().uuid(),
+    itemMetals: z.array(z.enum(["Gold", "Silver"]).nullable()).max(30).optional(),
+  })).min(1, "Add at least one bill for delivery.").max(50, "You can deliver up to 50 bills together.")
+    .refine(deliveries => new Set(deliveries.map(delivery => delivery.billId)).size === deliveries.length, "Each bill can appear only once."),
+});
+
 export const billSchema = z.object({
   deliveryNo: z.string().max(60).optional().or(z.literal("")),
   deliveryDate: dateSchema.optional().or(z.literal("")),
