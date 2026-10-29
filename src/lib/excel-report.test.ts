@@ -71,3 +71,16 @@ it("fails the download on a database error instead of silently exporting partial
   db.error = { message: "database unavailable" };
   await expect(loadReportBills("owner", { query: "" })).rejects.toThrow(/retry the download/);
 });
+
+it("formats long exported rows after the table is committed, including void styling", async () => {
+  const address = "Long street near the market ".repeat(18).slice(0, 500);
+  db.rows = [{ ...row(1), status: "void", address, customer_name: "Long customer name ".repeat(6), bill_items: Array.from({ length: 30 }, () => ({ particulars: "W".repeat(180), grams: "1", assessed_value: "100", loan_amount: "80", sort_order: 0 })) }];
+  const workbook = buildReportRegister(await loadReportBills("owner", { query: "" }));
+  const loaded = new ExcelJS.Workbook(); await loaded.xlsx.load(await workbook.xlsx.writeBuffer() as never);
+  const sheet = loaded.getWorksheet("Bills")!;
+  expect(sheet.getRow(2).height).toBe(409.5);
+  expect(sheet.getCell("E2").value).toBe(address);
+  expect(String(sheet.getCell("G2").value)).toHaveLength("VOID — ".length + 30 * (180 + " (1 g)".length) + 29 * 2);
+  for (const column of ["E", "F", "G"]) expect(sheet.getCell(`${column}2`).alignment).toMatchObject({ vertical: "top", wrapText: true });
+  expect(sheet.getRow(2).font).toMatchObject({ strike: true, size: 11, color: { argb: "FFB42318" } });
+});

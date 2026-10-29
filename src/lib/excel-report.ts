@@ -1,8 +1,7 @@
 import { createAdminSupabase } from "./supabase";
 import { toBill } from "./bills";
-import { billRegisterRow, createRegister } from "./register";
+import { billRegisterRow, createRegister, formatRegisterSheet } from "./register";
 import type { Bill } from "./types";
-import { excelINRFormat } from "./money";
 
 type ReportFilters = { query: string; from?: string; to?: string };
 
@@ -44,6 +43,6 @@ export function buildReportRegister(bills: Bill[]) {
   for (const bill of bills) table.addRow(billRegisterRow(bill));
   table.commit();
   bills.forEach((bill, index) => { if (bill.status === "void") sheet.getRow(index + 2).font = { color: { argb: "FFB42318" }, strike: true }; });
-  sheet.getColumn(9).numFmt = excelINRFormat;
+  formatRegisterSheet(sheet);
   return workbook;
 }
