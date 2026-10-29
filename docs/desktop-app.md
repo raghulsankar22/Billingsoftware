@@ -1,6 +1,6 @@
 # Windows desktop app
 
-Run the Finance Billing shortcut or install `release/1.0.9/Finance-Billing-Setup-1.0.9.exe`.
+Run the Finance Billing shortcut or install `release/1.0.10/Finance-Billing-Setup-1.0.10.exe`.
 The app opens its own window and starts its loopback-only billing server automatically.
 No internet, separate Node installation, Microsoft 365 login or web hosting is needed for daily use.
 
@@ -78,6 +78,17 @@ database, so include that database in backups.
 New bill shows Loan amount before Assessed value. Entering the loan automatically
 sets the assessed value to loan plus 10%, rounded to paise (₹10,000 → ₹11,000).
 An old bill's assessed value is retained until its loan amount is changed.
+
+Version 1.0.10 brings the reviewed website changes into the desktop app: a left
+sidebar; Dashboard naming; reordered customer fields; shared customer IDs and details
+across every owned account; all-account Search with green Delivered statuses; and
+the monthly Overdue report for undelivered bills from the same month last year.
+Existing duplicate customer IDs remain valid search aliases for the shared identity.
+
+Dashboard includes Activity, Jewels, Gold and Silver. Stock views include all
+undelivered pledge rows for the selected account, with metal-specific loan amounts,
+grams, recorded piece quantities and bill counts. Missing quantities are identified
+instead of guessed. The existing PDF/Excel output and billing data folder are retained.
 
 The installer is not digitally signed. Distribution with a verified publisher identity
 requires a separate Windows code-signing certificate. No online updater is configured.

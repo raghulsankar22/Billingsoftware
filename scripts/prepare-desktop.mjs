@@ -10,7 +10,7 @@ const runtime = path.join(root, '.desktop-runtime');
 if (path.dirname(runtime) !== root || path.basename(runtime) !== '.desktop-runtime') throw new Error('Invalid desktop staging directory.');
 if (!process.argv.includes('--stage-only')) await new Promise((resolve, reject) => {
   const build = spawn(process.execPath, [path.join(root, 'node_modules/next/dist/bin/next'), 'build'], {
-    cwd: root, env: { ...process.env, NEXT_PUBLIC_BILLING_STORAGE: 'local', NEXT_TELEMETRY_DISABLED: '1' }, stdio: 'inherit', windowsHide: true,
+    cwd: root, env: { ...process.env, BILLING_NEXT_DIST_DIR: '.next', NEXT_PUBLIC_BILLING_STORAGE: 'local', NEXT_TELEMETRY_DISABLED: '1' }, stdio: 'inherit', windowsHide: true,
   });
   build.on('error', reject);
   build.on('exit', code => code === 0 ? resolve() : reject(new Error(`Billing build failed (${code}).`)));

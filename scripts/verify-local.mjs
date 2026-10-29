@@ -31,8 +31,10 @@ assert.equal(savedCustomer.phone, '1234567890');
 assert.equal((await api('/api/customers?phone=1234567890')).customer.id, savedCustomer.id);
 assert.equal((await api('/api/customers?aadhaar=1234-1234-1234')).customer.id, savedCustomer.id);
 assert.equal((await api('/api/customers?q=Test%20parent')).customers.length, 1);
-const duplicateCustomer = await fetch(base + '/api/customers', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(savedCustomer) });
-assert.equal(duplicateCustomer.status, 400);
+const reusedCustomer = await api('/api/customers', 'POST', savedCustomer);
+assert.equal(reusedCustomer.customer.id, savedCustomer.id);
+assert.ok(savedCustomer.customerCode);
+assert.equal((await api('/api/customers?account=2&phone=1234567890')).customer.customerCode, savedCustomer.customerCode);
 const input = { billDate: '2026-10-03', customerName: 'Test customer', fatherName: 'Test parent', address: '123 Test Street', phone: '1234567890', deliveryNo: 'D-01', deliveryDate: '2026-10-15', items: [{ metal: 'Gold', particulars: 'Test ring', grams: 1, assessedValue: 100, loanAmount: 80 }] };
 const issued = (await api('/api/bills', 'POST', input)).bill;
 assert.equal(issued.billNumber, 1);
@@ -227,4 +229,19 @@ try {
 const recovered = await api('/api/delivery/batch?account=4', 'POST', retryBody);
 assert.equal(recovered.bills[0].deliveryNo, '4'); assert.equal(recovered.bills[0].excelSyncStatus, 'synced');
 assert.equal((await api('/api/delivery?billNumber=1&account=4')).nextDeliveryNumber, 5);
-console.log('Local HTTP flow passed: new accounts, isolated numbering/Excel, atomic multi-delivery, separate receipts, correct interest and safe Excel retries.');
+// Release checks for the shared customer and owner-wide search features.
+assert.equal((await api('/api/customers?account=5&phone=1234567890')).customer.customerCode, savedCustomer.customerCode);
+const sharedSearch = await api(`/api/search?q=${encodeURIComponent(savedCustomer.customerCode)}`);
+assert.ok(sharedSearch.results.some(result => result.accountSlot === 4));
+assert.ok(sharedSearch.results.some(result => result.accountSlot === 5));
+for (const term of ['customer', 'Test Street', '1234567890']) {
+  assert.ok((await api(`/api/search?q=${encodeURIComponent(term)}`)).total > 0);
+}
+const priorYearInput = { ...input, customerId: savedCustomer.id, billDate: '2025-10-31', deliveryNo: '', deliveryDate: '' };
+const overdueLoan = (await api('/api/bills?account=5', 'POST', priorYearInput)).bill;
+const overdueHistory = await api('/api/bills?account=5&from=2025-10-01&to=2025-10-31');
+assert.ok(overdueHistory.bills.some(bill => bill.id === overdueLoan.id && !bill.deliveryNo && !bill.deliveryDate));
+assert.equal(overdueLoan.customerCode, savedCustomer.customerCode);
+const idSearch = await api(`/api/search?q=${encodeURIComponent(savedCustomer.customerCode)}`);
+assert.ok(idSearch.results.some(result => result.bill.id === overdueLoan.id && result.accountSlot === 5));
+console.log('Local HTTP flow passed: shared customers and IDs, all-account search, prior-year bill filtering, account numbering/Excel, PDFs, atomic multi-delivery, interest and safe Excel retries.');
