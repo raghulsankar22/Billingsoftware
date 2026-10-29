@@ -3,6 +3,7 @@ import { createBillPdf } from "./bill-pdf";
 import type { Bill } from "./types";
 import { decodePDFRawStream, PDFArray, PDFDocument, PDFRawStream } from "pdf-lib";
 import { billPdfTemplateVersion } from "./bill-conditions";
+import { billPdfMetadata } from "./bill-pdf-metadata";
 
 const bill: Bill = {
   id: "bill-1",
@@ -25,7 +26,25 @@ const bill: Bill = {
   businessSnapshot: { business_name: "Sample Finance", address: "1 Market Street, Chennai", phone: "04412345678" },
 };
 
+async function pageContents(bytes: Uint8Array) {
+  const document = await PDFDocument.load(bytes);
+  return document.getPages().map(page => {
+    const contents = page.node.Contents();
+    const streams = contents instanceof PDFArray ? contents.asArray().map(ref => document.context.lookup(ref)) : [contents];
+    return streams.filter((stream): stream is PDFRawStream => stream instanceof PDFRawStream)
+      .map(stream => Buffer.from(decodePDFRawStream(stream).decode()).toString("latin1")).join("\n");
+  });
+}
+
 describe("bill PDF", () => {
+  it("visibly marks voided finance bills on the first and continuation pages", async () => {
+    const normal = await pageContents(await createBillPdf(bill, bill.businessSnapshot!));
+    expect(normal.join("\n")).not.toContain("VOIDED");
+    const voided = await pageContents(await createBillPdf({ ...bill, status: "void", items: Array.from({ length: 50 }, () => ({ ...bill.items[0] })) }, bill.businessSnapshot!));
+    expect(voided.length).toBeGreaterThan(1);
+    expect(voided[0]).toContain("(VOIDED)");
+    expect(voided.every(page => page.includes("VOIDED"))).toBe(true);
+  });
   it("prints collection balances without the interest-at-issue row or note", async () => {
     const bytes = await createBillPdf(bill, bill.businessSnapshot!, "delivery");
     const document = await PDFDocument.load(bytes);
@@ -42,7 +61,7 @@ describe("bill PDF", () => {
   });
   it("includes the snapshotted license rather than another current license", async () => {
     const bytes = await createBillPdf({ ...bill, businessSnapshot: { ...bill.businessSnapshot!, license_number: "TN-OLD-123" } }, { ...bill.businessSnapshot!, license_number: "TN-NEW-456" });
-    expect((await PDFDocument.load(bytes)).getKeywords()).toBe(JSON.stringify({ businessLicenseNumber: "TN-OLD-123" }));
+    expect((await PDFDocument.load(bytes)).getKeywords()).toBe(billPdfMetadata({ ...bill, businessSnapshot: { ...bill.businessSnapshot!, license_number: "TN-OLD-123" } }, bill.businessSnapshot!, "finance"));
   });
   it("creates a delivery bill PDF and requires a saved delivery number and date", async () => {
     const bytes = await createBillPdf(bill, bill.businessSnapshot!, "delivery");

@@ -8,7 +8,8 @@ import type { Bill } from "./types";
 import { calculateRepayment } from "./interest";
 import { createConditionsBlock } from "./bill-conditions-pdf";
 import { billPdfTemplateVersion } from "./bill-conditions";
-import { billLicenseNumber, billLicenseMetadata } from "./business-license";
+import { billLicenseNumber } from "./business-license";
+import { billPdfMetadata } from "./bill-pdf-metadata";
 
 type BusinessDetails = { business_name: string; address: string; phone: string; logo_url?: string | null; license_number?: string | null };
 type SnapshottedBill = Bill & { businessSnapshot?: BusinessDetails };
@@ -22,7 +23,7 @@ export async function createBillPdf(bill: SnapshottedBill, currentProfile: Busin
   if (repayment?.missingMetal) throw new Error("Choose Gold or Silver for every item before printing the delivery bill.");
   const business = bill.businessSnapshot ?? currentProfile;
   const pdf = new jsPDF({ unit: "mm", format: "a4", compress: true });
-  pdf.setProperties({ subject: billPdfTemplateVersion, keywords: billLicenseMetadata(bill, currentProfile) });
+  pdf.setProperties({ subject: billPdfTemplateVersion, keywords: billPdfMetadata(bill, currentProfile, documentType) });
   pdf.addFileToVFS("BillCurrency.ttf", currencyFont);
   pdf.addFont("BillCurrency.ttf", "BillCurrency", "normal");
   const left = 15;
@@ -60,7 +61,7 @@ export async function createBillPdf(bill: SnapshottedBill, currentProfile: Busin
     y = 18;
     pdf.setFontSize(9);
     pdf.setFont("helvetica", "bold");
-    pdf.text(`${business.business_name} - ${delivery ? `Delivery #${bill.deliveryNo}` : `Bill #${bill.billNumber}`}`, left, y);
+    pdf.text(`${business.business_name} - ${delivery ? `Delivery #${bill.deliveryNo}` : `${bill.status === "void" ? "VOIDED " : ""}Bill #${bill.billNumber}`}`, left, y);
     y += 9;
   }
 
@@ -94,6 +95,14 @@ export async function createBillPdf(bill: SnapshottedBill, currentProfile: Busin
   pdf.setFontSize(14);
   pdf.text(delivery ? "DELIVERY BILL" : "FINANCE BILL", 105, y, { align: "center" });
   y += 10;
+  if (!delivery && bill.status === "void") {
+    pdf.setFillColor(255, 240, 238);
+    pdf.rect(left, y - 5, 180, 9, "F");
+    pdf.setTextColor(180, 35, 24);
+    pdf.text("VOIDED", 105, y + 1, { align: "center" });
+    pdf.setTextColor(0);
+    y += 12;
+  }
   pdf.setFontSize(10);
   pdf.text(delivery ? `Delivery No.: ${bill.deliveryNo}` : `Bill No.: ${bill.billNumber}`, left, y);
   pdf.text(`Date: ${delivery ? bill.deliveryDate : bill.billDate}`, 148, y);

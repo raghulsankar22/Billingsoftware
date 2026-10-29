@@ -4,6 +4,7 @@ import { loadBillPdf } from "./bill-pdf-storage";
 import { createBillPdf } from "./bill-pdf";
 import { billPdfTemplateVersion } from "./bill-conditions";
 import type { Bill } from "./types";
+import { billPdfMetadata } from "./bill-pdf-metadata";
 
 const storage = vi.hoisted(() => {
   const query = { error: null, eq: vi.fn() };
@@ -27,6 +28,22 @@ const bill: Bill = {
 describe("bill PDF template upgrades", () => {
   beforeEach(() => { vi.clearAllMocks(); storage.upload.mockResolvedValue({ error: null }); });
 
+  it("regenerates an issued bill's cached PDF after the bill is voided", async () => {
+    const current = await createBillPdf(bill, profile);
+    storage.download.mockResolvedValue({ data: new Blob([Buffer.from(current)]), error: null });
+    const bytes = await loadBillPdf(profile, { ...bill, status: "void" }, "profile/issued.pdf");
+    expect(storage.upload).toHaveBeenCalledOnce();
+    expect(bytes).not.toEqual(current);
+  });
+
+  it("does not reuse a finance document as a delivery receipt", async () => {
+    const delivery = { ...bill, deliveryNo: "1", deliveryDate: "2026-11-29" };
+    const current = await createBillPdf(delivery, profile);
+    storage.download.mockResolvedValue({ data: new Blob([Buffer.from(current)]), error: null });
+    await loadBillPdf(profile, delivery, "profile/finance.pdf", "delivery");
+    expect(storage.upload).toHaveBeenCalledOnce();
+  });
+
   it("reuses a PDF that already has the current text and logo template", async () => {
     const current = await createBillPdf(bill, profile);
     storage.download.mockResolvedValue({ data: new Blob([Buffer.from(current)]), error: null });
@@ -49,7 +66,7 @@ describe("bill PDF template upgrades", () => {
     const old = await createBillPdf(bill, profile);
     storage.download.mockResolvedValue({ data: new Blob([Buffer.from(old)]), error: null });
     const bytes = await loadBillPdf({ ...profile, license_number: "TN-123" }, bill, "profile/old.pdf");
-    expect((await PDFDocument.load(bytes)).getKeywords()).toBe(JSON.stringify({ businessLicenseNumber: "TN-123" }));
+    expect((await PDFDocument.load(bytes)).getKeywords()).toBe(billPdfMetadata(bill, { ...profile, license_number: "TN-123" }, "finance"));
     expect(storage.upload).toHaveBeenCalledOnce();
   });
   it("refreshes a saved delivery PDF from the interest-at-issue template", async () => {

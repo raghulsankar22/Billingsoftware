@@ -4,7 +4,7 @@ import { createBillPdf } from "./bill-pdf";
 import { createAdminSupabase } from "./supabase";
 import { PDFDocument } from "pdf-lib";
 import { billPdfTemplateVersion } from "./bill-conditions";
-import { billLicenseMetadata } from "./business-license";
+import { billPdfMetadata } from "./bill-pdf-metadata";
 
 type BusinessDetails = { id: string; business_name: string; address: string; phone: string; logo_url?: string | null; license_number?: string | null };
 
@@ -34,7 +34,7 @@ export async function loadBillPdf(profile: BusinessDetails, bill: Bill, path?: s
       const bytes = new Uint8Array(await data.arrayBuffer());
       try {
         const document = await PDFDocument.load(bytes);
-        if (document.getSubject() === billPdfTemplateVersion && document.getKeywords() === billLicenseMetadata(bill, profile)) return bytes;
+        if (document.getSubject() === billPdfTemplateVersion && document.getKeywords() === billPdfMetadata(bill, profile, documentType)) return bytes;
       } catch {
         // Regenerate unreadable PDFs and older photo-based templates as a new version.
       }
