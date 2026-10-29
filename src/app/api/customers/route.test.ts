@@ -29,12 +29,22 @@ beforeEach(async () => {
 afterEach(() => { db.close(); rmSync(mocks.directory, { recursive: true, force: true }); mocks.local = true; vi.resetAllMocks(); });
 
 describe("customer API", () => {
+  it("assigns canonical codes, searches them without crossing accounts and ignores client codes", async () => {
+    const response = await POST(request("POST", "account=1", { ...details, customerCode: "C999999" }));
+    const { customer } = await response.json();
+    expect(customer.customerCode).toBe("C000001");
+    expect(await (await GET(request("GET", "account=1&q=c000001"))).json()).toEqual({ customers: [customer] });
+    expect(await (await GET(request("GET", "account=2&q=C000001"))).json()).toEqual({ customers: [] });
+    const updated = await PATCH(request("PATCH", "account=1", { ...customer, customerCode: "C999999", name: "Changed" }));
+    expect((await updated.json()).customer).toMatchObject({ id: customer.id, customerCode: "C000001" });
+    expect((await (await POST(request("POST", "account=2", details))).json()).customer.customerCode).toBe("C000002");
+  });
   it("creates, searches, looks up normalized exact identifiers and edits without caching personal details", async () => {
     const created = await POST(request("POST", "account=1", { ...details, phone: "+91 98765 43210" }));
     expect(created.status).toBe(201);
     expect(created.headers.get("cache-control")).toBe("no-store");
     const { customer } = await created.json();
-    expect(customer).toMatchObject(details);
+    expect(customer).toMatchObject({ ...details, customerCode: "C000001" });
     expect(await (await GET(request("GET", "account=1&q=TEST%20CUSTOMER"))).json()).toEqual({ customers: [customer] });
     for (const query of ["phone=%2B91%2098765%2043210", "aadhaar=1234-5678-9012", "phone=9876543210&aadhaar=123456789012"]) {
       const response = await GET(request("GET", `account=1&${query}`));
@@ -44,7 +54,7 @@ describe("customer API", () => {
     const updated = await PATCH(request("PATCH", "account=1", { ...customer, name: "Changed Customer", phone: "", aadhaar: "" }));
     expect(updated.status).toBe(200);
     expect(updated.headers.get("cache-control")).toBe("no-store");
-    expect((await updated.json()).customer).toMatchObject({ id: customer.id, name: "Changed Customer", phone: "", aadhaar: "" });
+    expect((await updated.json()).customer).toMatchObject({ id: customer.id, customerCode: customer.customerCode, name: "Changed Customer", phone: "", aadhaar: "" });
     expect(await (await GET(request("GET", "account=1&phone=9876543210"))).json()).toEqual({ customer: null });
     expect(mocks.requireUser).toHaveBeenCalledTimes(7);
   });

@@ -10,8 +10,13 @@ export interface CustomerInput {
 
 export interface Customer extends CustomerInput {
   id: string;
+  customerCode: string;
   createdAt: string;
   updatedAt: string;
+}
+
+export function customerCode(number: number): string {
+  return `C${String(number).padStart(6, "0")}`;
 }
 
 /** Store the same phone key for local and +91 formatted Indian numbers. */

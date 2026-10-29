@@ -21,6 +21,7 @@ export type RepaymentSummary = {
 };
 
 export type BillInput = {
+  customerId?: string;
   deliveryNo?: string;
   deliveryDate?: string;
   billDate: string;
@@ -34,6 +35,7 @@ export type BillInput = {
 
 export type Bill = BillInput & {
   id: string;
+  customerCode?: string;
   profileId?: string;
   billNumber: number;
   status: BillStatus;

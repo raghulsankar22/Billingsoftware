@@ -3,6 +3,11 @@ import { toBill, totals } from "./bills";
 import type { BillInput } from "./types";
 
 describe("bill persistence mapping", () => {
+  it("restores saved customer links and leaves older bills unlinked", () => {
+    expect(toBill({ customer_id: "saved-customer", customer_code: "C000042" })).toMatchObject({ customerId: "saved-customer", customerCode: "C000042" });
+    expect(toBill({}).customerId).toBeUndefined();
+    expect(toBill({ customer_id: null, customer_code: null }).customerCode).toBeUndefined();
+  });
   it("restores pledge items in their issued order", () => {
     const bill = toBill({ items: [
       { metal: "Silver", particulars: "Chain", grams: "2", assessed_value: "200", loan_amount: "100", sort_order: 1 },

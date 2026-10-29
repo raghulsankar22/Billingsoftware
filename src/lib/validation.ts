@@ -23,6 +23,7 @@ export const batchDeliverySchema = z.object({
 });
 
 export const billSchema = z.object({
+  customerId: z.string().uuid("Choose a saved customer.").or(z.literal("")).optional(),
   deliveryNo: z.string().max(60).optional().or(z.literal("")),
   deliveryDate: dateSchema.optional().or(z.literal("")),
   billDate: dateSchema,

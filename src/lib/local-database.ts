@@ -7,7 +7,7 @@ import { calculateRepayment } from "./interest";
 import { jewelleryChoices, jewelleryKey, jewelleryNameSchema } from "./jewellery";
 import { isAccountSlot } from "./account-url";
 import { profileSchema } from "./profile-validation";
-import { customerSchema, type Customer } from "./customers";
+import { customerCode, customerSchema, type Customer } from "./customers";
 
 type Row = Record<string, any>;
 type Result = { data: any; error: Error | null; count?: number | null };
@@ -24,13 +24,17 @@ export function createLocalDatabase(directory = localDataDirectory()) {
   let db = connections.get(filename);
   if (!db) {
     db = new DatabaseSync(filename);
-    db.exec("PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA busy_timeout=10000; CREATE TABLE IF NOT EXISTS records (table_name TEXT NOT NULL, id TEXT NOT NULL, body TEXT NOT NULL CHECK(json_valid(body)), PRIMARY KEY(table_name,id)); CREATE UNIQUE INDEX IF NOT EXISTS profile_account ON records(json_extract(body,'$.owner_id'), json_extract(body,'$.account_slot')) WHERE table_name='business_profiles'; CREATE UNIQUE INDEX IF NOT EXISTS bill_number ON records(json_extract(body,'$.profile_id'), json_extract(body,'$.bill_number')) WHERE table_name='bills'; CREATE UNIQUE INDEX IF NOT EXISTS replacement ON records(json_extract(body,'$.replacement_for_id')) WHERE table_name='bills' AND json_extract(body,'$.replacement_for_id') IS NOT NULL;");
+    db.exec("PRAGMA busy_timeout=10000; PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; CREATE TABLE IF NOT EXISTS records (table_name TEXT NOT NULL, id TEXT NOT NULL, body TEXT NOT NULL CHECK(json_valid(body)), PRIMARY KEY(table_name,id)); CREATE UNIQUE INDEX IF NOT EXISTS profile_account ON records(json_extract(body,'$.owner_id'), json_extract(body,'$.account_slot')) WHERE table_name='business_profiles'; CREATE UNIQUE INDEX IF NOT EXISTS bill_number ON records(json_extract(body,'$.profile_id'), json_extract(body,'$.bill_number')) WHERE table_name='bills'; CREATE UNIQUE INDEX IF NOT EXISTS replacement ON records(json_extract(body,'$.replacement_for_id')) WHERE table_name='bills' AND json_extract(body,'$.replacement_for_id') IS NOT NULL;");
     db.prepare("UPDATE records AS profile SET body=json_set(body,'$.next_bill_number',1,'$.next_delivery_number',1,'$.updated_at',?) WHERE table_name='business_profiles' AND (json_extract(body,'$.next_bill_number') IS NOT 1 OR json_extract(body,'$.next_delivery_number') IS NOT 1) AND NOT EXISTS (SELECT 1 FROM records AS bill WHERE bill.table_name='bills' AND json_extract(bill.body,'$.profile_id')=profile.id)").run(new Date().toISOString());
     connections.set(filename, db);
   }
   const database = db;
   database.exec("CREATE TABLE IF NOT EXISTS jewellery_items (name_key TEXT PRIMARY KEY, name TEXT NOT NULL)");
-  database.exec(`CREATE TABLE IF NOT EXISTS customers (
+  // Older desktop releases insert without customer_number. Allocate it in a
+  // trigger shared by every writer, and serialize schema inspection/backfill.
+  database.exec("BEGIN IMMEDIATE");
+  try {
+    database.exec(`CREATE TABLE IF NOT EXISTS customers (
     id TEXT PRIMARY KEY, profile_id TEXT NOT NULL,
     name TEXT NOT NULL, father_name TEXT NOT NULL, address TEXT NOT NULL,
     phone TEXT NOT NULL DEFAULT '' CHECK(phone='' OR (length(phone)=10 AND phone NOT GLOB '*[^0-9]*')),
@@ -40,6 +44,30 @@ export function createLocalDatabase(directory = localDataDirectory()) {
   CREATE INDEX IF NOT EXISTS customers_profile ON customers(profile_id);
   CREATE UNIQUE INDEX IF NOT EXISTS customer_phone ON customers(profile_id,phone) WHERE phone<>'';
   CREATE UNIQUE INDEX IF NOT EXISTS customer_aadhaar ON customers(profile_id,aadhaar) WHERE aadhaar<>'';`);
+    if (!database.prepare("PRAGMA table_info(customers)").all().some(column => column.name === "customer_number")) {
+      database.exec("ALTER TABLE customers ADD COLUMN customer_number INTEGER CHECK(customer_number IS NULL OR (typeof(customer_number)='integer' AND customer_number>0))");
+    }
+    database.exec(`CREATE TABLE IF NOT EXISTS customer_number_sequence (
+      singleton INTEGER PRIMARY KEY CHECK(singleton=1), last_number INTEGER NOT NULL CHECK(last_number>=0)
+    );
+    INSERT INTO customer_number_sequence(singleton,last_number) VALUES(1,0) ON CONFLICT(singleton) DO NOTHING;
+    UPDATE customer_number_sequence SET last_number=MAX(last_number,COALESCE((SELECT MAX(customer_number) FROM customers),0)) WHERE singleton=1;`);
+    const missing = database.prepare("SELECT id FROM customers WHERE customer_number IS NULL ORDER BY created_at,id").all();
+    for (const customer of missing) {
+      database.exec("UPDATE customer_number_sequence SET last_number=last_number+1 WHERE singleton=1");
+      database.prepare("UPDATE customers SET customer_number=(SELECT last_number FROM customer_number_sequence WHERE singleton=1) WHERE id=?").run(customer.id);
+    }
+    database.exec(`CREATE UNIQUE INDEX IF NOT EXISTS customer_number ON customers(customer_number) WHERE customer_number IS NOT NULL;
+    CREATE TRIGGER IF NOT EXISTS customer_number_allocate AFTER INSERT ON customers
+    BEGIN
+      UPDATE customer_number_sequence SET last_number=MAX(last_number+1,COALESCE(NEW.customer_number,0)) WHERE singleton=1;
+      UPDATE customers SET customer_number=(SELECT last_number FROM customer_number_sequence WHERE singleton=1) WHERE id=NEW.id AND customer_number IS NULL;
+    END;
+    CREATE TRIGGER IF NOT EXISTS customer_number_immutable BEFORE UPDATE OF customer_number ON customers
+    WHEN OLD.customer_number IS NOT NULL AND NEW.customer_number IS NOT OLD.customer_number
+    BEGIN SELECT RAISE(ABORT,'Customer number cannot be changed.'); END;`);
+    database.exec("COMMIT");
+  } catch (error) { database.exec("ROLLBACK"); throw error; }
   const jewelleryList = () => jewelleryChoices(database.prepare("SELECT name FROM jewellery_items ORDER BY name COLLATE NOCASE, name").all().map(row => String(row.name)));
   const rows = (table: string): Row[] => {
     if (!tables.has(table)) throw new Error(`Local storage does not support ${table}.`);
@@ -60,18 +88,25 @@ export function createLocalDatabase(directory = localDataDirectory()) {
     if (!profile) throw new Error("Set up this business account first.");
     return String(profile.id);
   };
-  const toCustomer = (row: Row): Customer => ({ id: String(row.id), name: String(row.name), fatherName: String(row.father_name), address: String(row.address), phone: String(row.phone), aadhaar: String(row.aadhaar), createdAt: String(row.created_at), updatedAt: String(row.updated_at) });
+  const toCustomer = (row: Row): Customer => ({ id: String(row.id), customerCode: customerCode(Number(row.customer_number)), name: String(row.name), fatherName: String(row.father_name), address: String(row.address), phone: String(row.phone), aadhaar: String(row.aadhaar), createdAt: String(row.created_at), updatedAt: String(row.updated_at) });
+  const customerLink = (profileId: string, id?: string) => {
+    if (!id) return { customer_id: null, customer_code: null };
+    const customer = database.prepare("SELECT * FROM customers WHERE profile_id=? AND id=?").get(profileId, id);
+    if (!customer) throw new Error("Customer not found in this account.");
+    return { customer_id: String(customer.id), customer_code: customerCode(Number(customer.customer_number)) };
+  };
   const nextDeliveryNumber = (profile: Row) => rows("bills").filter(bill => bill.profile_id === profile.id && /^\d+$/.test(String(bill.delivery_no ?? ""))).reduce((next, bill) => Math.max(next, Number(bill.delivery_no) + 1), Math.max(1, Number(profile.next_delivery_number) || 1));
   const issue = (ownerId: string, input: Row) => {
     const bill = billSchema.parse(input);
     if (bill.items.some(item => !item.metal)) throw new Error("Choose Gold or Silver for every item.");
     const profile = rows("business_profiles").find(p => p.owner_id === ownerId && p.account_slot === slot(input.accountSlot));
     if (!profile) throw new Error("Business profile is required");
+    const link = customerLink(profile.id, bill.customerId);
     const nextBillNumber = hasBills(profile.id) ? profile.next_bill_number : 1;
     if (nextBillNumber >= 2147483647) throw new Error("Bill number limit reached");
     const now = new Date().toISOString(); const id = randomUUID();
     const cents = (key: "assessedValue" | "loanAmount") => bill.items.reduce((sum, item) => sum + Math.round(item[key] * 100), 0) / 100;
-    save("bills", { id, profile_id: profile.id, bill_number: nextBillNumber, bill_date: bill.billDate, delivery_no: bill.deliveryNo || null, delivery_date: bill.deliveryDate || null, customer_name: bill.customerName, father_name: bill.fatherName, address: bill.address, phone: bill.phone, government_id: bill.governmentId || null, total_assessed_value: cents("assessedValue"), total_loan_amount: cents("loanAmount"), status: "issued", replacement_for_id: null, excel_sync_status: "pending", excel_sync_error: null, pdf_storage_path: null, pdf_error: null, created_at: now, voided_at: null, business_snapshot: { business_name: profile.business_name, address: profile.address, phone: profile.phone, logo_url: profile.logo_url, license_number: profile.license_number ?? null } });
+    save("bills", { id, ...link, profile_id: profile.id, bill_number: nextBillNumber, bill_date: bill.billDate, delivery_no: bill.deliveryNo || null, delivery_date: bill.deliveryDate || null, customer_name: bill.customerName, father_name: bill.fatherName, address: bill.address, phone: bill.phone, government_id: bill.governmentId || null, total_assessed_value: cents("assessedValue"), total_loan_amount: cents("loanAmount"), status: "issued", replacement_for_id: null, excel_sync_status: "pending", excel_sync_error: null, pdf_storage_path: null, pdf_error: null, created_at: now, voided_at: null, business_snapshot: { business_name: profile.business_name, address: profile.address, phone: profile.phone, logo_url: profile.logo_url, license_number: profile.license_number ?? null } });
     bill.items.forEach((item, index) => save("bill_items", { id: randomUUID(), bill_id: id, metal: item.metal, particulars: item.particulars, grams: item.grams, assessed_value: item.assessedValue, loan_amount: item.loanAmount, sort_order: index }));
     save("business_profiles", { ...profile, next_bill_number: nextBillNumber + 1, updated_at: now });
     return { id };
@@ -174,7 +209,7 @@ export function createLocalDatabase(directory = localDataDirectory()) {
         if (search.length > 200) throw new Error("Customer search is too long.");
         const query = search.trim().toLocaleLowerCase();
         return database.prepare("SELECT * FROM customers WHERE profile_id=? ORDER BY name COLLATE NOCASE, id").all(profileId)
-          .map(toCustomer).filter(customer => !query || [customer.name, customer.fatherName, customer.address, customer.phone, customer.aadhaar].some(value => value.toLocaleLowerCase().includes(query)));
+          .map(toCustomer).filter(customer => !query || [customer.customerCode, customer.name, customer.fatherName, customer.address, customer.phone, customer.aadhaar].some(value => value.toLocaleLowerCase().includes(query)));
       },
       lookup: (account: number, identifiers: { phone?: string; aadhaar?: string }): Customer | null => {
         const profileId = customerProfile(account);
@@ -194,10 +229,10 @@ export function createLocalDatabase(directory = localDataDirectory()) {
           const duplicate = database.prepare("SELECT id FROM customers WHERE profile_id=? AND id<>? AND ((?<>'' AND phone=?) OR (?<>'' AND aadhaar=?))").get(profileId, customerId, input.phone, input.phone, input.aadhaar, input.aadhaar);
           if (duplicate) throw new Error("A customer with this phone or Aadhaar already exists in this account.");
           const now = new Date().toISOString();
-          const customer: Customer = { ...input, id: customerId, createdAt: previous ? String(previous.created_at) : now, updatedAt: now };
+          const customer = { ...input, id: customerId, createdAt: previous ? String(previous.created_at) : now, updatedAt: now };
           database.prepare("INSERT INTO customers(id,profile_id,name,father_name,address,phone,aadhaar,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,father_name=excluded.father_name,address=excluded.address,phone=excluded.phone,aadhaar=excluded.aadhaar,updated_at=excluded.updated_at")
             .run(customer.id, profileId, customer.name, customer.fatherName, customer.address, customer.phone, customer.aadhaar, customer.createdAt, customer.updatedAt);
-          return customer;
+          return toCustomer(database.prepare("SELECT * FROM customers WHERE id=?").get(customerId)!);
         });
       },
     },
@@ -246,10 +281,11 @@ export function createLocalDatabase(directory = localDataDirectory()) {
           if (original.status !== "issued") throw new Error("Only issued bills can be edited.");
           if (parameters.p_bill.accountSlot !== undefined && slot(parameters.p_bill.accountSlot) !== profile.account_slot) throw new Error("A bill must remain in its original account.");
           const input = billSchema.parse(parameters.p_bill);
+          const link = input.customerId === undefined ? {} : customerLink(profile.id, input.customerId);
           if (input.items.some(item => !item.metal)) throw new Error("Choose Gold or Silver for every item.");
           const total = (key: "assessedValue" | "loanAmount") => input.items.reduce((sum, item) => sum + Math.round(item[key] * 100), 0) / 100;
           const deliverySummary = input.deliveryNo && input.deliveryDate && input.deliveryDate >= input.billDate ? calculateRepayment(input.items, input.billDate, input.deliveryDate) : null;
-          save("bills", { ...original, bill_date: input.billDate, delivery_no: input.deliveryNo || null, delivery_date: input.deliveryDate || null, delivery_summary: deliverySummary, customer_name: input.customerName, father_name: input.fatherName, address: input.address, phone: input.phone, government_id: input.governmentId === undefined ? original.government_id ?? null : input.governmentId || null, total_assessed_value: total("assessedValue"), total_loan_amount: total("loanAmount"), excel_sync_status: "pending", excel_sync_error: null, pdf_storage_path: null, pdf_error: null, delivery_pdf_storage_path: null, delivery_pdf_error: null, updated_at: new Date().toISOString() });
+          save("bills", { ...original, ...link, bill_date: input.billDate, delivery_no: input.deliveryNo || null, delivery_date: input.deliveryDate || null, delivery_summary: deliverySummary, customer_name: input.customerName, father_name: input.fatherName, address: input.address, phone: input.phone, government_id: input.governmentId === undefined ? original.government_id ?? null : input.governmentId || null, total_assessed_value: total("assessedValue"), total_loan_amount: total("loanAmount"), excel_sync_status: "pending", excel_sync_error: null, pdf_storage_path: null, pdf_error: null, delivery_pdf_storage_path: null, delivery_pdf_error: null, updated_at: new Date().toISOString() });
           database.prepare("DELETE FROM records WHERE table_name='bill_items' AND json_extract(body,'$.bill_id')=?").run(original.id);
           input.items.forEach((item, index) => save("bill_items", { id: randomUUID(), bill_id: original.id, metal: item.metal, particulars: item.particulars, grams: item.grams, assessed_value: item.assessedValue, loan_amount: item.loanAmount, sort_order: index }));
           return { id: original.id, previousPdfPath: original.pdf_storage_path, previousDeliveryPdfPath: original.delivery_pdf_storage_path };
