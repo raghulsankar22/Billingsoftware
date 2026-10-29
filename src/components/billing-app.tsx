@@ -15,7 +15,7 @@ import { BillDelivery } from "./bill-delivery";
 import { DeliveryBills } from "./delivery-bills";
 import { BusinessUpdates } from "./business-updates";
 import { Customers } from "./customers";
-import { OverdueBills } from "./overdue-bills";
+import { NoticeBills, OverdueBills } from "./overdue-bills";
 import { AllAccountSearch } from "./all-account-search";
 import { ProfileForm } from "./profile-form";
 import { SignIn } from "./sign-in";
@@ -52,7 +52,7 @@ export function BillingApp() {
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [bills, setBills] = useState<Bill[]>([]);
   const [query, setQuery] = useState("");
-  const [view, setView] = useState<"bills" | "new" | "customers" | "delivery" | "delivery-bills" | "dashboard" | "overdue" | "search" | "settings">("bills");
+  const [view, setView] = useState<"bills" | "new" | "customers" | "delivery" | "delivery-bills" | "dashboard" | "notice" | "overdue" | "search" | "settings">("bills");
   const [selected, setSelected] = useState<Bill | null>(null);
   const [overviewBill, setOverviewBill] = useState<Bill | null>(null);
   const [deliveryDocumentBill, setDeliveryDocumentBill] = useState<Bill | null>(null);
@@ -264,13 +264,14 @@ export function BillingApp() {
 
     <nav className="side-nav" aria-label="Billing menu">
       {localStorageEnabled && <button className={view === "dashboard" ? "active" : ""} aria-current={view === "dashboard" ? "page" : undefined} onClick={() => { setExcelNotice(""); setView("dashboard"); }}>Dashboard</button>}
-      <button className={view === "bills" ? "active" : ""} aria-current={view === "bills" ? "page" : undefined} onClick={() => { setExcelNotice(""); setView("bills"); }}>Bills</button>
-      {localStorageEnabled && <button className={view === "search" ? "active" : ""} aria-current={view === "search" ? "page" : undefined} onClick={() => { setExcelNotice(""); setView("search"); }}>Search</button>}
-      {localStorageEnabled && <button className={view === "overdue" ? "active" : ""} aria-current={view === "overdue" ? "page" : undefined} onClick={() => { setExcelNotice(""); setView("overdue"); }}>Overdue</button>}
+      {localStorageEnabled && <button className={view === "customers" ? "active" : ""} onClick={() => { setExcelNotice(""); setView("customers"); }}>Customers</button>}
       <button className={view === "new" ? "active" : ""} onClick={() => { setExcelNotice(""); setEditingSource(null); setView("new"); }}>New bill</button>
-      {localStorageEnabled && <button className={view === "customers" ? "active" : ""} onClick={() => { setExcelNotice(""); setView("customers"); }}>Customer</button>}
       {localStorageEnabled && <button className={view === "delivery" ? "active" : ""} onClick={() => { setExcelNotice(""); setView("delivery"); }}>Delivery</button>}
+      <button className={view === "bills" ? "active" : ""} aria-current={view === "bills" ? "page" : undefined} onClick={() => { setExcelNotice(""); setView("bills"); }}>All bills</button>
       {localStorageEnabled && <button className={view === "delivery-bills" ? "active" : ""} onClick={() => { setExcelNotice(""); setView("delivery-bills"); }}>Delivery Bills</button>}
+      {localStorageEnabled && <button className={view === "notice" ? "active" : ""} aria-current={view === "notice" ? "page" : undefined} onClick={() => { setExcelNotice(""); setView("notice"); }}>Notice</button>}
+      {localStorageEnabled && <button className={view === "overdue" ? "active" : ""} aria-current={view === "overdue" ? "page" : undefined} onClick={() => { setExcelNotice(""); setView("overdue"); }}>Overdue</button>}
+      {localStorageEnabled && <button className={view === "search" ? "active" : ""} aria-current={view === "search" ? "page" : undefined} onClick={() => { setExcelNotice(""); setView("search"); }}>Search</button>}
       <button className={`business-profile-tab${view === "settings" ? " active" : ""}`} onClick={() => { setExcelNotice(""); setView("settings"); }}>Business profile</button>
     </nav>
 
@@ -290,10 +291,11 @@ export function BillingApp() {
       {view === "delivery-bills" && profile && accountLoaded && <DeliveryBills key={accountSlot} accountSlot={accountSlot} onOpen={setDeliveryDocumentBill} onOriginal={setSelected} />}
       {view === "dashboard" && profile && accountLoaded && <BusinessUpdates key={accountSlot} accountSlot={accountSlot} onBill={setSelected} onDelivery={setDeliveryDocumentBill} />}
       {view === "overdue" && profile && accountLoaded && <OverdueBills key={accountSlot} accountSlot={accountSlot} onOpen={setSelected} onOverview={setOverviewBill} />}
+      {view === "notice" && profile && accountLoaded && <NoticeBills key={accountSlot} accountSlot={accountSlot} onOpen={setSelected} onOverview={setOverviewBill} />}
       {view === "search" && accountLoaded && <AllAccountSearch accountSlot={accountSlot} />}
       {view === "bills" && accountLoaded && profile && <section className="panel">
         <div className="section-heading history-heading">
-          <div><p className="eyebrow">ACCOUNT {accountSlot} HISTORY</p><h2>Issued bills</h2></div>
+          <div><p className="eyebrow">ACCOUNT {accountSlot} HISTORY</p><h2>All bills</h2></div>
           <form className="search" onSubmit={(event) => { event.preventDefault(); void load(query, accountSlot); }}>
             <input placeholder="Bill no., customer, or mobile" value={query} onChange={(event) => setQuery(event.target.value)} />
             <button className="secondary">Search</button>

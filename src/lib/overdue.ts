@@ -11,7 +11,10 @@ export function overduePeriod(reviewMonth: string): PeriodRange {
 }
 
 export function overdueBillHistory(bills: readonly Bill[], reviewMonth: string, search = ""): Bill[] {
-  const range = overduePeriod(reviewMonth);
+  return pendingBillHistory(bills, overduePeriod(reviewMonth), search);
+}
+
+export function pendingBillHistory(bills: readonly Bill[], range: PeriodRange, search = ""): Bill[] {
   const query = search.trim().toLocaleLowerCase().replace(/^#/, "");
   return bills.filter(bill => {
     if (bill.billDate < range.from || bill.billDate > range.to) return false;
