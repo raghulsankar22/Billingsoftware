@@ -16,7 +16,7 @@ async function context(request: Request) {
 }
 
 function failure(error: unknown) {
-  return NextResponse.json({ error: error instanceof Error ? error.message : "Unable to access customers." }, { status: 400, headers });
+  return NextResponse.json({ error: error instanceof z.ZodError ? error.issues[0]?.message : error instanceof Error ? error.message : "Unable to access customers." }, { status: 400, headers });
 }
 
 export async function GET(request: Request) {

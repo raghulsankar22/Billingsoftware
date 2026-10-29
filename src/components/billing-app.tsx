@@ -14,6 +14,7 @@ import { BillForm } from "./bill-form";
 import { BillDelivery } from "./bill-delivery";
 import { DeliveryBills } from "./delivery-bills";
 import { BusinessUpdates } from "./business-updates";
+import { Customers } from "./customers";
 import { ProfileForm } from "./profile-form";
 import { SignIn } from "./sign-in";
 
@@ -49,7 +50,7 @@ export function BillingApp() {
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [bills, setBills] = useState<Bill[]>([]);
   const [query, setQuery] = useState("");
-  const [view, setView] = useState<"dashboard" | "new" | "delivery" | "delivery-bills" | "updates" | "settings">("dashboard");
+  const [view, setView] = useState<"dashboard" | "new" | "customers" | "delivery" | "delivery-bills" | "updates" | "settings">("dashboard");
   const [selected, setSelected] = useState<Bill | null>(null);
   const [overviewBill, setOverviewBill] = useState<Bill | null>(null);
   const [deliveryDocumentBill, setDeliveryDocumentBill] = useState<Bill | null>(null);
@@ -125,7 +126,7 @@ export function BillingApp() {
     if (value === addAccountOption) { setAddingAccount(true); return; }
     const selectedSlot = Number(value);
     if (!isAccountSlot(selectedSlot) || (!created && !accountSlots(profiles).includes(selectedSlot)) || selectedSlot === accountSlot) return;
-    if (view === "new" && !window.confirm("Switch accounts? Unsaved bill details will be discarded.")) {
+    if ((view === "new" || view === "customers") && !window.confirm("Switch accounts? Unsaved details will be discarded.")) {
       if (created) { void load(query, accountSlot); setExcelNotice(`Account ${selectedSlot} created. Select it from Business account when you are ready to switch.`); }
       return;
     }
@@ -264,6 +265,7 @@ export function BillingApp() {
     <nav>
       <button className={view === "dashboard" ? "active" : ""} onClick={() => { setExcelNotice(""); setView("dashboard"); }}>Bills</button>
       <button className={view === "new" ? "active" : ""} onClick={() => { setExcelNotice(""); setEditingSource(null); setView("new"); }}>New bill</button>
+      {localStorageEnabled && <button className={view === "customers" ? "active" : ""} onClick={() => { setExcelNotice(""); setView("customers"); }}>Customer</button>}
       {localStorageEnabled && <button className={view === "delivery" ? "active" : ""} onClick={() => { setExcelNotice(""); setView("delivery"); }}>Delivery</button>}
       {localStorageEnabled && <button className={view === "delivery-bills" ? "active" : ""} onClick={() => { setExcelNotice(""); setView("delivery-bills"); }}>Delivery Bills</button>}
       {localStorageEnabled && <button className={view === "updates" ? "active" : ""} onClick={() => { setExcelNotice(""); setView("updates"); }}>Updates</button>}
@@ -281,6 +283,7 @@ export function BillingApp() {
       {!accountLoaded && isLoading && <section className="panel setup-callout"><p>Loading Account {accountSlot}…</p></section>}
       {view === "settings" && accountLoaded && <ProfileForm key={accountSlot} profile={profile} accountSlot={accountSlot} onSaved={() => void load(query, accountSlot)} />}
       {view === "new" && profile && accountLoaded && <BillForm key={`${accountSlot}-${editingSource?.id ?? "new"}`} accountSlot={accountSlot} editingSource={editingSource} onCreated={issueSuccess} />}
+      {view === "customers" && profile && accountLoaded && <Customers key={accountSlot} accountSlot={accountSlot} />}
       {view === "delivery" && profile && accountLoaded && <BillDelivery key={accountSlot} accountSlot={accountSlot} onSaved={(bill) => { setDeliveryDocumentBill(bill); void load(query, accountSlot); }} onBatchSaved={() => void load(query, accountSlot)} onOpen={setSelected} onOverview={setOverviewBill} onReceipt={setDeliveryDocumentBill} />}
       {view === "delivery-bills" && profile && accountLoaded && <DeliveryBills key={accountSlot} accountSlot={accountSlot} onOpen={setDeliveryDocumentBill} onOriginal={setSelected} />}
       {view === "updates" && profile && accountLoaded && <BusinessUpdates key={accountSlot} accountSlot={accountSlot} onBill={setSelected} onDelivery={setDeliveryDocumentBill} />}

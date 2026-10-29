@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { AccountSlot } from "@/lib/account-url";
 import type { Bill, BillInput, BillItemInput } from "@/lib/types";
-import { formatINR } from "@/lib/money";
+import type { Customer } from "@/lib/customers";
+import { assessedValueForLoan, formatINR } from "@/lib/money";
 import { api } from "./api";
 import { localStorageEnabled } from "@/lib/storage-mode";
 import { appendJewelleryParticulars, jewelleryNameSchema, starterJewellery } from "@/lib/jewellery";
@@ -21,11 +22,16 @@ export function BillForm({ onCreated, editingSource, accountSlot }: { onCreated:
   const [form, setForm] = useState<BillInput>(() => editingSource ? {
     billDate: editingSource.billDate, customerName: editingSource.customerName,
     fatherName: editingSource.fatherName, address: editingSource.address,
-    phone: editingSource.phone,
+    phone: editingSource.phone, governmentId: editingSource.governmentId ?? "",
     deliveryNo: editingSource.deliveryNo, deliveryDate: editingSource.deliveryDate,
     items: editingSource.items.map((item) => ({ ...item })),
-  } : { billDate: today(), customerName: "", fatherName: "", address: "", phone: "", deliveryNo: "", deliveryDate: "", items: [blankItem()] });
+  } : { billDate: today(), customerName: "", fatherName: "", address: "", phone: "", governmentId: "", deliveryNo: "", deliveryDate: "", items: [blankItem()] });
   const [busy, setBusy] = useState(false); const [error, setError] = useState("");
+  const [customerLookup, setCustomerLookup] = useState<{ field: "phone" | "aadhaar"; value: string } | null>(null);
+  const [customerNotice, setCustomerNotice] = useState("");
+  const [lookingUpCustomer, setLookingUpCustomer] = useState(false);
+  const customerLookupGeneration = useRef(0);
+  const filledCustomer = useRef<Customer | null>(null);
   const [jewellery, setJewellery] = useState<string[]>([...starterJewellery]);
   const [catalogueError, setCatalogueError] = useState("");
   const [catalogueRefresh, setCatalogueRefresh] = useState(0);
@@ -36,6 +42,29 @@ export function BillForm({ onCreated, editingSource, accountSlot }: { onCreated:
   const [jewelleryDrafts, setJewelleryDrafts] = useState<Record<number, { name: string; quantity: string; error: string }>>({});
   const particularsFields = useRef<(HTMLSelectElement | null)[]>([]);
   const catalogueGeneration = useRef(0);
+  useEffect(() => {
+    if (!localStorageEnabled || !customerLookup) { setCustomerNotice(""); setLookingUpCustomer(false); return; }
+    const digits = customerLookup.value.replace(/\D/g, "");
+    const ready = customerLookup.field === "aadhaar" ? digits.length === 12 : digits.length === 10 || (digits.length === 12 && digits.startsWith("91"));
+    if (!ready) { setCustomerNotice(""); setLookingUpCustomer(false); return; }
+    let active = true;
+    const generation = ++customerLookupGeneration.current;
+    setLookingUpCustomer(true); setCustomerNotice("Looking for saved customer…");
+    const timer = window.setTimeout(() => {
+      api(`/api/customers?${customerLookup.field}=${encodeURIComponent(customerLookup.value)}`, accountSlot)
+        .then(result => {
+          if (!active || generation !== customerLookupGeneration.current) return;
+          const customer: Customer | null = result.customer;
+          if (!customer) { setCustomerNotice("No saved customer found. Enter the details below, or add the customer in the Customer tab."); return; }
+          setForm(current => ({ ...current, customerName: customer.name, fatherName: customer.fatherName, address: customer.address, phone: customer.phone, governmentId: customer.aadhaar }));
+          filledCustomer.current = customer;
+          setCustomerNotice(`Details filled from saved customer: ${customer.name}.`);
+        })
+        .catch(failure => { if (active && generation === customerLookupGeneration.current) setCustomerNotice(failure instanceof Error ? failure.message : "Unable to find customer. You can enter the details manually."); })
+        .finally(() => { if (active && generation === customerLookupGeneration.current) setLookingUpCustomer(false); });
+    }, 250);
+    return () => { active = false; window.clearTimeout(timer); };
+  }, [accountSlot, customerLookup]);
   useEffect(() => {
     if (!localStorageEnabled) return;
     const generation = ++catalogueGeneration.current;
@@ -48,8 +77,21 @@ export function BillForm({ onCreated, editingSource, accountSlot }: { onCreated:
     return () => { active = false; };
   }, [accountSlot, catalogueRefresh]);
   const totals = useMemo(() => form.items.reduce((sum, item) => ({ value: sum.value + Number(item.assessedValue || 0), loan: sum.loan + Number(item.loanAmount || 0) }), { value: 0, loan: 0 }), [form.items]);
-  const set = <K extends keyof BillInput>(key: K, value: BillInput[K]) => setForm((current) => ({ ...current, [key]: value }));
-  const item = (index: number, key: keyof BillItemInput, value: string) => setForm((current) => ({ ...current, items: current.items.map((row, rowIndex) => rowIndex === index ? { ...row, [key]: key === "particulars" ? value : Number(value) } : row) }));
+  const set = <K extends keyof BillInput>(key: K, value: BillInput[K]) => {
+    if (key === "customerName" || key === "fatherName" || key === "address") {
+      customerLookupGeneration.current++; filledCustomer.current = null;
+      setCustomerLookup(null); setLookingUpCustomer(false); setCustomerNotice("");
+    }
+    setForm(current => ({ ...current, [key]: value }));
+  };
+  function setIdentifier(field: "phone" | "aadhaar", value: string) {
+    customerLookupGeneration.current++;
+    const previous = filledCustomer.current;
+    filledCustomer.current = null;
+    setForm(current => ({ ...current, ...(previous ? { customerName: "", fatherName: "", address: "", phone: "", governmentId: "" } : {}), [field === "phone" ? "phone" : "governmentId"]: value }));
+    setCustomerLookup({ field, value });
+  }
+  const item = (index: number, key: keyof BillItemInput, value: string) => setForm((current) => ({ ...current, items: current.items.map((row, rowIndex) => rowIndex === index ? { ...row, [key]: key === "particulars" ? value : Number(value), ...(key === "loanAmount" ? { assessedValue: assessedValueForLoan(Number(value)) } : {}) } : row) }));
   const setMetal = (index: number, metal: "Gold" | "Silver") => setForm((current) => ({ ...current, items: current.items.map((row, rowIndex) => rowIndex === index ? { ...row, metal } : row) }));
   function setJewelleryDraft(index: number, patch: { name?: string; quantity?: string; error?: string }) {
     setJewelleryDrafts(current => {
@@ -99,18 +141,26 @@ export function BillForm({ onCreated, editingSource, accountSlot }: { onCreated:
   }
   async function submit(event: React.FormEvent) {
     event.preventDefault();
+    if (lookingUpCustomer) return;
+    if (localStorageEnabled && form.governmentId && form.governmentId !== editingSource?.governmentId && !/^\d{12}$/.test(form.governmentId.replace(/[\s-]/g, ""))) { setError("Enter a 12-digit Aadhaar number, or leave it empty."); return; }
     if (newJewellery) { setJewelleryError("Save or cancel the new jewellery before saving the bill."); return; }
     if (localStorageEnabled && Object.values(jewelleryDrafts).some(draft => draft.name)) { setError("Click Add beside each selected jewellery to include it in Particulars before saving the bill."); return; }
     setBusy(true); setError("");
-    try { const path = editingSource ? `/api/bills/${editingSource.id}${localStorageEnabled ? "" : "/replace"}` : "/api/bills"; const { bill } = await api(path, accountSlot, { method: editingSource && localStorageEnabled ? "PATCH" : "POST", body: JSON.stringify(form) }); onCreated(bill); setJewelleryDrafts({}); setForm({ billDate: today(), customerName: "", fatherName: "", address: "", phone: "", deliveryNo: "", deliveryDate: "", items: [blankItem()] }); }
+    try { const path = editingSource ? `/api/bills/${editingSource.id}${localStorageEnabled ? "" : "/replace"}` : "/api/bills"; const { bill } = await api(path, accountSlot, { method: editingSource && localStorageEnabled ? "PATCH" : "POST", body: JSON.stringify({ ...form, ...(localStorageEnabled ? { governmentId: editingSource && form.governmentId === editingSource.governmentId ? form.governmentId : (form.governmentId ?? "").replace(/[\s-]/g, "") } : {}) }) }); onCreated(bill); filledCustomer.current = null; setCustomerLookup(null); setCustomerNotice(""); setJewelleryDrafts({}); setForm({ billDate: today(), customerName: "", fatherName: "", address: "", phone: "", governmentId: "", deliveryNo: "", deliveryDate: "", items: [blankItem()] }); }
     catch (failure) { setError(failure instanceof Error ? failure.message : "Unable to issue bill."); } finally { setBusy(false); }
   }
   return <section className="panel">
     <form onSubmit={submit}>
       <div className="section-heading bill-form-heading"><div><p className="eyebrow">{editingSource ? `ACCOUNT ${accountSlot} · ${localStorageEnabled ? "EDIT" : "REPLACE"} BILL #${editingSource.billNumber}` : `ACCOUNT ${accountSlot} · NEW BILL`}</p><h2>Customer and pledge details</h2>{editingSource && <p>{localStorageEnabled ? "Saving updates this bill without changing its number." : "Saving voids the original and issues a new bill number."}</p>}</div><label className="bill-date-field">Bill date<input type="date" value={form.billDate} onChange={(e) => set("billDate", e.target.value)} required /></label></div>
-      <div className="form-grid"><label>Customer name<input value={form.customerName} onChange={(e) => set("customerName", e.target.value)} required /></label><label>Father&apos;s name<input value={form.fatherName} onChange={(e) => set("fatherName", e.target.value)} required /></label><label><span className="field-label">Mobile number <span className="muted">(optional)</span></span><input inputMode="tel" value={form.phone} onChange={(e) => set("phone", e.target.value)} /></label><label className="wide">Address<textarea value={form.address} onChange={(e) => set("address", e.target.value)} required /></label></div>
+      {localStorageEnabled && <p className="muted customer-lookup-help">Enter a saved customer&apos;s mobile number or Aadhaar to fill their details automatically.</p>}
+      <div className="form-grid">
+        <label><span className="field-label">Mobile number <span className="muted">(optional)</span></span><input inputMode="tel" aria-label="Customer mobile number" value={form.phone} disabled={busy} onChange={e => setIdentifier("phone", e.target.value)} /></label>
+        {localStorageEnabled && <label><span className="field-label">Aadhaar <span className="muted">(optional)</span></span><input inputMode="numeric" aria-label="Customer Aadhaar" maxLength={17} value={form.governmentId ?? ""} disabled={busy} onChange={e => setIdentifier("aadhaar", e.target.value)} /></label>}
+        <label>Customer name<input aria-label="Customer name" value={form.customerName} onChange={(e) => set("customerName", e.target.value)} required /></label><label>Father&apos;s name<input aria-label="Customer father's name" value={form.fatherName} onChange={(e) => set("fatherName", e.target.value)} required /></label><label className="wide">Address<textarea aria-label="Customer address" value={form.address} onChange={(e) => set("address", e.target.value)} required /></label>
+      </div>
+      {customerNotice && <p className="notice customer-lookup-notice" role="status">{customerNotice}</p>}
       {catalogueError && <p className="error" role="alert">{catalogueError} <button type="button" className="text-button" onClick={() => setCatalogueRefresh(value => value + 1)}>Retry jewellery list</button></p>}
-      <div className="item-table-wrap"><table className="item-table"><thead><tr>{localStorageEnabled && <th>Metal</th>}<th>Particulars</th><th>Gram</th><th>Assessed value (₹)</th><th>Loan amount (₹)</th><th /></tr></thead><tbody>{form.items.map((row, index) => <tr key={index}>
+      <div className="item-table-wrap"><table className="item-table"><thead><tr>{localStorageEnabled && <th>Metal</th>}<th>Particulars</th><th>Gram</th><th>Loan amount (₹)</th><th>Assessed value (₹)</th><th /></tr></thead><tbody>{form.items.map((row, index) => <tr key={index}>
         {localStorageEnabled && <td><div className="metal-choice" role="group" aria-label={`Metal for item ${index + 1}`}>{(["Gold", "Silver"] as const).map((metal) => <label key={metal} className={row.metal === metal ? "selected" : ""}><input type="radio" name={`metal-${index}`} value={metal} checked={row.metal === metal} onChange={() => setMetal(index, metal)} required />{metal}</label>)}</div></td>}
         <td>{localStorageEnabled ? <div className="jewellery-picker">
           <textarea aria-label={`Particulars for item ${index + 1}`} placeholder="e.g. Ring 2, Studs 1" maxLength={180} value={row.particulars} required disabled={busy} onChange={event => item(index, "particulars", event.target.value)} />
@@ -136,12 +186,12 @@ export function BillForm({ onCreated, editingSource, accountSlot }: { onCreated:
           </div>}
         </div> : <input aria-label={`Particulars for item ${index + 1}`} value={row.particulars} onChange={event => item(index, "particulars", event.target.value)} required />}</td>
         <td><input type="number" aria-label={`Gram for item ${index + 1}`} step="0.001" min="0" value={row.grams || ""} onChange={(e) => item(index, "grams", e.target.value)} required /></td>
-        <td><div className="currency-input"><span aria-hidden="true">₹</span><input type="number" inputMode="decimal" aria-label={`Assessed value in rupees for item ${index + 1}`} step="0.01" min="0" value={row.assessedValue || ""} onChange={(e) => item(index, "assessedValue", e.target.value)} required /></div></td>
         <td><div className="currency-input"><span aria-hidden="true">₹</span><input type="number" inputMode="decimal" aria-label={`Loan amount in rupees for item ${index + 1}`} step="0.01" min="0" value={row.loanAmount || ""} onChange={(e) => item(index, "loanAmount", e.target.value)} required /></div></td>
+        <td><div className="currency-input"><span aria-hidden="true">₹</span><input type="number" inputMode="decimal" aria-label={`Assessed value in rupees for item ${index + 1}`} step="0.01" min="0" value={row.assessedValue || ""} readOnly required /></div><small className="assessed-note muted">{row.assessedValue === assessedValueForLoan(row.loanAmount) ? "Loan + 10%" : "Saved assessed value"}</small></td>
         <td>{form.items.length > 1 && <button type="button" className="icon-button danger" aria-label="Remove item" disabled={busy || newJewellery !== null} onClick={() => removeItem(index)}>×</button>}</td>
       </tr>)}</tbody></table></div>
       {jewelleryNotice && <p className="notice" role="status">{jewelleryNotice}</p>}
-      <div className="total-bar"><span>Assessed total <strong>{formatINR(totals.value)}</strong></span><span>Loan total <strong>{formatINR(totals.loan)}</strong></span><button disabled={busy || newJewellery !== null}>{busy ? "Saving…" : editingSource ? localStorageEnabled ? "Save changes" : "Issue replacement" : "Issue bill"}</button></div>{error && <p className="error">{error}</p>}
+      <div className="total-bar"><span>Loan total <strong>{formatINR(totals.loan)}</strong></span><span>Assessed total <strong>{formatINR(totals.value)}</strong></span><button disabled={busy || lookingUpCustomer || newJewellery !== null}>{busy ? "Saving…" : editingSource ? localStorageEnabled ? "Save changes" : "Issue replacement" : "Issue bill"}</button></div>{error && <p className="error">{error}</p>}
     </form>
   </section>;
 }

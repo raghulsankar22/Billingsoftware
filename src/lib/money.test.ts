@@ -1,5 +1,17 @@
 import { describe, expect, it } from "vitest";
-import { amountInWords, itemSummary } from "./money";
+import { amountInWords, assessedValueForLoan, itemSummary } from "./money";
+
+describe("assessedValueForLoan", () => {
+  it("adds ten percent to the loan amount", () => {
+    expect(assessedValueForLoan(10000)).toBe(11000);
+    expect(assessedValueForLoan(5000)).toBe(5500);
+    expect(assessedValueForLoan(1234.56)).toBe(1358.02);
+    expect(assessedValueForLoan(1.05)).toBe(1.16);
+  });
+  it("clears the assessment when the loan is empty or invalid", () => {
+    for (const loan of [0, -1, NaN, Infinity]) expect(assessedValueForLoan(loan)).toBe(0);
+  });
+});
 
 describe("amountInWords", () => {
   it("formats Indian rupee groups", () => {

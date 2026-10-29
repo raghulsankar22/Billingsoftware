@@ -1,6 +1,6 @@
 # Windows desktop app
 
-Run the Finance Billing shortcut or install `release/1.0.8/Finance-Billing-Setup-1.0.8.exe`.
+Run the Finance Billing shortcut or install `release/1.0.9/Finance-Billing-Setup-1.0.9.exe`.
 The app opens its own window and starts its loopback-only billing server automatically.
 No internet, separate Node installation, Microsoft 365 login or web hosting is needed for daily use.
 
@@ -66,6 +66,18 @@ such as `1, 2, 3`, choose a delivery date, and review principal, interest and to
 bill and the combined amount to collect. Saving records the entire selection atomically
 and creates a separate numbered receipt/PDF for each bill, including voided bills. Excel
 failure does not undo saved delivery records; retrying reuses their delivery numbers.
+
+Version 1.0.9 adds a **Customer** tab with saved name, father's name, address, optional
+mobile and optional Aadhaar for each business account. Enter an exact saved mobile or
+Aadhaar in New bill to fill customer details. Customer edits apply to future lookups;
+previously issued bills retain their saved customer details. Mobile/Aadhaar duplicates
+within an account are rejected. Aadhaar is masked in the customer list and available
+when editing the customer. Customer records are kept in the existing local SQLite
+database, so include that database in backups.
+
+New bill shows Loan amount before Assessed value. Entering the loan automatically
+sets the assessed value to loan plus 10%, rounded to paise (₹10,000 → ₹11,000).
+An old bill's assessed value is retained until its loan amount is changed.
 
 The installer is not digitally signed. Distribution with a verified publisher identity
 requires a separate Windows code-signing certificate. No online updater is configured.

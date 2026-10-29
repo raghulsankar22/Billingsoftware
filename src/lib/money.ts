@@ -38,6 +38,13 @@ export const formatINR = (value: number) => new Intl.NumberFormat("en-IN", { sty
 
 export const excelINRFormat = '"₹" #,##0.00';
 
+/** Loan plus ten percent, rounded to the nearest paise using whole-paise input. */
+export function assessedValueForLoan(loan: number): number {
+  if (!Number.isFinite(loan) || loan <= 0) return 0;
+  const paise = Math.round(loan * 100);
+  return Math.round(paise * 110 / 100) / 100;
+}
+
 export function itemSummary(items: BillItemInput[]): string {
   return items.map((item) => `${item.metal ? `${item.metal}: ` : ""}${item.particulars} (${item.grams || 0} g)`).join(", ");
 }
