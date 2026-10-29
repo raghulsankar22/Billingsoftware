@@ -7,6 +7,7 @@ import { toBill, totals } from "@/lib/bills";
 import { refreshUpdatedBillOutputs } from "@/lib/bill-update-outputs";
 import { syncAccountRegister } from "@/lib/register-sync";
 import { localStorageEnabled } from "@/lib/storage-mode";
+import { localBillPdfPaths } from "@/lib/local-bill-pdfs";
 
 type Context = { params: Promise<{ id: string }> };
 
@@ -42,7 +43,10 @@ export async function DELETE(request: Request, context: Context) {
     const db = createAdminSupabase();
     const { data: existing, error: findError } = await db.from("bills").select("id,pdf_storage_path,delivery_pdf_storage_path").eq("id", id).eq("profile_id", profile.id).single();
     if (findError || !existing) throw new Error("Bill not found in this account.");
-    const pdfPaths = [existing.pdf_storage_path, existing.delivery_pdf_storage_path].filter((path): path is string => typeof path === "string" && path.length > 0);
+    const pdfPaths = [...new Set([
+      ...[existing.pdf_storage_path, existing.delivery_pdf_storage_path].filter((path): path is string => typeof path === "string" && path.length > 0),
+      ...await localBillPdfPaths(profile.id, id),
+    ])];
     if (pdfPaths.length) {
       const { error: removeError } = await db.storage.from("bill-pdfs").remove(pdfPaths);
       if (removeError) throw removeError;
