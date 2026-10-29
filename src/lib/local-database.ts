@@ -7,6 +7,7 @@ import { calculateRepayment } from "./interest";
 import { jewelleryChoices, jewelleryKey, jewelleryNameSchema } from "./jewellery";
 import { isAccountSlot } from "./account-url";
 import { profileSchema } from "./profile-validation";
+import { customerSchema, type Customer } from "./customers";
 
 type Row = Record<string, any>;
 type Result = { data: any; error: Error | null; count?: number | null };
@@ -29,6 +30,16 @@ export function createLocalDatabase(directory = localDataDirectory()) {
   }
   const database = db;
   database.exec("CREATE TABLE IF NOT EXISTS jewellery_items (name_key TEXT PRIMARY KEY, name TEXT NOT NULL)");
+  database.exec(`CREATE TABLE IF NOT EXISTS customers (
+    id TEXT PRIMARY KEY, profile_id TEXT NOT NULL,
+    name TEXT NOT NULL, father_name TEXT NOT NULL, address TEXT NOT NULL,
+    phone TEXT NOT NULL DEFAULT '' CHECK(phone='' OR (length(phone)=10 AND phone NOT GLOB '*[^0-9]*')),
+    aadhaar TEXT NOT NULL DEFAULT '' CHECK(aadhaar='' OR (length(aadhaar)=12 AND aadhaar NOT GLOB '*[^0-9]*')),
+    created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS customers_profile ON customers(profile_id);
+  CREATE UNIQUE INDEX IF NOT EXISTS customer_phone ON customers(profile_id,phone) WHERE phone<>'';
+  CREATE UNIQUE INDEX IF NOT EXISTS customer_aadhaar ON customers(profile_id,aadhaar) WHERE aadhaar<>'';`);
   const jewelleryList = () => jewelleryChoices(database.prepare("SELECT name FROM jewellery_items ORDER BY name COLLATE NOCASE, name").all().map(row => String(row.name)));
   const rows = (table: string): Row[] => {
     if (!tables.has(table)) throw new Error(`Local storage does not support ${table}.`);
@@ -43,6 +54,13 @@ export function createLocalDatabase(directory = localDataDirectory()) {
   const slot = (value: unknown) => { const n = value === undefined ? 1 : value; if (!isAccountSlot(n)) throw new Error("Choose a valid business account."); return n; };
   const owner = (value: unknown) => { if (value !== localOwnerId) throw new Error("Invalid local owner."); return localOwnerId; };
   const hasBills = (profileId: string) => rows("bills").some(bill => bill.profile_id === profileId);
+  const customerProfile = (account: number) => {
+    const accountNumber = slot(account);
+    const profile = rows("business_profiles").find(row => row.owner_id === localOwnerId && row.account_slot === accountNumber);
+    if (!profile) throw new Error("Set up this business account first.");
+    return String(profile.id);
+  };
+  const toCustomer = (row: Row): Customer => ({ id: String(row.id), name: String(row.name), fatherName: String(row.father_name), address: String(row.address), phone: String(row.phone), aadhaar: String(row.aadhaar), createdAt: String(row.created_at), updatedAt: String(row.updated_at) });
   const nextDeliveryNumber = (profile: Row) => rows("bills").filter(bill => bill.profile_id === profile.id && /^\d+$/.test(String(bill.delivery_no ?? ""))).reduce((next, bill) => Math.max(next, Number(bill.delivery_no) + 1), Math.max(1, Number(profile.next_delivery_number) || 1));
   const issue = (ownerId: string, input: Row) => {
     const bill = billSchema.parse(input);
@@ -150,6 +168,39 @@ export function createLocalDatabase(directory = localDataDirectory()) {
     return resolve(root, "bill-pdfs", path);
   }
   return {
+    customers: {
+      list: (account: number, search = ""): Customer[] => {
+        const profileId = customerProfile(account);
+        if (search.length > 200) throw new Error("Customer search is too long.");
+        const query = search.trim().toLocaleLowerCase();
+        return database.prepare("SELECT * FROM customers WHERE profile_id=? ORDER BY name COLLATE NOCASE, id").all(profileId)
+          .map(toCustomer).filter(customer => !query || [customer.name, customer.fatherName, customer.address, customer.phone, customer.aadhaar].some(value => value.toLocaleLowerCase().includes(query)));
+      },
+      lookup: (account: number, identifiers: { phone?: string; aadhaar?: string }): Customer | null => {
+        const profileId = customerProfile(account);
+        const { phone, aadhaar } = customerSchema.pick({ phone: true, aadhaar: true }).parse(identifiers);
+        if (!phone && !aadhaar) return null;
+        const matches = database.prepare("SELECT * FROM customers WHERE profile_id=? AND ((?<>'' AND phone=?) OR (?<>'' AND aadhaar=?))").all(profileId, phone, phone, aadhaar, aadhaar).map(toCustomer);
+        if (phone && aadhaar && matches.some(customer => customer.phone !== phone || customer.aadhaar !== aadhaar)) throw new Error("Phone and Aadhaar do not match the same customer.");
+        return matches[0] ?? null;
+      },
+      save: (account: number, value: unknown, id?: string): Customer => {
+        const input = customerSchema.parse(value);
+        return transaction(() => {
+          const profileId = customerProfile(account);
+          const previous = id === undefined ? undefined : database.prepare("SELECT * FROM customers WHERE profile_id=? AND id=?").get(profileId, id);
+          if (id !== undefined && !previous) throw new Error("Customer not found in this account.");
+          const customerId = id ?? randomUUID();
+          const duplicate = database.prepare("SELECT id FROM customers WHERE profile_id=? AND id<>? AND ((?<>'' AND phone=?) OR (?<>'' AND aadhaar=?))").get(profileId, customerId, input.phone, input.phone, input.aadhaar, input.aadhaar);
+          if (duplicate) throw new Error("A customer with this phone or Aadhaar already exists in this account.");
+          const now = new Date().toISOString();
+          const customer: Customer = { ...input, id: customerId, createdAt: previous ? String(previous.created_at) : now, updatedAt: now };
+          database.prepare("INSERT INTO customers(id,profile_id,name,father_name,address,phone,aadhaar,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,father_name=excluded.father_name,address=excluded.address,phone=excluded.phone,aadhaar=excluded.aadhaar,updated_at=excluded.updated_at")
+            .run(customer.id, profileId, customer.name, customer.fatherName, customer.address, customer.phone, customer.aadhaar, customer.createdAt, customer.updatedAt);
+          return customer;
+        });
+      },
+    },
     jewellery: {
       list: jewelleryList,
       add: (value: unknown) => {
@@ -198,7 +249,7 @@ export function createLocalDatabase(directory = localDataDirectory()) {
           if (input.items.some(item => !item.metal)) throw new Error("Choose Gold or Silver for every item.");
           const total = (key: "assessedValue" | "loanAmount") => input.items.reduce((sum, item) => sum + Math.round(item[key] * 100), 0) / 100;
           const deliverySummary = input.deliveryNo && input.deliveryDate && input.deliveryDate >= input.billDate ? calculateRepayment(input.items, input.billDate, input.deliveryDate) : null;
-          save("bills", { ...original, bill_date: input.billDate, delivery_no: input.deliveryNo || null, delivery_date: input.deliveryDate || null, delivery_summary: deliverySummary, customer_name: input.customerName, father_name: input.fatherName, address: input.address, phone: input.phone, government_id: null, total_assessed_value: total("assessedValue"), total_loan_amount: total("loanAmount"), excel_sync_status: "pending", excel_sync_error: null, pdf_storage_path: null, pdf_error: null, delivery_pdf_storage_path: null, delivery_pdf_error: null, updated_at: new Date().toISOString() });
+          save("bills", { ...original, bill_date: input.billDate, delivery_no: input.deliveryNo || null, delivery_date: input.deliveryDate || null, delivery_summary: deliverySummary, customer_name: input.customerName, father_name: input.fatherName, address: input.address, phone: input.phone, government_id: input.governmentId === undefined ? original.government_id ?? null : input.governmentId || null, total_assessed_value: total("assessedValue"), total_loan_amount: total("loanAmount"), excel_sync_status: "pending", excel_sync_error: null, pdf_storage_path: null, pdf_error: null, delivery_pdf_storage_path: null, delivery_pdf_error: null, updated_at: new Date().toISOString() });
           database.prepare("DELETE FROM records WHERE table_name='bill_items' AND json_extract(body,'$.bill_id')=?").run(original.id);
           input.items.forEach((item, index) => save("bill_items", { id: randomUUID(), bill_id: original.id, metal: item.metal, particulars: item.particulars, grams: item.grams, assessed_value: item.assessedValue, loan_amount: item.loanAmount, sort_order: index }));
           return { id: original.id, previousPdfPath: original.pdf_storage_path, previousDeliveryPdfPath: original.delivery_pdf_storage_path };
