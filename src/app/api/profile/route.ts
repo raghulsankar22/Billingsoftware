@@ -1,10 +1,8 @@
 import { NextResponse } from "next/server";
-import { z } from "zod";
 import { requireUser } from "@/lib/auth";
 import { createAdminSupabase } from "@/lib/supabase";
 import { accountSlot } from "@/lib/accounts";
-
-const profileSchema = z.object({ businessName: z.string().trim().min(2).max(160), address: z.string().trim().min(5).max(500), phone: z.string().trim().min(7).max(20), licenseNumber: z.string().trim().max(80).optional(), logoUrl: z.string().url().optional().or(z.literal("")), nextBillNumber: z.coerce.number().int().positive().max(2_147_483_646).optional() });
+import { profileSchema } from "@/lib/profile-validation";
 
 export async function GET(request: Request) {
   try {

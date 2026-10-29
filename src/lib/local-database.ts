@@ -5,6 +5,8 @@ import { resolve, dirname, isAbsolute } from "node:path";
 import { batchDeliverySchema, billSchema, deliverySchema } from "./validation";
 import { calculateRepayment } from "./interest";
 import { jewelleryChoices, jewelleryKey, jewelleryNameSchema } from "./jewellery";
+import { isAccountSlot } from "./account-url";
+import { profileSchema } from "./profile-validation";
 
 type Row = Record<string, any>;
 type Result = { data: any; error: Error | null; count?: number | null };
@@ -38,7 +40,7 @@ export function createLocalDatabase(directory = localDataDirectory()) {
     try { const result = operation(); database.exec("COMMIT"); return result; }
     catch (error) { database.exec("ROLLBACK"); throw error; }
   };
-  const slot = (value: unknown) => { const n = value === undefined ? 1 : Number(value); if (![1, 2, 3].includes(n)) throw new Error("Choose account 1, 2 or 3."); return n; };
+  const slot = (value: unknown) => { const n = value === undefined ? 1 : value; if (!isAccountSlot(n)) throw new Error("Choose a valid business account."); return n; };
   const owner = (value: unknown) => { if (value !== localOwnerId) throw new Error("Invalid local owner."); return localOwnerId; };
   const hasBills = (profileId: string) => rows("bills").some(bill => bill.profile_id === profileId);
   const nextDeliveryNumber = (profile: Row) => rows("bills").filter(bill => bill.profile_id === profile.id && /^\d+$/.test(String(bill.delivery_no ?? ""))).reduce((next, bill) => Math.max(next, Number(bill.delivery_no) + 1), Math.max(1, Number(profile.next_delivery_number) || 1));
@@ -164,11 +166,15 @@ export function createLocalDatabase(directory = localDataDirectory()) {
     rpc: async (name: string, parameters: Row): Promise<Result> => {
       try { const data = transaction(() => {
         const ownerId = owner(parameters.p_owner_id);
-        if (name === "save_business_profile") {
-          const input = parameters.p_profile; const account = slot(input.accountSlot);
-          for (const key of ["businessName", "address", "phone"]) if (typeof input[key] !== "string" || !input[key].trim()) throw new Error("Business details are required");
+        if (name === "save_business_profile" || name === "create_business_account") {
+          const input = profileSchema.parse(parameters.p_profile);
+          const creating = name === "create_business_account";
+          const account = creating
+            ? rows("business_profiles").filter(row => row.owner_id === ownerId).reduce((highest, row) => Math.max(highest, slot(row.account_slot)), 3) + 1
+            : slot(parameters.p_profile.accountSlot);
+          if (!isAccountSlot(account)) throw new Error("Business account limit reached.");
           const previous = rows("business_profiles").find(row => row.owner_id === ownerId && row.account_slot === account); const now = new Date().toISOString();
-          if (input.licenseNumber !== undefined && (typeof input.licenseNumber !== "string" || input.licenseNumber.trim().length > 80)) throw new Error("License number must be no longer than 80 characters.");
+          if (creating && previous) throw new Error("Business account already exists.");
           const licenseNumber = input.licenseNumber === undefined ? previous?.license_number ?? null : input.licenseNumber.trim() || null;
           const profile = { id: previous?.id ?? randomUUID(), owner_id: ownerId, account_slot: account, business_name: input.businessName, address: input.address, phone: input.phone, logo_url: input.logoUrl || null, license_number: licenseNumber, next_bill_number: previous && hasBills(previous.id) ? previous.next_bill_number : 1, next_delivery_number: previous && hasBills(previous.id) ? nextDeliveryNumber(previous) : 1, created_at: previous?.created_at ?? now, updated_at: now }; save("business_profiles", profile); return profile;
         }

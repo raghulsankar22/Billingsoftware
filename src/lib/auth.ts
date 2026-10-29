@@ -1,5 +1,6 @@
 import { createAdminSupabase } from "./supabase";
 import { localStorageEnabled } from "./storage-mode";
+import { isAccountSlot } from "./account-url";
 
 export function assertOwnerEmail(actual: string | undefined, configured: string | undefined) {
   const ownerEmail = configured?.trim().toLowerCase();
@@ -39,8 +40,8 @@ export async function requireUser(request: Request) {
 }
 
 export async function requireOwnerProfile(ownerId: string, account = 1) {
+  if (!isAccountSlot(account) || (!localStorageEnabled && account > 3)) throw new Error("Choose a valid business account.");
   const supabase = createAdminSupabase();
-  if (!Number.isInteger(account) || account < 1 || account > 3) throw new Error("Choose account 1, 2 or 3.");
   const { data, error } = await supabase.from("business_profiles").select("*").eq("owner_id", ownerId).eq("account_slot", account).maybeSingle();
   if (error) throw error;
   return data;

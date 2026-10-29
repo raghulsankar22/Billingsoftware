@@ -4,6 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
+import { Worker } from "node:worker_threads";
+import { accountSlots } from "./account-url";
 import { createLocalDatabase, localOwnerId } from "./local-database";
 
 const bill = { billDate: "2026-10-03", customerName: "A,B (Gold)", fatherName: "Parent", address: "123 Main Street", phone: "1234567890", items: [{ metal: "Gold", particulars: "Gold ring", grams: 1.125, assessedValue: 10.11, loanAmount: 8.01 }, { metal: "Silver", particulars: "Silver ring", grams: 2, assessedValue: 20.22, loanAmount: 9.02 }] };
@@ -220,4 +222,115 @@ describe("durable local ledger", () => {
     expect((await db.from("bills").update({ status: "void" }).eq("id", created.data.id).eq("status", "issued").select("id,bill_number").maybeSingle()).data).toMatchObject({ id: created.data.id, bill_number: 1 });
     expect((await db.from("bills").update({ status: "void" }).eq("id", created.data.id).eq("status", "issued").maybeSingle()).data).toBeNull();
   });
+});
+
+describe("additional local business accounts", () => {
+  const details = { businessName: "Additional Finance", address: "456 Business Street", phone: "9876543210", licenseNumber: "LICENSE/FOUR", logoUrl: "https://example.com/logo.png" };
+  const add = (db: ReturnType<typeof open>, input: unknown = details) => db.rpc("create_business_account", { p_owner_id: localOwnerId, p_profile: input });
+
+  it("creates accounts 4 and 5 without filling unset original slots and persists their full details", async () => {
+    const db = open(); await profile(db, 2);
+    const original = (await db.from("business_profiles").select().order("account_slot")).data;
+    const fourth = await add(db, { ...details, nextBillNumber: 99, accountSlot: 2 });
+    const fifth = await add(db, { ...details, businessName: "Fifth Finance" });
+    expect(fourth.error).toBeNull(); expect(fifth.error).toBeNull();
+    expect(fourth.data).toMatchObject({ account_slot: 4, owner_id: localOwnerId, business_name: details.businessName, address: details.address, phone: details.phone, license_number: details.licenseNumber, logo_url: details.logoUrl, next_bill_number: 1, next_delivery_number: 1 });
+    expect(fifth.data).toMatchObject({ account_slot: 5, business_name: "Fifth Finance", next_bill_number: 1, next_delivery_number: 1 });
+    expect(new Set([original[0].id, fourth.data.id, fifth.data.id]).size).toBe(3);
+    const all = (await db.from("business_profiles").select().order("account_slot")).data;
+    expect(all.map((row: { account_slot: number }) => row.account_slot)).toEqual([2, 4, 5]);
+    expect(accountSlots(all)).toEqual([1, 2, 3, 4, 5]);
+    expect(all[0]).toEqual(original[0]);
+    const entry = opened[0]; db.close(); entry.db = createLocalDatabase(entry.directory);
+    expect((await entry.db.from("business_profiles").select().order("account_slot")).data).toEqual(all);
+    const edited = await entry.db.rpc("save_business_profile", { p_owner_id: localOwnerId, p_profile: { ...details, businessName: "Updated fourth", accountSlot: 4 } });
+    expect(edited.error).toBeNull(); expect(edited.data.id).toBe(fourth.data.id);
+    expect((await entry.db.from("business_profiles").select().eq("account_slot", 5).single()).data).toEqual(fifth.data);
+  });
+
+  it("starts account 4 at bill 1 and delivery 1 while preserving other accounts and register rows", async () => {
+    const db = open(); const first = await profile(db); await profile(db, 3);
+    const oldBill = await issue(db); await issue(db);
+    await db.rpc("record_bill_delivery", { p_owner_id: localOwnerId, p_bill_id: oldBill.data.id, p_account_slot: 1, p_delivery: { deliveryDate: "2026-10-28" } });
+    const previousProfiles = (await db.from("business_profiles").select().order("account_slot")).data;
+    const previousBills = (await db.from("bills").select("*, bill_items(*)").eq("profile_id", first.id).order("bill_number")).data;
+    const fourth = await add(db); const fifth = await add(db);
+    const issued = await issue(db, { ...bill, accountSlot: fourth.data.account_slot });
+    expect(issued.error).toBeNull();
+    expect((await db.rpc("record_bill_delivery", { p_owner_id: localOwnerId, p_bill_id: issued.data.id, p_account_slot: 4, p_delivery: { deliveryDate: "2026-10-28" } })).error).toBeNull();
+    expect((await db.from("bills").select().eq("id", issued.data.id).single()).data).toMatchObject({ profile_id: fourth.data.id, bill_number: 1, delivery_no: "1", business_snapshot: { business_name: details.businessName, license_number: details.licenseNumber } });
+    expect((await db.from("business_profiles").select().eq("id", fourth.data.id).single()).data).toMatchObject({ next_bill_number: 2, next_delivery_number: 2 });
+    expect((await db.from("bills").select().eq("profile_id", fifth.data.id)).data).toEqual([]);
+    expect((await db.from("business_profiles").select().lte("account_slot", 3).order("account_slot")).data).toEqual(previousProfiles);
+    expect((await db.from("bills").select("*, bill_items(*)").eq("profile_id", first.id).order("bill_number")).data).toEqual(previousBills);
+    expect((await db.rpc("record_bill_delivery", { p_owner_id: localOwnerId, p_bill_id: issued.data.id, p_account_slot: 5, p_delivery: { deliveryDate: "2026-10-29" } })).error?.message).toContain("this account");
+    expect((await db.rpc("edit_bill", { p_owner_id: localOwnerId, p_bill_id: issued.data.id, p_bill: { ...bill, accountSlot: 1 } })).error?.message).toContain("original account");
+    const fifthBill = await issue(db, { ...bill, accountSlot: 5 });
+    expect((await db.from("bills").select().eq("id", fifthBill.data.id).single()).data).toMatchObject({ profile_id: fifth.data.id, bill_number: 1 });
+  });
+
+  it("validates complete details and account IDs without allocating on failure", async () => {
+    const db = open();
+    for (const input of [null, {}, { ...details, businessName: "X" }, { ...details, businessName: "X".repeat(161) }, { ...details, address: "abc" }, { ...details, phone: "123" }, { ...details, licenseNumber: "X".repeat(81) }, { ...details, logoUrl: "bad-url" }, { ...details, nextBillNumber: -1 }]) {
+      expect((await add(db, input)).error).toBeTruthy();
+    }
+    expect((await db.rpc("create_business_account", { p_owner_id: "someone-else", p_profile: details })).error?.message).toContain("Invalid local owner");
+    for (const accountSlot of [null, 0, -1, 1.5, NaN, Infinity, 2_147_483_647, "4", true, []]) {
+      expect((await db.rpc("save_business_profile", { p_owner_id: localOwnerId, p_profile: { ...details, accountSlot } })).error).toBeTruthy();
+      expect((await db.rpc("get_next_delivery_number", { p_owner_id: localOwnerId, p_account_slot: accountSlot })).error).toBeTruthy();
+    }
+    expect((await db.from("business_profiles").select()).data).toEqual([]);
+    expect((await add(db)).data.account_slot).toBe(4);
+  });
+
+  it("allocates above the highest saved account and rejects overflow without changing it", async () => {
+    const db = open(); await profile(db, 8);
+    expect((await add(db)).data.account_slot).toBe(9);
+    const last = await profile(db, 2_147_483_646);
+    const before = (await db.from("business_profiles").select().order("account_slot")).data;
+    expect((await add(db)).error?.message).toContain("Business account limit");
+    expect((await db.from("business_profiles").select().order("account_slot")).data).toEqual(before);
+    expect((await db.from("business_profiles").select().eq("id", last.id).single()).data).toEqual(last);
+  });
+
+  it("allocates unique slots concurrently across independent SQLite connections", async () => {
+    const db = open(); await profile(db);
+    const original = (await db.from("business_profiles").select()).data[0];
+    const script = `
+      const { workerData, parentPort } = require("node:worker_threads");
+      const { createRequire } = require("node:module");
+      const taskRequire = createRequire(workerData.modulePath);
+      const ts = taskRequire("typescript");
+      const fs = require("node:fs");
+      require.extensions[".ts"] = (module, filename) => module._compile(ts.transpileModule(fs.readFileSync(filename, "utf8"), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true } }).outputText, filename);
+      const { createLocalDatabase, localOwnerId } = taskRequire(workerData.modulePath);
+      const db = createLocalDatabase(workerData.directory);
+      parentPort.once("message", async () => {
+        try {
+          const profiles = [];
+          for (let index = 0; index < 4; index++) {
+            const result = await db.rpc("create_business_account", { p_owner_id: localOwnerId, p_profile: workerData.details });
+            if (result.error) throw result.error;
+            profiles.push(result.data);
+          }
+          parentPort.postMessage({ profiles });
+        } catch (error) { parentPort.postMessage({ error: error.message }); }
+        finally { db.close(); }
+      });
+      parentPort.postMessage({ ready: true });
+    `;
+    const workers = Array.from({ length: 3 }, () => new Worker(script, { eval: true, workerData: { modulePath: join(process.cwd(), "src/lib/local-database.ts"), directory: opened[0].directory, details } }));
+    try {
+      const ready = workers.map(worker => new Promise<void>((resolve, reject) => { worker.once("message", () => resolve()); worker.once("error", reject); }));
+      await Promise.all(ready);
+      const results = workers.map(worker => new Promise<{ profiles?: { id: string; account_slot: number }[]; error?: string }>((resolve, reject) => { worker.once("message", resolve); worker.once("error", reject); }));
+      workers.forEach(worker => worker.postMessage("go"));
+      const completed = await Promise.all(results);
+      expect(completed.map(result => result.error)).toEqual([undefined, undefined, undefined]);
+      const allocated = completed.flatMap(result => result.profiles ?? []);
+      expect(allocated.map(profile => profile.account_slot).sort((left, right) => left - right)).toEqual(Array.from({ length: 12 }, (_, index) => index + 4));
+      expect(new Set(allocated.map(profile => profile.id)).size).toBe(12);
+      expect((await db.from("business_profiles").select().eq("id", original.id).single()).data).toEqual(original);
+    } finally { await Promise.all(workers.map(worker => worker.terminate())); }
+  }, 20_000);
 });
