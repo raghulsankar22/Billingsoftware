@@ -33,3 +33,20 @@ added accounts beyond the original three. It accepts customer ID, name, address,
 phone and Aadhaar. Each result identifies its account and bill number; opening or
 downloading a result uses that bill's own account context. Search includes both
 delivered and undelivered history, while Overdue is restricted to pending delivery.
+
+The customer directory is shared across all owned business accounts. Saving a
+customer once makes the same customer ID and details available in every account.
+Existing duplicates with matching Aadhaar or an unambiguous phone are reconciled
+under the oldest customer ID. Historical IDs continue to work as search aliases;
+bill snapshots retain their original customer details and financial amounts.
+Different Aadhaar holders sharing a phone remain separate, and lookup asks for
+Aadhaar when the phone alone is ambiguous. Delivered statuses in Search are green.
+
+Dashboard has Activity, Jewels, Gold and Silver sections. Activity keeps the
+existing daily/weekly/monthly/yearly reports. The stock sections include all
+undelivered loans for the selected account, regardless of the Activity date range.
+Gold and Silver totals include only their own pledge rows, including mixed-metal
+bills. Stock shows loan principal, grams, pledge lots, known piece quantities and
+bill count. Piece counts are read from explicit quantities such as `Ring 2, Studs 1`;
+missing quantities are marked rather than assumed. Voided bills remain in stock
+until delivery is recorded, and unclassified metals appear only under Jewels.

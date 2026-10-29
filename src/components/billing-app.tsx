@@ -279,7 +279,7 @@ export function BillingApp() {
     <div className="content">
       {error && <p className="error">{error}</p>}
       {excelNotice && <p className="excel-notice" role="status">{excelNotice}</p>}
-      {accountLoaded && !profile && view !== "settings" && view !== "search" && <section className="panel setup-callout">
+      {accountLoaded && !profile && view !== "settings" && view !== "search" && view !== "customers" && <section className="panel setup-callout">
         <h2>Set up Account {accountSlot} before issuing the first bill</h2>
         <p>Add this business&apos;s name, address, phone, logo and first bill number. Each account has separate details and bill history.</p>
         <button onClick={() => setView("settings")}>Set up Account {accountSlot}</button>
@@ -287,7 +287,7 @@ export function BillingApp() {
       {!accountLoaded && isLoading && <section className="panel setup-callout"><p>Loading Account {accountSlot}…</p></section>}
       {view === "settings" && accountLoaded && <ProfileForm key={accountSlot} profile={profile} accountSlot={accountSlot} onSaved={() => void load(query, accountSlot)} />}
       {view === "new" && profile && accountLoaded && <BillForm key={`${accountSlot}-${editingSource?.id ?? "new"}`} accountSlot={accountSlot} editingSource={editingSource} onCreated={issueSuccess} />}
-      {view === "customers" && profile && accountLoaded && <Customers key={accountSlot} accountSlot={accountSlot} />}
+      {view === "customers" && accountLoaded && <Customers key={accountSlot} accountSlot={accountSlot} />}
       {view === "delivery" && profile && accountLoaded && <BillDelivery key={accountSlot} accountSlot={accountSlot} onSaved={(bill) => { setDeliveryDocumentBill(bill); void load(query, accountSlot); }} onBatchSaved={() => void load(query, accountSlot)} onOpen={setSelected} onOverview={setOverviewBill} onReceipt={setDeliveryDocumentBill} />}
       {view === "delivery-bills" && profile && accountLoaded && <DeliveryBills key={accountSlot} accountSlot={accountSlot} onOpen={setDeliveryDocumentBill} onOriginal={setSelected} />}
       {view === "dashboard" && profile && accountLoaded && <BusinessUpdates key={accountSlot} accountSlot={accountSlot} onBill={setSelected} onDelivery={setDeliveryDocumentBill} />}

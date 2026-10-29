@@ -6,12 +6,14 @@ import type { Bill } from "@/lib/types";
 import { billingPeriod, billingToday, businessUpdates, type UpdatePeriod } from "@/lib/business-updates";
 import { formatINR } from "@/lib/money";
 import { api } from "./api";
+import { JewelInventory } from "./jewel-inventory";
 
 const labels: Record<UpdatePeriod, string> = { yesterday: "Yesterday", daily: "Today", weekly: "Weekly", monthly: "Monthly", yearly: "Yearly" };
 const periods = ["yesterday", "daily", "weekly", "monthly", "yearly"] as const;
 const displayDate = (value: string) => value.split("-").reverse().join("/");
 
 export function BusinessUpdates({ accountSlot, onBill, onDelivery }: { accountSlot: AccountSlot; onBill: (bill: Bill) => void; onDelivery: (bill: Bill) => void }) {
+  const [section, setSection] = useState<"activity" | "jewels" | "gold" | "silver">("activity");
   const [mode, setMode] = useState<UpdatePeriod>("daily");
   const [date, setDate] = useState(billingToday);
   const [year, setYear] = useState(() => date.slice(0, 4));
@@ -50,7 +52,10 @@ export function BusinessUpdates({ accountSlot, onBill, onDelivery }: { accountSl
   };
 
   return <section className="panel">
-    <div className="section-heading"><div><p className="eyebrow">ACCOUNT {accountSlot} · BUSINESS ACTIVITY</p><h2>Dashboard</h2><p className="dashboard-period">{labels[mode]} overview</p><p className="muted">Yesterday follows India’s calendar date. Choose a date to inspect a day, week, or month, or select a calendar year.</p></div><button className="secondary" disabled={busy} onClick={() => setRefresh(value => value + 1)}>{busy ? "Loading…" : "Refresh"}</button></div>
+    <div className="section-heading"><div><p className="eyebrow">ACCOUNT {accountSlot}</p><h2>Dashboard</h2><p className="dashboard-period">{section === "activity" ? `${labels[mode]} overview` : "Jewellery held against undelivered loans"}</p></div><button className="secondary" disabled={busy} onClick={() => setRefresh(value => value + 1)}>{busy ? "Loading…" : "Refresh"}</button></div>
+    <div className="dashboard-sections" role="group" aria-label="Dashboard sections">{(["activity", "jewels", "gold", "silver"] as const).map(tab => <button type="button" key={tab} className={section === tab ? "active" : "secondary"} aria-pressed={section === tab} onClick={() => setSection(tab)}>{tab === "activity" ? "Activity" : tab === "jewels" ? "Jewels" : tab === "gold" ? "Gold" : "Silver"}</button>)}</div>
+    {section === "activity" ? <>
+    <p className="muted">Yesterday follows India’s calendar date. Choose a date to inspect a day, week, or month, or select a calendar year.</p>
     <div className="updates-controls"><div className="updates-period" role="group" aria-label="Dashboard period">{periods.map(period => <button key={period} className={mode === period ? "active" : "secondary"} aria-pressed={mode === period} onClick={() => selectPeriod(period)}>{labels[period]}</button>)}</div>
       {mode !== "yesterday" && <label>{mode === "monthly" ? "Month" : mode === "weekly" ? "Date in week" : mode === "yearly" ? "Year" : "Date"}<input
         type={mode === "monthly" ? "month" : mode === "yearly" ? "number" : "date"}
@@ -80,5 +85,6 @@ export function BusinessUpdates({ accountSlot, onBill, onDelivery }: { accountSl
       <h3>Loan bills recorded</h3><div className="item-table-wrap"><table className="history-table"><thead><tr><th>Date</th><th>Bill No.</th><th>Customer</th><th>Status</th><th>Loan amount</th><th /></tr></thead><tbody>{report.loans.map(bill => <tr key={bill.id} className={bill.status === "void" ? "void-row" : ""}><td>{displayDate(bill.billDate)}</td><td>#{bill.billNumber}</td><td>{bill.customerName}</td><td>{bill.status === "void" ? "Voided" : "Issued"}{bill.deliveryNo && bill.deliveryDate && <small>Delivered</small>}</td><td>{formatINR(bill.totalLoanAmount)}</td><td><button className="text-button" onClick={() => onBill(bill)}>Open</button></td></tr>)}{!report.loans.length && <tr><td colSpan={6} className="empty">{busy ? "Loading…" : "No loan bills recorded in this period."}</td></tr>}</tbody></table></div>
       <h3>Delivery bills</h3><div className="item-table-wrap"><table className="history-table"><thead><tr><th>Delivery Date</th><th>Delivery No.</th><th>Bill No.</th><th>Customer</th><th>Principal</th><th>Interest</th><th>Total to collect</th><th /></tr></thead><tbody>{report.deliveries.map(({ bill, collection }) => <tr key={bill.id}><td>{displayDate(bill.deliveryDate!)}</td><td>#{bill.deliveryNo}</td><td>#{bill.billNumber}{bill.status === "void" && <small>Original bill voided</small>}</td><td>{bill.customerName}</td><td>{formatINR(collection?.principal ?? bill.totalLoanAmount)}</td><td>{collection?.interest == null ? "—" : formatINR(collection.interest)}</td><td>{collection?.total == null ? "—" : formatINR(collection.total)}</td><td><button className="text-button" onClick={() => onDelivery(bill)}>Open</button></td></tr>)}{!report.deliveries.length && <tr><td colSpan={8} className="empty">{busy ? "Loading…" : "No delivery bills in this period."}</td></tr>}</tbody></table></div>
     </>}
+    </> : <JewelInventory bills={bills} metal={section === "gold" ? "Gold" : section === "silver" ? "Silver" : undefined} busy={busy} error={error} onBill={onBill} />}
   </section>;
 }

@@ -54,7 +54,7 @@ export function Customers({ accountSlot }: { accountSlot: AccountSlot }) {
   }
 
   return <section className="panel">
-    <div className="section-heading"><div><p className="eyebrow">ACCOUNT {accountSlot}</p><h2>Customer</h2><p className="muted">Save customer details once and reuse them in New bill.</p></div></div>
+    <div className="section-heading"><div><p className="eyebrow">SHARED CUSTOMER DIRECTORY</p><h2>Customer</h2><p className="muted">One customer ID across every business account. Save details once and reuse them in any account&apos;s New bill.</p></div></div>
     <form onSubmit={save} className="customer-entry">
       <h3>{editingId ? "Edit customer" : "Add customer"}</h3>
       <p className="customer-code-note">{editingId ? `Customer ID: ${customerCode}` : "A unique customer ID will be assigned automatically when you save."}</p>

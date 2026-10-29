@@ -126,6 +126,11 @@
 .all-account-results { min-width: 1050px; }
 .search-pagination { display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; margin-top: 18px; font-size: 13px; }
 .search-pagination > div { display: flex; align-items: center; gap: 12px; }
+.delivery-status-complete { color: #76dfb3 !important; font-weight: 700; }
+.dashboard-sections { display: flex; flex-wrap: wrap; gap: 8px; margin: 18px 0; }
+.dashboard-sections button[aria-pressed="true"] { background: #3474b4; border-color: #84bfff; color: #fff; }
+.stock-scope { margin: 20px 0 12px; color: #b8dcff; font-weight: 700; }
+.stock-summary small { color: var(--muted); line-height: 1.5; }
 
 @media (max-width: 700px) {
   .app-shell { grid-template-columns: 124px minmax(0, 1fr); }
