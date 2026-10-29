@@ -35,6 +35,6 @@ export function DeliveryBills({ accountSlot, onOpen, onOriginal }: { accountSlot
         <td className="row-actions"><button className="text-button" onClick={() => onOpen(bill)}>Open</button><button className="text-button" onClick={() => onOriginal(bill)}>Original bill</button></td>
       </tr>; })}{!deliveries.length && <tr><td colSpan={8} className="empty">{busy ? "Loading delivery bills…" : query ? "No delivery bills match your search." : "No delivery bills recorded yet."}</td></tr>}</tbody>
     </table></div>
-    <p className="muted collection-note">Amounts are for the saved delivery date. First-month interest charged at issue is excluded from the total to collect.</p>
+    <p className="muted collection-note">Amounts are for the saved delivery date.</p>
   </section>;
 }

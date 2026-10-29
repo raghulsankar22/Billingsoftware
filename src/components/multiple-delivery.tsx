@@ -26,7 +26,7 @@ export function MultipleDelivery({ accountSlot, onSaved, onReceipt, onOpen }: { 
     } catch (failure) { return { bill, collection: null, error: failure instanceof Error ? failure.message : "Choose a valid delivery date." }; }
   }), [bills, date, metals, saved]);
   const complete = rows.length > 0 && rows.every(row => row.collection && !row.collection.missingMetal && row.collection.interest !== null && row.collection.total !== null);
-  const sum = (field: "principal" | "interest" | "total" | "initialInterest") => rows.reduce((paise, row) => paise + Math.round(Number(row.collection?.[field] ?? (field === "principal" ? row.bill.totalLoanAmount : 0)) * 100), 0) / 100;
+  const sum = (field: "principal" | "interest" | "total") => rows.reduce((paise, row) => paise + Math.round(Number(row.collection?.[field] ?? (field === "principal" ? row.bill.totalLoanAmount : 0)) * 100), 0) / 100;
   const money = (value: number | null) => value === null ? "—" : formatINR(value);
   const minDate = bills.reduce((latest, bill) => bill.billDate > latest ? bill.billDate : latest, "");
 
@@ -75,7 +75,7 @@ export function MultipleDelivery({ accountSlot, onSaved, onReceipt, onOpen }: { 
         <td className="batch-money">{formatINR(collection?.principal ?? bill.totalLoanAmount)}</td><td className="batch-money">{money(collection?.interest ?? null)}</td><td className="batch-money">{money(collection?.total ?? null)}</td>
         <td><div className="batch-actions"><button type="button" className="text-button" onClick={() => onOpen(bill)}>Open bill</button>{saved ? <button type="button" className="secondary" onClick={() => onReceipt(bill)}>Open receipt #{bill.deliveryNo}</button> : <button type="button" className="text-button danger-text" disabled={Boolean(busy)} onClick={() => setBills(current => current.filter(row => row.id !== bill.id))}>Remove bill #{bill.billNumber}</button>}</div></td>
       </tr>)}</tbody></table></div>
-      <section className="repayment-summary" aria-label="Combined delivery amounts"><h3>{bills.length} bill{bills.length === 1 ? "" : "s"} · Combined amount to collect</h3><dl><div><dt>Principal</dt><dd>{formatINR(sum("principal"))}</dd></div><div><dt>First-month interest charged at issue</dt><dd>{money(complete ? sum("initialInterest") : null)}</dd></div><div><dt>Interest to collect now</dt><dd>{money(complete ? sum("interest") : null)}</dd></div><div className="collection-total"><dt>Total to collect now</dt><dd>{money(complete ? sum("total") : null)}</dd></div></dl><p className="muted collection-note">First-month interest is assumed collected when each loan was issued and is excluded from the total above.</p></section>
+      <section className="repayment-summary" aria-label="Combined delivery amounts"><h3>{bills.length} bill{bills.length === 1 ? "" : "s"} · Combined amount to collect</h3><dl><div><dt>Principal</dt><dd>{formatINR(sum("principal"))}</dd></div><div><dt>Interest to collect now</dt><dd>{money(complete ? sum("interest") : null)}</dd></div><div className="collection-total"><dt>Total to collect now</dt><dd>{money(complete ? sum("total") : null)}</dd></div></dl></section>
       {!saved && <button disabled={!complete || Boolean(busy)} onClick={() => void save()}>{busy === "save" ? "Saving deliveries…" : `Save ${bills.length} deliver${bills.length === 1 ? "y" : "ies"}`}</button>}
     </> : <p className="empty">Add one or more bill numbers to see the principal, interest and total.</p>}
   </section>;

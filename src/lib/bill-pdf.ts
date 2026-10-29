@@ -136,14 +136,13 @@ export async function createBillPdf(bill: SnapshottedBill, currentProfile: Busin
   if (repayment) {
     line(`Additional interest months: ${repayment.chargedMonths}`, left, 180, 10);
     line(`Monthly rates: ${[...new Set(repayment.lines.map(item => `${item.metal}: ${item.ratePercent}%`))].join(", ")}`, left, 180, 9);
-    for (const [label, amount] of [["Principal", repayment.principal], ["First-month interest charged at issue", repayment.initialInterest ?? 0], ["Interest to collect now", repayment.interest ?? 0], ["Total to collect now", repayment.total ?? repayment.principal]] as const) {
+    for (const [label, amount] of [["Principal", repayment.principal], ["Interest to collect now", repayment.interest ?? 0], ["Total to collect now", repayment.total ?? repayment.principal]] as const) {
       pdf.setFont("helvetica", "normal");
       pdf.setFontSize(10);
       pdf.text(`${label}:`, left, y);
       currency(money(amount), 195, 80, 10);
       y += 7;
     }
-    line("The first-month charge is assumed collected at issue and is excluded from the total above.", left, 180, 8);
     line(`Amount in words: ${amountInWords(repayment.total ?? repayment.principal)}`, left, 180, 10);
   } else {
     currency(`Total Value: ${money(bill.totalAssessedValue)}`, 105, 90, 10);

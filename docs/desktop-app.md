@@ -90,5 +90,9 @@ undelivered pledge rows for the selected account, with metal-specific loan amoun
 grams, recorded piece quantities and bill counts. Missing quantities are identified
 instead of guessed. The existing PDF/Excel output and billing data folder are retained.
 
+The first-month interest-at-issue row, amount and explanatory notes are removed from
+overviews, delivery screens, Dashboard notes, printed receipts and PDFs. Previously
+saved PDFs regenerate when downloaded so the updated template also applies to old bills.
+
 The installer is not digitally signed. Distribution with a verified publisher identity
 requires a separate Windows code-signing certificate. No online updater is configured.

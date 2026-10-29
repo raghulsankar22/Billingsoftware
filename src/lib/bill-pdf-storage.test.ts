@@ -52,4 +52,14 @@ describe("bill PDF template upgrades", () => {
     expect((await PDFDocument.load(bytes)).getKeywords()).toBe(JSON.stringify({ businessLicenseNumber: "TN-123" }));
     expect(storage.upload).toHaveBeenCalledOnce();
   });
+  it("refreshes a saved delivery PDF from the interest-at-issue template", async () => {
+    const delivery = { ...bill, deliveryNo: "1", deliveryDate: "2026-11-29" };
+    const old = await PDFDocument.load(await createBillPdf(delivery, profile, "delivery"));
+    old.setSubject("finance-billing-text-conditions-license-v2");
+    storage.download.mockResolvedValue({ data: new Blob([Buffer.from(await old.save())]), error: null });
+    const bytes = await loadBillPdf(profile, delivery, "profile/old-delivery.pdf", "delivery");
+    expect((await PDFDocument.load(bytes)).getSubject()).toBe(billPdfTemplateVersion);
+    expect(storage.upload).toHaveBeenCalledOnce();
+    expect(storage.update).toHaveBeenCalledWith({ delivery_pdf_storage_path: storage.upload.mock.calls[0][0], delivery_pdf_error: null });
+  });
 });

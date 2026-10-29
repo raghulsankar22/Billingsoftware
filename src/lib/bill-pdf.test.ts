@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createBillPdf } from "./bill-pdf";
 import type { Bill } from "./types";
-import { PDFDocument } from "pdf-lib";
+import { decodePDFRawStream, PDFArray, PDFDocument, PDFRawStream } from "pdf-lib";
 import { billPdfTemplateVersion } from "./bill-conditions";
 
 const bill: Bill = {
@@ -26,6 +26,20 @@ const bill: Bill = {
 };
 
 describe("bill PDF", () => {
+  it("prints collection balances without the interest-at-issue row or note", async () => {
+    const bytes = await createBillPdf(bill, bill.businessSnapshot!, "delivery");
+    const document = await PDFDocument.load(bytes);
+    const content = document.getPages().flatMap(page => {
+      const contents = page.node.Contents();
+      return contents instanceof PDFArray ? contents.asArray().map(ref => document.context.lookup(ref)) : [contents];
+    }).filter((stream): stream is PDFRawStream => stream instanceof PDFRawStream)
+      .map(stream => Buffer.from(decodePDFRawStream(stream).decode()).toString("latin1"))
+      .join("\n");
+    expect(content).toContain("(Principal:)");
+    expect(content).toContain("(Interest to collect now:)");
+    expect(content).toContain("(Total to collect now:)");
+    expect(content).not.toMatch(/first.month|collected at issue/i);
+  });
   it("includes the snapshotted license rather than another current license", async () => {
     const bytes = await createBillPdf({ ...bill, businessSnapshot: { ...bill.businessSnapshot!, license_number: "TN-OLD-123" } }, { ...bill.businessSnapshot!, license_number: "TN-NEW-456" });
     expect((await PDFDocument.load(bytes)).getKeywords()).toBe(JSON.stringify({ businessLicenseNumber: "TN-OLD-123" }));
