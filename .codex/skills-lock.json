@@ -1,0 +1,347 @@
+{
+  "schemaVersion": 1,
+  "updatedAt": "2026-10-29T06:31:14.675Z",
+  "locations": {
+    "global": "~/.codex/skills",
+    "project": ".codex/skills"
+  },
+  "hashAlgorithm": "SHA-256 over JSON array of [relative POSIX file path, file SHA-256], sorted recursively by localeCompare(en)",
+  "skills": [
+    {
+      "name": "ask-matt",
+      "repo": "mattpocock/skills",
+      "commit": "59db609eb1e18aaf59b63284d0e52255aff0c63c",
+      "path": "skills/engineering/ask-matt",
+      "files": 3,
+      "sha256": "e8085601d3bb7e4bc98e541fc2b9854d87ab4a9b816dffc48cd63e933d24ca9a"
+    },
+    {
+      "name": "claude-handoff",
+      "repo": "mattpocock/skills",
+      "commit": "59db609eb1e18aaf59b63284d0e52255aff0c63c",
+      "path": "skills/in-progress/claude-handoff",
+      "files": 2,
+      "sha256": "d116d60e15381efaaa6ca63a8d4fe141640784a24931463c09ec38f8c04b105a"
+    },
+    {
+      "name": "code-review",
+      "repo": "mattpocock/skills",
+      "commit": "59db609eb1e18aaf59b63284d0e52255aff0c63c",
+      "path": "skills/engineering/code-review",
+      "files": 2,
+      "sha256": "ad5a392bf1f8bc413077a8c5b0c9b2c57c761916d2780574c59a508f8caffdfd"
+    },
+    {
+      "name": "codebase-design",
+      "repo": "mattpocock/skills",
+      "commit": "59db609eb1e18aaf59b63284d0e52255aff0c63c",
+      "path": "skills/engineering/codebase-design",
+      "files": 4,
+      "sha256": "b4ab7e567dffd3f7c3c26fc835f50815cc4778f9600729bb506cde8a675be398"
+    },
+    {
+      "name": "diagnosing-bugs",
+      "repo": "mattpocock/skills",
+      "commit": "59db609eb1e18aaf59b63284d0e52255aff0c63c",
+      "path": "skills/engineering/diagnosing-bugs",
+      "files": 3,
+      "sha256": "d60ef8faa27c75f99a099a514ed29d3d9cf6832567fe3f2d37cf8da61966fb10"
+    },
+    {
+      "name": "domain-modeling",
+      "repo": "mattpocock/skills",
+      "commit": "59db609eb1e18aaf59b63284d0e52255aff0c63c",
+      "path": "skills/engineering/domain-modeling",
+      "files": 4,
+      "sha256": "33f9e43af785640d35b514cadc8c7197544ebb75a00abc8015f37b7ef314a47f"
+    },
+    {
+      "name": "frontend-design",
+      "repo": "anthropics/skills",
+      "commit": "ca45fc496a3436251f191354091d557da31c15b5",
+      "path": "skills/frontend-design",
+      "files": 2,
+      "sha256": "d55d581490111ef10d26da1a769e6ac863094ea6809423578617d8431d793fd1"
+    },
+    {
+      "name": "git-guardrails-claude-code",
+      "repo": "mattpocock/skills",
+      "commit": "59db609eb1e18aaf59b63284d0e52255aff0c63c",
+      "path": "skills/misc/git-guardrails-claude-code",
+      "files": 3,
+      "sha256": "ad5a24a51f57469dd1765617bd396608a991b6b8442831449f627a85f372a746"
+    },
+    {
+      "name": "grill-me",
+      "repo": "mattpocock/skills",
+      "commit": "59db609eb1e18aaf59b63284d0e52255aff0c63c",
+      "path": "skills/productivity/grill-me",
+      "files": 2,
+      "sha256": "6b89d5d7d942402d4ced201bba90d8640670c63266fde2b1e3470be4ad8351ee"
+    },
+    {
+      "name": "grill-with-docs",
+      "repo": "mattpocock/skills",
+      "commit": "59db609eb1e18aaf59b63284d0e52255aff0c63c",
+      "path": "skills/engineering/grill-with-docs",
+      "files": 2,
+      "sha256": "af2213f9fc91649883fee54e1bbdc6fcda8a41bfea4480584a3915e38b30582e"
+    },
+    {
+      "name": "grilling",
+      "repo": "mattpocock/skills",
+      "commit": "59db609eb1e18aaf59b63284d0e52255aff0c63c",
+      "path": "skills/productivity/grilling",
+      "files": 2,
+      "sha256": "d29abba0880a61d8a2df7a7d6bac2f1639c6e977b8c7d7bf4c80109fa7c4660c"
+    },
+    {
+      "name": "handoff",
+      "repo": "mattpocock/skills",
+      "commit": "59db609eb1e18aaf59b63284d0e52255aff0c63c",
+      "path": "skills/productivity/handoff",
+      "files": 2,
+      "sha256": "60adb940387bb726a4fbc31fdb64d7382274e42b396191dc94c85008da1211e1"
+    },
+    {
+      "name": "implement",
+      "repo": "mattpocock/skills",
+      "commit": "59db609eb1e18aaf59b63284d0e52255aff0c63c",
+      "path": "skills/engineering/implement",
+      "files": 2,
+      "sha256": "85ae0f2206c2da540945db2c99b5c5882c0e54dc3eeb4c32abc83fbacac515d0"
+    },
+    {
+      "name": "implement-spec",
+      "repo": "mattpocock/skills",
+      "commit": "59db609eb1e18aaf59b63284d0e52255aff0c63c",
+      "path": "skills/engineering/implement-spec",
+      "files": 2,
+      "sha256": "9710599e9dbfd2db13402ab34d578df5205c52dc72f37f88f4cbe13fa319a1f3"
+    },
+    {
+      "name": "improve-codebase-architecture",
+      "repo": "mattpocock/skills",
+      "commit": "59db609eb1e18aaf59b63284d0e52255aff0c63c",
+      "path": "skills/engineering/improve-codebase-architecture",
+      "files": 3,
+      "sha256": "8e438e6dbb8aec43f2c52251603d30ecc3ab5663196c72099e34d0501f88b58c"
+    },
+    {
+      "name": "loop-me",
+      "repo": "mattpocock/skills",
+      "commit": "59db609eb1e18aaf59b63284d0e52255aff0c63c",
+      "path": "skills/in-progress/loop-me",
+      "files": 2,
+      "sha256": "9593abf63df98408f3da9adc2b2a2bd54b98fcea2f2834e404431e64444505e3"
+    },
+    {
+      "name": "migrate-to-shoehorn",
+      "repo": "mattpocock/skills",
+      "commit": "59db609eb1e18aaf59b63284d0e52255aff0c63c",
+      "path": "skills/misc/migrate-to-shoehorn",
+      "files": 2,
+      "sha256": "84f734b14d2daf877785032e7c5b864e795796a07dceb0a9208e2a655410103c"
+    },
+    {
+      "name": "next-best-practices",
+      "repo": "vercel-labs/openreview",
+      "commit": "672deb21e70e471e0536d5ad7a67c14b8359e97e",
+      "path": ".agents/skills/next-best-practices",
+      "files": 20,
+      "sha256": "6f9ecf2acbdba297d189f9fae3c01b8d31fa49170dc50472c76d85833b184a55"
+    },
+    {
+      "name": "pr",
+      "repo": "mattpocock/skills",
+      "commit": "59db609eb1e18aaf59b63284d0e52255aff0c63c",
+      "path": "skills/engineering/pr",
+      "files": 3,
+      "sha256": "1c23611d9497635ff58e0de1cf93fdaf6f8a810591452014800e6e3182494b50"
+    },
+    {
+      "name": "prototype",
+      "repo": "mattpocock/skills",
+      "commit": "59db609eb1e18aaf59b63284d0e52255aff0c63c",
+      "path": "skills/engineering/prototype",
+      "files": 4,
+      "sha256": "51defaaaba65d87ff7e06c95ab279de5c3f6baca42dc785c0a84347ed5e2f03a"
+    },
+    {
+      "name": "research",
+      "repo": "mattpocock/skills",
+      "commit": "59db609eb1e18aaf59b63284d0e52255aff0c63c",
+      "path": "skills/engineering/research",
+      "files": 2,
+      "sha256": "32ddfa6a191affb6dfc6b6ca7af917c804ecf54210749a10d4e7f8501c2f14c6"
+    },
+    {
+      "name": "retro",
+      "repo": "mattpocock/skills",
+      "commit": "59db609eb1e18aaf59b63284d0e52255aff0c63c",
+      "path": "skills/engineering/retro",
+      "files": 2,
+      "sha256": "bd3667aa9b7423267f78d6387a68bce2d0869210883456271e6a2d0d4758e36d"
+    },
+    {
+      "name": "scaffold-exercises",
+      "repo": "mattpocock/skills",
+      "commit": "59db609eb1e18aaf59b63284d0e52255aff0c63c",
+      "path": "skills/misc/scaffold-exercises",
+      "files": 2,
+      "sha256": "f5d6ea4610368dba1cb077e9e9db266a79f7ca2dcf90ba5b829c0e58e9421471"
+    },
+    {
+      "name": "setup-matt-pocock-skills",
+      "repo": "mattpocock/skills",
+      "commit": "59db609eb1e18aaf59b63284d0e52255aff0c63c",
+      "path": "skills/engineering/setup-matt-pocock-skills",
+      "files": 7,
+      "sha256": "de6ccf2c899db0adcd96f15dd33db98cd769a09d3c6e212391d5e7fdca30cf4e"
+    },
+    {
+      "name": "setup-pre-commit",
+      "repo": "mattpocock/skills",
+      "commit": "59db609eb1e18aaf59b63284d0e52255aff0c63c",
+      "path": "skills/misc/setup-pre-commit",
+      "files": 2,
+      "sha256": "e7382d76b4564430b28fe8348b727fab2a98a40708482e914a04e93b42af1074"
+    },
+    {
+      "name": "setup-ts-deep-modules",
+      "repo": "mattpocock/skills",
+      "commit": "59db609eb1e18aaf59b63284d0e52255aff0c63c",
+      "path": "skills/in-progress/setup-ts-deep-modules",
+      "files": 3,
+      "sha256": "ce716919202359825be0a2c901460d418c370afdfd04379ba19d6b573234fb40"
+    },
+    {
+      "name": "tdd",
+      "repo": "mattpocock/skills",
+      "commit": "59db609eb1e18aaf59b63284d0e52255aff0c63c",
+      "path": "skills/engineering/tdd",
+      "files": 4,
+      "sha256": "f119182792b033d15810f2a7b9507f367f0b94876456397cd8a6156a06da4f73"
+    },
+    {
+      "name": "teach",
+      "repo": "mattpocock/skills",
+      "commit": "59db609eb1e18aaf59b63284d0e52255aff0c63c",
+      "path": "skills/productivity/teach",
+      "files": 6,
+      "sha256": "b13ab50ce0f73846f8e8df8781833bab03ac047416f72869222b57fe153a81bf"
+    },
+    {
+      "name": "to-questionnaire",
+      "repo": "mattpocock/skills",
+      "commit": "59db609eb1e18aaf59b63284d0e52255aff0c63c",
+      "path": "skills/productivity/to-questionnaire",
+      "files": 2,
+      "sha256": "4da610c4252946c169404468bb332522e3a3da30b3bb23b556e0d605e1b2ffa7"
+    },
+    {
+      "name": "to-spec",
+      "repo": "mattpocock/skills",
+      "commit": "59db609eb1e18aaf59b63284d0e52255aff0c63c",
+      "path": "skills/engineering/to-spec",
+      "files": 2,
+      "sha256": "c076edf36ad762a62407c2be1f1847173a1c89198534c6436c58843bad8f2b14"
+    },
+    {
+      "name": "to-tickets",
+      "repo": "mattpocock/skills",
+      "commit": "59db609eb1e18aaf59b63284d0e52255aff0c63c",
+      "path": "skills/engineering/to-tickets",
+      "files": 2,
+      "sha256": "fb7e2a5ee1e3ca78c4e5d8a7cee81af6bb8193a90d626e56fdf103cea91e974c"
+    },
+    {
+      "name": "triage",
+      "repo": "mattpocock/skills",
+      "commit": "59db609eb1e18aaf59b63284d0e52255aff0c63c",
+      "path": "skills/engineering/triage",
+      "files": 4,
+      "sha256": "75c2d1e0a53da31e5c2ac0597ddd6c06c3e23aca7b8bfea50da91ba53a17ee9a"
+    },
+    {
+      "name": "vercel-composition-patterns",
+      "repo": "vercel-labs/agent-skills",
+      "commit": "1a2c79d4e6c4a2283dc2c614b6538cbe1ed5ca62",
+      "path": "skills/composition-patterns",
+      "files": 14,
+      "sha256": "b679adf435e7dbb7764ba050f55f3fa5078cc988d10c98b0b2f6c35c032c9aa9"
+    },
+    {
+      "name": "vercel-react-best-practices",
+      "repo": "vercel-labs/agent-skills",
+      "commit": "1a2c79d4e6c4a2283dc2c614b6538cbe1ed5ca62",
+      "path": "skills/react-best-practices",
+      "files": 76,
+      "sha256": "50fe98a6e14548327a3a1cec5471332346225afed7f07d0bd69d6adafb179e57"
+    },
+    {
+      "name": "wait-what",
+      "repo": "mattpocock/skills",
+      "commit": "59db609eb1e18aaf59b63284d0e52255aff0c63c",
+      "path": "skills/productivity/wait-what",
+      "files": 2,
+      "sha256": "711075f3f514b900cc62dcdbdc7e32de60b2e0c2ff1c618b4131b167d77bba27"
+    },
+    {
+      "name": "wayfinder",
+      "repo": "mattpocock/skills",
+      "commit": "59db609eb1e18aaf59b63284d0e52255aff0c63c",
+      "path": "skills/engineering/wayfinder",
+      "files": 2,
+      "sha256": "dc1d2cc8a1958478dc14c9a374d5392070d9dbf7bff0b4291b1ce1e7d46afa10"
+    },
+    {
+      "name": "web-design-guidelines",
+      "repo": "vercel-labs/agent-skills",
+      "commit": "1a2c79d4e6c4a2283dc2c614b6538cbe1ed5ca62",
+      "path": "skills/web-design-guidelines",
+      "files": 1,
+      "sha256": "704b816d2449e11d04327b17b4bdebce8a8787e59b4a7a05e6ee8ba48fec2237"
+    },
+    {
+      "name": "wizard",
+      "repo": "mattpocock/skills",
+      "commit": "59db609eb1e18aaf59b63284d0e52255aff0c63c",
+      "path": "skills/engineering/wizard",
+      "files": 3,
+      "sha256": "e7d4ceb695d8e79134202ed58f21018f7414ea7de3c6361157f202d97b291105"
+    },
+    {
+      "name": "writing-beats",
+      "repo": "mattpocock/skills",
+      "commit": "59db609eb1e18aaf59b63284d0e52255aff0c63c",
+      "path": "skills/in-progress/writing-beats",
+      "files": 2,
+      "sha256": "5a894b58b79148411aef0d2fd1fe26db640dada4fd4f8ca1d379078d4fb34747"
+    },
+    {
+      "name": "writing-for-agents",
+      "repo": "mattpocock/skills",
+      "commit": "59db609eb1e18aaf59b63284d0e52255aff0c63c",
+      "path": "skills/productivity/writing-for-agents",
+      "files": 3,
+      "sha256": "2ef85fa592ea4111e81b3e091c9819bb9c53c5f28b8c84ac621aa14eb5edc598"
+    },
+    {
+      "name": "writing-fragments",
+      "repo": "mattpocock/skills",
+      "commit": "59db609eb1e18aaf59b63284d0e52255aff0c63c",
+      "path": "skills/in-progress/writing-fragments",
+      "files": 2,
+      "sha256": "707cf3976f0af9f2f8dad3c9212f3644ee3cc10e36eb56ce257dec34d02c2e7a"
+    },
+    {
+      "name": "writing-shape",
+      "repo": "mattpocock/skills",
+      "commit": "59db609eb1e18aaf59b63284d0e52255aff0c63c",
+      "path": "skills/in-progress/writing-shape",
+      "files": 2,
+      "sha256": "276c03870338434118cc64ca07c575cafde2cc9188cc72aaa75804d6e22c5fba"
+    }
+  ]
+}
