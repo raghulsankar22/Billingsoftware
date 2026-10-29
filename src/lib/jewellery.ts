@@ -23,7 +23,7 @@ export function appendJewelleryParticulars(current: string, name: string, quanti
   return description;
 }
 
-/** Keep familiar defaults first; custom choices are shared by all three accounts. */
+/** Keep familiar defaults first; custom choices are shared by all business accounts. */
 export function jewelleryChoices(customNames: string[]) {
   const choices = new Map<string, string>(starterJewellery.map(name => [jewelleryKey(name), name]));
   for (const name of customNames) if (!choices.has(jewelleryKey(name))) choices.set(jewelleryKey(name), name);

@@ -83,8 +83,9 @@ export function createLocalDatabase(directory = localDataDirectory()) {
     const now = new Date().toISOString();
     if (!bill.delivery_no) save("business_profiles", { ...profile, next_delivery_number: nextNumber + 1, updated_at: now });
     savedItems.forEach((item, index) => { if (!item.metal) save("bill_items", { ...item, metal: items[index].metal }); });
-    save("bills", { ...bill, delivery_no: deliveryNo, delivery_date: input.deliveryDate, delivery_summary: summary, excel_sync_status: "pending", excel_sync_error: null, pdf_storage_path: null, pdf_error: null, delivery_pdf_storage_path: null, delivery_pdf_error: null, updated_at: now });
-    return { id: bill.id, previousPdfPath: bill.pdf_storage_path, previousDeliveryPdfPath: bill.delivery_pdf_storage_path };
+    const updated = { ...bill, delivery_no: deliveryNo, delivery_date: input.deliveryDate, delivery_summary: summary, excel_sync_status: "pending", excel_sync_error: null, pdf_storage_path: null, pdf_error: null, delivery_pdf_storage_path: null, delivery_pdf_error: null, updated_at: now };
+    save("bills", updated);
+    return { id: bill.id, previousPdfPath: bill.pdf_storage_path, previousDeliveryPdfPath: bill.delivery_pdf_storage_path, bill: { ...updated, bill_items: rows("bill_items").filter(item => item.bill_id === bill.id).sort((left, right) => left.sort_order - right.sort_order) } };
   };
   class Query {
     private filters: ((row: Row) => boolean)[] = [];

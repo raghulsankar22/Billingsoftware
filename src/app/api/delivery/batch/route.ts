@@ -20,15 +20,16 @@ export async function POST(request: Request) {
     const db = createAdminSupabase();
     const { data: saved, error: saveError } = await db.rpc("record_bill_deliveries", { p_owner_id: user.id, p_account_slot: account, p_delivery: input });
     if (saveError) throw saveError;
-    const bills: Bill[] = [];
+    const bills: Bill[] = saved.map((result: { bill: Record<string, any> }) => toBill({ ...result.bill, items: result.bill.bill_items }));
     const warnings: string[] = [];
-    for (const result of saved) {
-      const { data, error } = await db.from("bills").select("*, bill_items(*)").eq("id", result.id).eq("profile_id", profile.id).single();
-      if (error) throw error;
-      const bill = toBill({ ...data, items: data.bill_items });
-      bills.push(bill);
-      const outputWarnings = await refreshUpdatedBillOutputs(profile, bill, result.previousPdfPath, result.previousDeliveryPdfPath, { syncRegister: false });
-      warnings.push(...outputWarnings.map(message => `Bill #${bill.billNumber}: ${message}`));
+    for (const [index, result] of saved.entries()) {
+      const bill = bills[index];
+      try {
+        const outputWarnings = await refreshUpdatedBillOutputs(profile, bill, result.previousPdfPath, result.previousDeliveryPdfPath, { syncRegister: false });
+        warnings.push(...outputWarnings.map(message => `Bill #${bill.billNumber}: ${message}`));
+      } catch (error) {
+        warnings.push(`Bill #${bill.billNumber}: delivery saved; its documents need a retry: ${error instanceof Error ? error.message : "Document update failed."}`);
+      }
     }
     // All delivery records are committed before exporting one shared account register.
     try {
@@ -41,7 +42,7 @@ export async function POST(request: Request) {
     } catch (error) {
       const message = error instanceof Error ? error.message : "Excel export failed.";
       for (const bill of bills) {
-        await db.from("bills").update({ excel_sync_status: "failed", excel_sync_error: message }).eq("id", bill.id).eq("profile_id", profile.id);
+        try { await db.from("bills").update({ excel_sync_status: "failed", excel_sync_error: message }).eq("id", bill.id).eq("profile_id", profile.id); } catch { /* Delivery records are already committed; keep the saved response. */ }
         bill.excelSyncStatus = "failed"; bill.excelSyncError = message;
       }
       warnings.push(`Deliveries are saved. Excel needs a retry: ${message}`);

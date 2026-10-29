@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import ExcelJS from 'exceljs';
+import fs from 'node:fs/promises';
 const base = process.env.BILLING_TEST_URL || 'http://127.0.0.1:3111';
 async function api(path, method = 'GET', body) {
   const response = await fetch(base + path, { method, headers: { 'content-type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
@@ -171,4 +172,52 @@ let combinedFound = false;
 combinedRows.eachRow(row => { if (row.getCell(4).value === combined.billNumber) { assert.match(row.getCell(7).value, /Ring 3, Studs 1, Necklace 1/); assert.equal(row.getCell(9).value, 80); combinedFound = true; } });
 assert.ok(combinedFound);
 assert.equal((await fetch(`${base}/api/bills/${combined.id}/pdf`)).status, 200);
-console.log('Local HTTP flow passed: multiple jewellery with quantities, edits, same-row Excel updates, automatic numbering, delivery totals, PDFs and account isolation.');
+const originalProfiles = (await api('/api/profile')).profiles;
+const newAccountDetails = { businessName: 'Additional Test Finance', address: '456 Test Street', phone: '1234567890', licenseNumber: 'TEST-LIC-4' };
+const fourth = (await api('/api/accounts', 'POST', newAccountDetails)).profile;
+const fifth = (await api('/api/accounts', 'POST', { ...newAccountDetails, businessName: 'Another Test Finance' })).profile;
+assert.equal(fourth.account_slot, 4); assert.equal(fifth.account_slot, 5); assert.notEqual(fourth.id, fifth.id);
+assert.equal(fourth.next_bill_number, 1); assert.equal(fourth.next_delivery_number, 1);
+const batchInputs = [['Gold', 10000], ['Silver', 2000], ['Gold', 5000]];
+const batchLoans = [];
+for (const [metal, loanAmount] of batchInputs) batchLoans.push((await api('/api/bills?account=4', 'POST', { ...input, billDate: '2026-10-28', deliveryNo: '', deliveryDate: '', items: [{ metal, particulars: 'Batch jewellery', grams: 3, assessedValue: loanAmount * 2, loanAmount }] })).bill);
+assert.deepEqual(batchLoans.map(bill => bill.billNumber), [1, 2, 3]);
+const fifthBill = (await api('/api/bills?account=5', 'POST', { ...input, deliveryNo: '', deliveryDate: '' })).bill;
+assert.equal(fifthBill.billNumber, 1);
+await api(`/api/bills/${batchLoans[1].id}/void?account=4`, 'POST');
+const batchBody = { deliveryDate: '2026-11-29', deliveries: batchLoans.map(bill => ({ billId: bill.id })) };
+const invalidBatch = body => fetch(base + '/api/delivery/batch?account=4', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+assert.equal((await invalidBatch({ ...batchBody, deliveries: [{ billId: batchLoans[0].id }, { billId: fifthBill.id }] })).status, 400);
+assert.equal((await invalidBatch({ ...batchBody, deliveries: [{ billId: batchLoans[0].id }, { billId: batchLoans[0].id }] })).status, 400);
+assert.ok((await api('/api/bills?account=4')).bills.every(bill => !bill.deliveryNo));
+assert.equal((await api('/api/delivery?billNumber=1&account=4')).nextDeliveryNumber, 1);
+const batchResult = await api('/api/delivery/batch?account=4', 'POST', batchBody);
+assert.deepEqual(batchResult.bills.map(bill => bill.deliveryNo), ['1', '2', '3']);
+assert.deepEqual(batchResult.bills.map(bill => bill.deliverySummary.interest), [200, 60, 125]);
+assert.equal(batchResult.bills.reduce((total, bill) => total + bill.deliverySummary.principal, 0), 17000);
+assert.equal(batchResult.bills.reduce((total, bill) => total + bill.deliverySummary.total, 0), 17385);
+assert.equal(batchResult.bills[1].status, 'void');
+for (const bill of batchResult.bills) {
+  const individualReceipt = await fetch(`${base}/api/bills/${bill.id}/delivery/pdf?account=4`);
+  assert.equal(individualReceipt.status, 200);
+  assert.equal(Buffer.from(await individualReceipt.arrayBuffer()).subarray(0, 4).toString(), '%PDF');
+}
+assert.deepEqual((await api('/api/delivery/batch?account=4', 'POST', batchBody)).bills.map(bill => bill.deliveryNo), ['1', '2', '3']);
+assert.equal((await api('/api/delivery?billNumber=1&account=4')).nextDeliveryNumber, 4);
+const register4 = (await api('/api/reports/excel?account=4', 'POST')).savedTo;
+const batchBook = new ExcelJS.Workbook(); await batchBook.xlsx.readFile(register4);
+for (const row of [2, 3, 4]) { assert.equal(batchBook.getWorksheet('Bills').getCell(`A${row}`).value, String(row - 1)); assert.equal(batchBook.getWorksheet('Bills').getCell(`B${row}`).value, '2026-11-29'); }
+assert.ok(!(await api('/api/bills?account=5')).bills[0].deliveryNo);
+assert.deepEqual((await api('/api/profile')).profiles.filter(profile => profile.account_slot <= 3), originalProfiles);
+// Simulate a blocked Excel target in this disposable test directory. Delivery records must survive.
+const fourthLoan = (await api('/api/bills?account=4', 'POST', { ...input, billDate: '2026-10-28', deliveryNo: '', deliveryDate: '' })).bill;
+const retryBody = { deliveryDate: '2026-11-29', deliveries: [{ billId: fourthLoan.id }] };
+await fs.rename(register4, register4 + '.test-backup'); await fs.mkdir(register4);
+try {
+  const blocked = await api('/api/delivery/batch?account=4', 'POST', retryBody);
+  assert.equal(blocked.bills[0].deliveryNo, '4'); assert.equal(blocked.bills[0].excelSyncStatus, 'failed'); assert.ok(blocked.warnings.length > 0);
+} finally { await fs.rmdir(register4); await fs.rename(register4 + '.test-backup', register4); }
+const recovered = await api('/api/delivery/batch?account=4', 'POST', retryBody);
+assert.equal(recovered.bills[0].deliveryNo, '4'); assert.equal(recovered.bills[0].excelSyncStatus, 'synced');
+assert.equal((await api('/api/delivery?billNumber=1&account=4')).nextDeliveryNumber, 5);
+console.log('Local HTTP flow passed: new accounts, isolated numbering/Excel, atomic multi-delivery, separate receipts, correct interest and safe Excel retries.');

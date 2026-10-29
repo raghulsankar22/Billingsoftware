@@ -33,7 +33,7 @@ export function BusinessUpdates({ accountSlot, onBill, onDelivery }: { accountSl
       : mode === "yearly" ? `${year.padStart(4, "0")}-01-01`
       : date;
     try { return billingPeriod(mode, anchor); } catch { return null; }
-  }, [mode, date, year]);
+  }, [mode, date, year, refresh]);
   const report = useMemo(() => range ? businessUpdates(bills, range) : null, [bills, range]);
   const selectPeriod = (period: UpdatePeriod) => {
     setMode(period);

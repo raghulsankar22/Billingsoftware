@@ -7,13 +7,20 @@ import type { Bill } from "@/lib/types";
 import { api } from "./api";
 import { calculateRepayment } from "@/lib/interest";
 import { RepaymentDetails } from "./repayment-details";
+import { MultipleDelivery } from "./multiple-delivery";
 
 function today() {
   const date = new Date();
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
-export function BillDelivery({ accountSlot, onSaved, onOpen, onOverview, onReceipt }: { accountSlot: AccountSlot; onSaved: (bill: Bill) => void; onOpen: (bill: Bill) => void; onOverview: (bill: Bill) => void; onReceipt: (bill: Bill) => void }) {
+type DeliveryProps = { accountSlot: AccountSlot; onSaved: (bill: Bill) => void; onBatchSaved: () => void; onOpen: (bill: Bill) => void; onOverview: (bill: Bill) => void; onReceipt: (bill: Bill) => void };
+export function BillDelivery(props: DeliveryProps) {
+  const [mode, setMode] = useState<"single" | "multiple">("single");
+  return <><div className="delivery-mode" role="group" aria-label="Delivery mode"><button className={mode === "single" ? "active" : "secondary"} aria-pressed={mode === "single"} onClick={() => setMode("single")}>Single Delivery</button><button className={mode === "multiple" ? "active" : "secondary"} aria-pressed={mode === "multiple"} onClick={() => setMode("multiple")}>Multiple Delivery</button></div>{mode === "single" ? <SingleBillDelivery {...props} /> : <MultipleDelivery accountSlot={props.accountSlot} onSaved={props.onBatchSaved} onOpen={props.onOpen} onReceipt={props.onReceipt} />}</>;
+}
+
+function SingleBillDelivery({ accountSlot, onSaved, onOpen, onOverview, onReceipt }: DeliveryProps) {
   const [billNumber, setBillNumber] = useState("");
   const [bill, setBill] = useState<Bill | null>(null);
   const [deliveryNo, setDeliveryNo] = useState("");

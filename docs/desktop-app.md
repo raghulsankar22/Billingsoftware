@@ -1,10 +1,10 @@
 # Windows desktop app
 
-Run the Finance Billing shortcut or install `release/1.0.7/Finance-Billing-Setup-1.0.7.exe`.
+Run the Finance Billing shortcut or install `release/1.0.8/Finance-Billing-Setup-1.0.8.exe`.
 The app opens its own window and starts its loopback-only billing server automatically.
 No internet, separate Node installation, Microsoft 365 login or web hosting is needed for daily use.
 
-On this computer all three accounts continue to use `D:\app\data`. Customer records are
+On this computer all business accounts continue to use `D:\app\data`. Customer records are
 not copied into the installer. Updates and uninstalling the desktop program do not delete
 this data directory. On computers without a D: drive, the app uses a data directory inside
 the Windows user's Finance Billing application-data directory; see File > Open billing data folder.
@@ -55,6 +55,17 @@ still be added inside the same Particulars box.
 Version 1.0.7 uses the supplied gold-pot image for the Windows application icon, desktop
 and Start menu shortcuts, and the app-window icon. The app header, browser-tab icon
 and printed bill logo keep their existing appearance.
+
+Version 1.0.8 adds Yesterday, Today, Weekly, Monthly and Yearly under Updates. Weeks run
+Monday–Sunday and years cover January 1–December 31. Use **+ Add new account** in the
+business account selector to create more accounts with separate profiles, bill/delivery
+numbering and Excel files. Existing accounts 1–3 stay available.
+
+Delivery now has **Single Delivery** and **Multiple Delivery** options. Add bill numbers
+such as `1, 2, 3`, choose a delivery date, and review principal, interest and total for each
+bill and the combined amount to collect. Saving records the entire selection atomically
+and creates a separate numbered receipt/PDF for each bill, including voided bills. Excel
+failure does not undo saved delivery records; retrying reuses their delivery numbers.
 
 The installer is not digitally signed. Distribution with a verified publisher identity
 requires a separate Windows code-signing certificate. No online updater is configured.

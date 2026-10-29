@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { AccountSlot } from "@/lib/account-url";
-import { withAccountSlot } from "@/lib/account-url";
+import { accountSlots, isAccountSlot, withAccountSlot } from "@/lib/account-url";
 import type { Bill } from "@/lib/types";
 import { formatINR } from "@/lib/money";
 import { createBrowserSupabase } from "@/lib/supabase-browser";
@@ -28,7 +28,7 @@ type Profile = {
   next_bill_number: number;
 };
 
-const ACCOUNT_SLOTS: AccountSlot[] = [1, 2, 3];
+const addAccountOption = "add-new-account";
 const ACCOUNT_STORAGE_KEY = "finance-billing-selected-account";
 
 function accountLabel(slot: AccountSlot, profiles: Profile[]) {
@@ -58,6 +58,7 @@ export function BillingApp() {
   const [isRefreshingExcel, setIsRefreshingExcel] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [editingSource, setEditingSource] = useState<Bill | null>(null);
+  const [addingAccount, setAddingAccount] = useState(false);
   const loadGeneration = useRef(0);
   const configured = localStorageEnabled || Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
 
@@ -74,7 +75,7 @@ export function BillingApp() {
   useEffect(() => {
     try {
       const saved = window.localStorage.getItem(ACCOUNT_STORAGE_KEY);
-      if (saved === "1" || saved === "2" || saved === "3") setAccountSlot(Number(saved) as AccountSlot);
+      if (saved && /^[1-9]\d*$/.test(saved) && isAccountSlot(Number(saved)) && (localStorageEnabled || Number(saved) <= 3)) setAccountSlot(Number(saved));
     } catch {
       // The selector still works for this session when browser storage is unavailable.
     }
@@ -99,6 +100,7 @@ export function BillingApp() {
         api(`/api/bills${search ? `?q=${encodeURIComponent(search)}` : ""}`, slot),
       ]);
       if (generation !== loadGeneration.current) return;
+      if (slot > 3 && !profileResult.profile) { setAccountSlot(1); return; }
       setProfile(profileResult.profile ?? null);
       setProfiles(profileResult.profiles ?? []);
       setBills(billsResult.bills ?? []);
@@ -119,10 +121,14 @@ export function BillingApp() {
   if (signedIn === null || !accountReady) return <main className="auth-shell"><p>Loading secure billing…</p></main>;
   if (!signedIn) return <SignIn onSignedIn={() => setSignedIn(true)} />;
 
-  function selectAccount(value: string) {
+  function selectAccount(value: string, created = false) {
+    if (value === addAccountOption) { setAddingAccount(true); return; }
     const selectedSlot = Number(value);
-    if (!ACCOUNT_SLOTS.includes(selectedSlot as AccountSlot) || selectedSlot === accountSlot) return;
-    if (view === "new" && !window.confirm("Switch accounts? Unsaved bill details will be discarded.")) return;
+    if (!isAccountSlot(selectedSlot) || (!created && !accountSlots(profiles).includes(selectedSlot)) || selectedSlot === accountSlot) return;
+    if (view === "new" && !window.confirm("Switch accounts? Unsaved bill details will be discarded.")) {
+      if (created) { void load(query, accountSlot); setExcelNotice(`Account ${selectedSlot} created. Select it from Business account when you are ready to switch.`); }
+      return;
+    }
 
     setAccountSlot(selectedSlot as AccountSlot);
     setLoadedSlot(null);
@@ -236,9 +242,11 @@ export function BillingApp() {
         <div className="account-picker">
           <label htmlFor="business-account">Business account</label>
           <select id="business-account" value={accountSlot} onChange={(event) => selectAccount(event.target.value)}>
-            {ACCOUNT_SLOTS.map((slot) => <option key={slot} value={slot}>{accountLabel(slot, profiles)}</option>)}
+            {accountSlots(profiles).map((slot) => <option key={slot} value={slot}>{accountLabel(slot, profiles)}</option>)}
+            {localStorageEnabled && <option value={addAccountOption}>+ Add new account…</option>}
           </select>
-          <span>{localStorageEnabled ? "Three separate profiles, bill histories and Excel registers" : "One login · three separate business profiles and bill histories"}</span>
+          <span>{localStorageEnabled ? "Separate profiles, bill histories and Excel registers for every account" : "One login · three separate business profiles and bill histories"}</span>
+          {localStorageEnabled && <button type="button" className="account-add-button" onClick={() => setAddingAccount(true)}>+ Add new account</button>}
         </div>
       </div>
       <div className="topbar-controls">
@@ -273,7 +281,7 @@ export function BillingApp() {
       {!accountLoaded && isLoading && <section className="panel setup-callout"><p>Loading Account {accountSlot}…</p></section>}
       {view === "settings" && accountLoaded && <ProfileForm key={accountSlot} profile={profile} accountSlot={accountSlot} onSaved={() => void load(query, accountSlot)} />}
       {view === "new" && profile && accountLoaded && <BillForm key={`${accountSlot}-${editingSource?.id ?? "new"}`} accountSlot={accountSlot} editingSource={editingSource} onCreated={issueSuccess} />}
-      {view === "delivery" && profile && accountLoaded && <BillDelivery key={accountSlot} accountSlot={accountSlot} onSaved={(bill) => { setDeliveryDocumentBill(bill); void load(query, accountSlot); }} onOpen={setSelected} onOverview={setOverviewBill} onReceipt={setDeliveryDocumentBill} />}
+      {view === "delivery" && profile && accountLoaded && <BillDelivery key={accountSlot} accountSlot={accountSlot} onSaved={(bill) => { setDeliveryDocumentBill(bill); void load(query, accountSlot); }} onBatchSaved={() => void load(query, accountSlot)} onOpen={setSelected} onOverview={setOverviewBill} onReceipt={setDeliveryDocumentBill} />}
       {view === "delivery-bills" && profile && accountLoaded && <DeliveryBills key={accountSlot} accountSlot={accountSlot} onOpen={setDeliveryDocumentBill} onOriginal={setSelected} />}
       {view === "updates" && profile && accountLoaded && <BusinessUpdates key={accountSlot} accountSlot={accountSlot} onBill={setSelected} onDelivery={setDeliveryDocumentBill} />}
       {view === "dashboard" && accountLoaded && profile && <section className="panel">
@@ -304,6 +312,13 @@ export function BillingApp() {
       </section>}
     </div>
 
+    {addingAccount && <div className="modal-backdrop"><div className="account-modal" role="dialog" aria-modal="true" aria-label="Add new account" onKeyDown={event => {
+      if (event.key !== "Tab") return;
+      const fields = [...event.currentTarget.querySelectorAll<HTMLElement>("button:not(:disabled), input:not(:disabled), textarea:not(:disabled), select:not(:disabled)")];
+      const first = fields[0]; const last = fields[fields.length - 1];
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+      if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+    }}><ProfileForm profile={null} accountSlot={accountSlot} creatingAccount onCancel={() => setAddingAccount(false)} onSaved={slot => { setAddingAccount(false); if (slot) selectAccount(String(slot), true); }} /></div></div>}
     {selected && profile && accountLoaded && <BillDocument bill={selected} profile={profile} accountSlot={accountSlot} onClose={() => setSelected(null)} />}
     {overviewBill && accountLoaded && <BillOverview key={overviewBill.id} bill={overviewBill} onClose={() => setOverviewBill(null)} />}
     {deliveryDocumentBill && profile && accountLoaded && <BillDocument key={`delivery-${deliveryDocumentBill.id}`} bill={deliveryDocumentBill} profile={profile} accountSlot={accountSlot} documentType="delivery" onClose={() => setDeliveryDocumentBill(null)} />}
