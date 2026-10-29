@@ -1,0 +1,105 @@
+.app-shell {
+  display: grid;
+  grid-template-columns: 200px minmax(0, 1fr);
+  grid-template-rows: auto 1fr;
+  align-items: start;
+}
+
+.app-shell > .topbar {
+  grid-column: 1 / -1;
+  padding: 20px 24px;
+}
+
+.app-shell > .side-nav {
+  grid-column: 1;
+  grid-row: 2;
+  position: sticky;
+  top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 24px 0 24px 16px;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #121f2f;
+  overflow: visible;
+  white-space: normal;
+}
+
+.side-nav button {
+  width: 100%;
+  min-height: 44px;
+  padding: 12px;
+  border: 0;
+  border-left: 3px solid transparent;
+  border-radius: 5px;
+  color: var(--muted);
+  text-align: left;
+  white-space: normal;
+}
+
+.side-nav button.active {
+  border-bottom: 0;
+  border-left-color: #84bfff;
+  background: #20364e;
+  color: #b8dcff;
+}
+
+.side-nav .business-profile-tab {
+  margin-left: 0;
+  margin-top: 12px;
+  border-top: 1px solid var(--line);
+  border-radius: 0 0 5px 5px;
+}
+
+.app-shell > .content {
+  grid-column: 2;
+  grid-row: 2;
+  width: 100%;
+  min-width: 0;
+  max-width: none;
+  margin: 24px 0;
+  padding: 0 24px 24px 16px;
+}
+
+.customer-details-grid,
+.customer-entry .form-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.customer-details-grid > .wide,
+.customer-entry .form-grid > .wide {
+  grid-column: 1 / -1;
+}
+
+.customer-code-field input:read-only {
+  background: #182c3d;
+  color: #c8e2f7;
+}
+
+.customer-code-note {
+  margin-top: 0;
+  color: #b8dcff;
+  font-size: 13px;
+}
+
+.dashboard-period {
+  margin: 8px 0 0;
+  color: #b8dcff;
+  font-weight: 700;
+}
+
+@media (max-width: 700px) {
+  .app-shell { grid-template-columns: 124px minmax(0, 1fr); }
+  .app-shell > .topbar { padding: 16px; }
+  .app-shell > .side-nav { margin: 16px 0 16px 8px; padding: 5px; top: 8px; }
+  .side-nav button { padding: 10px 7px; font-size: 12px; }
+  .app-shell > .content { margin: 16px 0; padding: 0 10px 16px 8px; }
+  .customer-details-grid,
+  .customer-entry .form-grid { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media print {
+  .app-shell { display: block; }
+}

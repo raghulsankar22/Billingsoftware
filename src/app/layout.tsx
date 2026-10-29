@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import "./website-preview.css";
 
 export const metadata: Metadata = { title: "Finance Billing", description: "Secure finance billing and Excel register" };
 

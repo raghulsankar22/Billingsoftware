@@ -23,7 +23,7 @@ export function BusinessUpdates({ accountSlot, onBill, onDelivery }: { accountSl
     let active = true;
     setBusy(true); setError("");
     api("/api/bills", accountSlot).then(result => { if (active) setBills(result.bills ?? []); })
-      .catch(failure => { if (active) setError(failure instanceof Error ? failure.message : "Unable to load business updates."); })
+      .catch(failure => { if (active) setError(failure instanceof Error ? failure.message : "Unable to load dashboard."); })
       .finally(() => { if (active) setBusy(false); });
     return () => { active = false; };
   }, [accountSlot, refresh]);
@@ -50,8 +50,8 @@ export function BusinessUpdates({ accountSlot, onBill, onDelivery }: { accountSl
   };
 
   return <section className="panel">
-    <div className="section-heading"><div><p className="eyebrow">ACCOUNT {accountSlot} · BUSINESS ACTIVITY</p><h2>{labels[mode]} update</h2><p className="muted">Yesterday follows India’s calendar date. Choose a date to inspect a day, week, or month, or select a calendar year.</p></div><button className="secondary" disabled={busy} onClick={() => setRefresh(value => value + 1)}>{busy ? "Loading…" : "Refresh"}</button></div>
-    <div className="updates-controls"><div className="updates-period" role="group" aria-label="Update period">{periods.map(period => <button key={period} className={mode === period ? "active" : "secondary"} aria-pressed={mode === period} onClick={() => selectPeriod(period)}>{labels[period]}</button>)}</div>
+    <div className="section-heading"><div><p className="eyebrow">ACCOUNT {accountSlot} · BUSINESS ACTIVITY</p><h2>Dashboard</h2><p className="dashboard-period">{labels[mode]} overview</p><p className="muted">Yesterday follows India’s calendar date. Choose a date to inspect a day, week, or month, or select a calendar year.</p></div><button className="secondary" disabled={busy} onClick={() => setRefresh(value => value + 1)}>{busy ? "Loading…" : "Refresh"}</button></div>
+    <div className="updates-controls"><div className="updates-period" role="group" aria-label="Dashboard period">{periods.map(period => <button key={period} className={mode === period ? "active" : "secondary"} aria-pressed={mode === period} onClick={() => selectPeriod(period)}>{labels[period]}</button>)}</div>
       {mode !== "yesterday" && <label>{mode === "monthly" ? "Month" : mode === "weekly" ? "Date in week" : mode === "yearly" ? "Year" : "Date"}<input
         type={mode === "monthly" ? "month" : mode === "yearly" ? "number" : "date"}
         min={mode === "yearly" ? "1" : undefined}

@@ -10,6 +10,7 @@ const emptyCustomer = (): CustomerInput => ({ name: "", fatherName: "", address:
 export function Customers({ accountSlot }: { accountSlot: AccountSlot }) {
   const [form, setForm] = useState<CustomerInput>(emptyCustomer);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [customerCode, setCustomerCode] = useState("");
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [query, setQuery] = useState("");
   const [refresh, setRefresh] = useState(0);
@@ -31,10 +32,10 @@ export function Customers({ accountSlot }: { accountSlot: AccountSlot }) {
     return () => { active = false; window.clearTimeout(timer); };
   }, [accountSlot, query, refresh]);
 
-  function reset() { setForm(emptyCustomer()); setEditingId(null); setError(""); }
+  function reset() { setForm(emptyCustomer()); setEditingId(null); setCustomerCode(""); setError(""); }
   function edit(customer: Customer) {
     setForm({ name: customer.name, fatherName: customer.fatherName, address: customer.address, phone: customer.phone, aadhaar: customer.aadhaar });
-    setEditingId(customer.id); setError(""); setNotice("");
+    setEditingId(customer.id); setCustomerCode(customer.customerCode); setError(""); setNotice("");
     document.getElementById("customer-name")?.focus();
   }
   async function save(event: React.FormEvent) {
@@ -47,7 +48,7 @@ export function Customers({ accountSlot }: { accountSlot: AccountSlot }) {
         body: JSON.stringify({ ...form, ...(editingId ? { id: editingId } : {}) }),
       });
       reset(); setQuery(""); setRefresh(value => value + 1);
-      setNotice(`${result.customer.name} ${editingId ? "updated" : "saved"}. Enter their phone number or Aadhaar in New bill to fill their details automatically.`);
+      setNotice(`${result.customer.name} ${editingId ? "updated" : "saved"}. Customer ID: ${result.customer.customerCode}. Enter their phone number or Aadhaar in New bill to fill their details automatically.`);
     } catch (failure) { setError(failure instanceof Error ? failure.message : "Unable to save customer."); }
     finally { setBusy(false); }
   }
@@ -56,6 +57,7 @@ export function Customers({ accountSlot }: { accountSlot: AccountSlot }) {
     <div className="section-heading"><div><p className="eyebrow">ACCOUNT {accountSlot}</p><h2>Customer</h2><p className="muted">Save customer details once and reuse them in New bill.</p></div></div>
     <form onSubmit={save} className="customer-entry">
       <h3>{editingId ? "Edit customer" : "Add customer"}</h3>
+      <p className="customer-code-note">{editingId ? `Customer ID: ${customerCode}` : "A unique customer ID will be assigned automatically when you save."}</p>
       <fieldset disabled={busy}>
         <div className="form-grid">
           <label htmlFor="customer-name">Customer name<input id="customer-name" value={form.name} minLength={2} maxLength={120} required onChange={e => setForm(current => ({ ...current, name: e.target.value }))} /></label>
@@ -69,10 +71,10 @@ export function Customers({ accountSlot }: { accountSlot: AccountSlot }) {
       {error && <p className="error" role="alert">{error}</p>}
       {notice && <p className="notice" role="status">{notice}</p>}
     </form>
-    <div className="section-heading customer-list-heading"><h3>Saved customers</h3><label className="customer-search">Search customers<input type="search" placeholder="Name, phone or Aadhaar" value={query} onChange={e => setQuery(e.target.value)} /></label></div>
+    <div className="section-heading customer-list-heading"><h3>Saved customers</h3><label className="customer-search">Search customers<input type="search" placeholder="Customer ID, name, phone or Aadhaar" value={query} onChange={e => setQuery(e.target.value)} /></label></div>
     {loadError && <p className="error" role="alert">{loadError} <button type="button" className="text-button" onClick={() => setRefresh(value => value + 1)}>Retry</button></p>}
-    <div className="item-table-wrap" aria-busy={loading}><table className="history-table"><thead><tr><th>Name</th><th>Father&apos;s name</th><th>Address</th><th>Phone</th><th>Aadhaar</th><th /></tr></thead><tbody>
-      {loading ? <tr><td colSpan={6} className="empty">Loading customers…</td></tr> : loadError ? <tr><td colSpan={6} className="empty">Customer list could not be loaded.</td></tr> : customers.length ? customers.map(customer => <tr key={customer.id}><td><b>{customer.name}</b></td><td>{customer.fatherName}</td><td className="customer-address">{customer.address}</td><td>{customer.phone || "—"}</td><td>{customer.aadhaar ? `•••• •••• ${customer.aadhaar.slice(-4)}` : "—"}</td><td><button type="button" className="text-button" disabled={busy} onClick={() => edit(customer)} aria-label={`Edit customer ${customer.name}`}>Edit</button></td></tr>) : <tr><td colSpan={6} className="empty">{query ? "No matching customers." : "No customers saved yet. Add your first customer above."}</td></tr>}
+    <div className="item-table-wrap" aria-busy={loading}><table className="history-table"><thead><tr><th>Customer ID</th><th>Name</th><th>Father&apos;s name</th><th>Address</th><th>Phone</th><th>Aadhaar</th><th /></tr></thead><tbody>
+      {loading ? <tr><td colSpan={7} className="empty">Loading customers…</td></tr> : loadError ? <tr><td colSpan={7} className="empty">Customer list could not be loaded.</td></tr> : customers.length ? customers.map(customer => <tr key={customer.id}><td><b>{customer.customerCode}</b></td><td><b>{customer.name}</b></td><td>{customer.fatherName}</td><td className="customer-address">{customer.address}</td><td>{customer.phone || "—"}</td><td>{customer.aadhaar ? `•••• •••• ${customer.aadhaar.slice(-4)}` : "—"}</td><td><button type="button" className="text-button" disabled={busy} onClick={() => edit(customer)} aria-label={`Edit customer ${customer.name}`}>Edit</button></td></tr>) : <tr><td colSpan={7} className="empty">{query ? "No matching customers." : "No customers saved yet. Add your first customer above."}</td></tr>}
     </tbody></table></div>
   </section>;
 }

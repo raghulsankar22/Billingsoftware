@@ -50,7 +50,7 @@ export function BillingApp() {
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [bills, setBills] = useState<Bill[]>([]);
   const [query, setQuery] = useState("");
-  const [view, setView] = useState<"dashboard" | "new" | "customers" | "delivery" | "delivery-bills" | "updates" | "settings">("dashboard");
+  const [view, setView] = useState<"bills" | "new" | "customers" | "delivery" | "delivery-bills" | "dashboard" | "settings">("bills");
   const [selected, setSelected] = useState<Bill | null>(null);
   const [overviewBill, setOverviewBill] = useState<Bill | null>(null);
   const [deliveryDocumentBill, setDeliveryDocumentBill] = useState<Bill | null>(null);
@@ -140,7 +140,7 @@ export function BillingApp() {
     setOverviewBill(null);
     setDeliveryDocumentBill(null);
     setEditingSource(null);
-    setView("dashboard");
+    setView("bills");
     setError("");
     setExcelNotice("");
   }
@@ -148,7 +148,7 @@ export function BillingApp() {
   const issueSuccess = (bill: Bill) => {
     setEditingSource(null);
     setSelected(bill);
-    setView("dashboard");
+    setView("bills");
     void load(query, accountSlot);
   };
 
@@ -262,13 +262,13 @@ export function BillingApp() {
       </div>
     </header>
 
-    <nav>
-      <button className={view === "dashboard" ? "active" : ""} onClick={() => { setExcelNotice(""); setView("dashboard"); }}>Bills</button>
+    <nav className="side-nav" aria-label="Billing menu">
+      {localStorageEnabled && <button className={view === "dashboard" ? "active" : ""} aria-current={view === "dashboard" ? "page" : undefined} onClick={() => { setExcelNotice(""); setView("dashboard"); }}>Dashboard</button>}
+      <button className={view === "bills" ? "active" : ""} aria-current={view === "bills" ? "page" : undefined} onClick={() => { setExcelNotice(""); setView("bills"); }}>Bills</button>
       <button className={view === "new" ? "active" : ""} onClick={() => { setExcelNotice(""); setEditingSource(null); setView("new"); }}>New bill</button>
       {localStorageEnabled && <button className={view === "customers" ? "active" : ""} onClick={() => { setExcelNotice(""); setView("customers"); }}>Customer</button>}
       {localStorageEnabled && <button className={view === "delivery" ? "active" : ""} onClick={() => { setExcelNotice(""); setView("delivery"); }}>Delivery</button>}
       {localStorageEnabled && <button className={view === "delivery-bills" ? "active" : ""} onClick={() => { setExcelNotice(""); setView("delivery-bills"); }}>Delivery Bills</button>}
-      {localStorageEnabled && <button className={view === "updates" ? "active" : ""} onClick={() => { setExcelNotice(""); setView("updates"); }}>Updates</button>}
       <button className={`business-profile-tab${view === "settings" ? " active" : ""}`} onClick={() => { setExcelNotice(""); setView("settings"); }}>Business profile</button>
     </nav>
 
@@ -286,8 +286,8 @@ export function BillingApp() {
       {view === "customers" && profile && accountLoaded && <Customers key={accountSlot} accountSlot={accountSlot} />}
       {view === "delivery" && profile && accountLoaded && <BillDelivery key={accountSlot} accountSlot={accountSlot} onSaved={(bill) => { setDeliveryDocumentBill(bill); void load(query, accountSlot); }} onBatchSaved={() => void load(query, accountSlot)} onOpen={setSelected} onOverview={setOverviewBill} onReceipt={setDeliveryDocumentBill} />}
       {view === "delivery-bills" && profile && accountLoaded && <DeliveryBills key={accountSlot} accountSlot={accountSlot} onOpen={setDeliveryDocumentBill} onOriginal={setSelected} />}
-      {view === "updates" && profile && accountLoaded && <BusinessUpdates key={accountSlot} accountSlot={accountSlot} onBill={setSelected} onDelivery={setDeliveryDocumentBill} />}
-      {view === "dashboard" && accountLoaded && profile && <section className="panel">
+      {view === "dashboard" && profile && accountLoaded && <BusinessUpdates key={accountSlot} accountSlot={accountSlot} onBill={setSelected} onDelivery={setDeliveryDocumentBill} />}
+      {view === "bills" && accountLoaded && profile && <section className="panel">
         <div className="section-heading history-heading">
           <div><p className="eyebrow">ACCOUNT {accountSlot} HISTORY</p><h2>Issued bills</h2></div>
           <form className="search" onSubmit={(event) => { event.preventDefault(); void load(query, accountSlot); }}>
