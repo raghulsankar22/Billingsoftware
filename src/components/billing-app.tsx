@@ -257,9 +257,7 @@ export function BillingApp() {
       <div className="top-actions">
         <button className="secondary" onClick={exportExcel} disabled={!profile}>Download Excel</button>
         <button className="secondary" onClick={() => void refreshExcel()} disabled={!profile || isRefreshingExcel}>{isRefreshingExcel ? "Refreshing…" : "Refresh Excel"}</button>
-        {localStorageEnabled
-          ? <span className="notice">Saved on this computer</span>
-          : <><button className="secondary" onClick={connectGoogleDrive}>Connect Google Drive</button><button className="secondary" onClick={() => createBrowserSupabase().auth.signOut().then(() => setSignedIn(false))}>Sign out</button></>}
+        {!localStorageEnabled && <><button className="secondary" onClick={connectGoogleDrive}>Connect Google Drive</button><button className="secondary" onClick={() => createBrowserSupabase().auth.signOut().then(() => setSignedIn(false))}>Sign out</button></>}
       </div>
       </div>
     </header>

@@ -82,7 +82,21 @@ export function BusinessUpdates({ accountSlot, onBill, onDelivery }: { accountSl
       </div>
       {report.incompleteDeliveries > 0 && <p className="overview-warning">{report.incompleteDeliveries} delivery bill(s) have incomplete interest details. Unknown interest and repayment totals are excluded from the summary.</p>}
       <p className="muted collection-note">All dated loan bills are shown, including voided bills. Recorded loan amounts include this history; active and voided subtotals are shown separately. Delivery totals use the saved delivery-date calculation and include deliveries for voided bills. These are bill totals, not payment confirmations.</p>
-      <h3>Loan bills recorded</h3><div className="item-table-wrap"><table className="history-table"><thead><tr><th>Date</th><th>Bill No.</th><th>Customer</th><th>Status</th><th>Loan amount</th><th /></tr></thead><tbody>{report.loans.map(bill => <tr key={bill.id} className={bill.status === "void" ? "void-row" : ""}><td>{displayDate(bill.billDate)}</td><td>#{bill.billNumber}</td><td>{bill.customerName}</td><td>{bill.status === "void" ? "Voided" : "Issued"}{bill.deliveryNo && bill.deliveryDate && <small>Delivered</small>}</td><td>{formatINR(bill.totalLoanAmount)}</td><td><button className="text-button" onClick={() => onBill(bill)}>Open</button></td></tr>)}{!report.loans.length && <tr><td colSpan={6} className="empty">{busy ? "Loading…" : "No loan bills recorded in this period."}</td></tr>}</tbody></table></div>
+      <h3>Loan bills recorded</h3>
+      <div className="item-table-wrap"><table className="history-table dashboard-loan-table">
+        <thead><tr><th>Date</th><th>Bill number</th><th>Customer name</th><th>Customer address</th><th>Metal</th><th>Particulars</th><th>Status</th><th>Loan amount</th><th /></tr></thead>
+        <tbody>{report.loans.map(bill => <tr key={bill.id} className={bill.status === "void" ? "void-row" : ""}>
+          <td>{displayDate(bill.billDate)}</td>
+          <td>#{bill.billNumber}</td>
+          <td>{bill.customerName}</td>
+          <td className="dashboard-loan-address">{bill.address}</td>
+          <td>{[...new Set(bill.items.map(item => item.metal ?? "Not set"))].join(", ") || "—"}</td>
+          <td className="dashboard-loan-particulars">{bill.items.map((item, index) => <div key={index}>{item.particulars}</div>)}</td>
+          <td>{bill.status === "void" ? "Voided" : "Issued"}{bill.deliveryNo && bill.deliveryDate && <small>Delivered</small>}</td>
+          <td>{formatINR(bill.totalLoanAmount)}</td>
+          <td><button className="text-button" onClick={() => onBill(bill)}>Open</button></td>
+        </tr>)}{!report.loans.length && <tr><td colSpan={9} className="empty">{busy ? "Loading…" : "No loan bills recorded in this period."}</td></tr>}</tbody>
+      </table></div>
       <h3>Delivery bills</h3><div className="item-table-wrap"><table className="history-table"><thead><tr><th>Delivery Date</th><th>Delivery No.</th><th>Bill No.</th><th>Customer</th><th>Principal</th><th>Interest</th><th>Total to collect</th><th /></tr></thead><tbody>{report.deliveries.map(({ bill, collection }) => <tr key={bill.id}><td>{displayDate(bill.deliveryDate!)}</td><td>#{bill.deliveryNo}</td><td>#{bill.billNumber}{bill.status === "void" && <small>Original bill voided</small>}</td><td>{bill.customerName}</td><td>{formatINR(collection?.principal ?? bill.totalLoanAmount)}</td><td>{collection?.interest == null ? "—" : formatINR(collection.interest)}</td><td>{collection?.total == null ? "—" : formatINR(collection.total)}</td><td><button className="text-button" onClick={() => onDelivery(bill)}>Open</button></td></tr>)}{!report.deliveries.length && <tr><td colSpan={8} className="empty">{busy ? "Loading…" : "No delivery bills in this period."}</td></tr>}</tbody></table></div>
     </>}
     </> : <JewelInventory bills={bills} metal={section === "gold" ? "Gold" : section === "silver" ? "Silver" : undefined} busy={busy} error={error} onBill={onBill} />}
