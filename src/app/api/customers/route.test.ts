@@ -29,15 +29,15 @@ beforeEach(async () => {
 afterEach(() => { db.close(); rmSync(mocks.directory, { recursive: true, force: true }); mocks.local = true; vi.resetAllMocks(); });
 
 describe("customer API", () => {
-  it("assigns canonical codes, searches them without crossing accounts and ignores client codes", async () => {
+  it("assigns canonical codes, shares them across accounts and ignores client codes", async () => {
     const response = await POST(request("POST", "account=1", { ...details, customerCode: "C999999" }));
     const { customer } = await response.json();
     expect(customer.customerCode).toBe("C000001");
     expect(await (await GET(request("GET", "account=1&q=c000001"))).json()).toEqual({ customers: [customer] });
-    expect(await (await GET(request("GET", "account=2&q=C000001"))).json()).toEqual({ customers: [] });
+    expect(await (await GET(request("GET", "account=2&q=C000001"))).json()).toEqual({ customers: [customer] });
     const updated = await PATCH(request("PATCH", "account=1", { ...customer, customerCode: "C999999", name: "Changed" }));
     expect((await updated.json()).customer).toMatchObject({ id: customer.id, customerCode: "C000001" });
-    expect((await (await POST(request("POST", "account=2", details))).json()).customer.customerCode).toBe("C000002");
+    expect((await (await POST(request("POST", "account=2", details))).json()).customer.customerCode).toBe("C000001");
   });
   it("creates, searches, looks up normalized exact identifiers and edits without caching personal details", async () => {
     const created = await POST(request("POST", "account=1", { ...details, phone: "+91 98765 43210" }));
@@ -74,19 +74,19 @@ describe("customer API", () => {
     expect(await cloud.json()).toEqual({ error: "Customers are available in offline billing." });
     expect(db.customers.list(1)).toEqual([]);
   });
-  it("keeps accounts separate and rejects missing profiles, invalid accounts and foreign customer edits", async () => {
+  it("shares customers and edits while rejecting missing profiles and invalid accounts", async () => {
     const saved = db.customers.save(1, details);
-    expect(await (await GET(request("GET", "account=2"))).json()).toEqual({ customers: [] });
-    expect(await (await GET(request("GET", "account=2&phone=9876543210"))).json()).toEqual({ customer: null });
-    expect((await PATCH(request("PATCH", "account=2", { ...details, id: saved.id }))).status).toBe(400);
-    for (const account of ["0", "-1", "1.2", "01", "2147483647", "invalid", "3"]) {
+    expect(await (await GET(request("GET", "account=2"))).json()).toEqual({ customers: [saved] });
+    expect(await (await GET(request("GET", "account=2&phone=9876543210"))).json()).toEqual({ customer: saved });
+    expect((await PATCH(request("PATCH", "account=2", { ...details, id: saved.id }))).status).toBe(200);
+    for (const account of ["0", "-1", "1.2", "01", "2147483647", "invalid", "4"]) {
       expect((await POST(request("POST", `account=${account}`, details))).status).toBe(400);
     }
-    expect(db.customers.list(1)).toEqual([saved]);
+    expect(db.customers.list(1)).toMatchObject([{ id: saved.id }]);
   });
-  it("rejects duplicate or incomplete writes, invalid lookup and conflicting identifiers", async () => {
+  it("reuses duplicate or incomplete writes, invalid lookup and conflicting identifiers", async () => {
     const saved = db.customers.save(1, details);
-    expect((await POST(request("POST", "account=1", details))).status).toBe(400);
+    expect((await POST(request("POST", "account=1", details))).status).toBe(201);
     expect((await POST(request("POST", "account=1", { name: "Incomplete" }))).status).toBe(400);
     expect((await PATCH(request("PATCH", "account=1", details))).status).toBe(400);
     expect((await GET(request("GET", "account=1&phone=98765"))).status).toBe(400);

@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { randomUUID } from "node:crypto";
 import { Worker } from "node:worker_threads";
 import { customerSchema, normalizeAadhaar, normalizePhone } from "./customers";
 import { createLocalDatabase, localOwnerId } from "./local-database";
@@ -37,6 +38,100 @@ describe("customer validation", () => {
 });
 
 describe("durable account customer records", () => {
+  it("merges existing owned duplicates, retains old code/UUID aliases and leaves stored bills untouched", async () => {
+    const entry = open(); await profile(entry.db); await profile(entry.db, 2); await profile(entry.db, 4);
+    const profiles = (await entry.db.from("business_profiles").select().order("account_slot")).data;
+    entry.db.close();
+    const legacy = new DatabaseSync(join(entry.directory, "billing.sqlite"));
+    legacy.exec(`DROP TABLE customers;
+      CREATE TABLE customers (id TEXT PRIMARY KEY,profile_id TEXT NOT NULL,name TEXT NOT NULL,father_name TEXT NOT NULL,address TEXT NOT NULL,phone TEXT NOT NULL DEFAULT '',aadhaar TEXT NOT NULL DEFAULT '',created_at TEXT NOT NULL,updated_at TEXT NOT NULL,customer_number INTEGER);`);
+    const insert = legacy.prepare("INSERT INTO customers(id,profile_id,name,father_name,address,phone,aadhaar,created_at,updated_at,customer_number) VALUES(?,?,?,?,?,?,?,?,?,?)");
+    const canonicalId = randomUUID(); const aliasId = randomUUID(); const phoneOnlyId = randomUUID();
+    insert.run(canonicalId, profiles[0].id, "Old printed name", details.fatherName, details.address, details.phone, details.aadhaar, "2026-01-01", "2026-01-01", 1);
+    insert.run(aliasId, profiles[1].id, "Current shared name", details.fatherName, details.address, "8888888888", details.aadhaar, "2026-01-02", "2026-01-02", 2);
+    insert.run(phoneOnlyId, profiles[2].id, "Phone only alias", details.fatherName, details.address, "8888888888", "", "2026-01-03", "2026-01-01", 3);
+    const snapshot = { id: "historical-bill", profile_id: profiles[1].id, bill_number: 7, customer_id: aliasId, customer_code: "C000002", customer_name: "Printed old alias name", father_name: "Printed parent", address: "Printed address", phone: "7777777777", government_id: details.aadhaar, bill_date: "2026-01-02", total_assessed_value: 200, total_loan_amount: 100, status: "issued", created_at: "2026-01-02" };
+    const storedSnapshot = JSON.stringify(snapshot);
+    legacy.prepare("INSERT INTO records(table_name,id,body) VALUES('bills',?,?)").run(snapshot.id, storedSnapshot);
+    entry.db = createLocalDatabase(entry.directory);
+    for (const account of [1, 2, 3, 4]) {
+      expect(entry.db.customers.list(account)).toMatchObject([{ id: canonicalId, customerCode: "C000001", name: "Current shared name" }]);
+      expect(entry.db.customers.list(account, "C000002")[0].id).toBe(canonicalId);
+      expect(entry.db.customers.lookup(account, { aadhaar: details.aadhaar })?.id).toBe(canonicalId);
+    }
+    expect(entry.db.customers.resolve(aliasId)?.id).toBe(canonicalId);
+    expect(entry.db.customers.resolve("C000003")?.id).toBe(canonicalId);
+    expect(entry.db.customers.save(4, details).id).toBe(canonicalId);
+    const response = await entry.db.from("bills").select().eq("id", snapshot.id).single();
+    expect(response.data).toEqual({ ...snapshot, customer_id: canonicalId, customer_code: "C000001" });
+    expect(legacy.prepare("SELECT body FROM records WHERE id=?").get(snapshot.id)?.body).toBe(storedSnapshot);
+    // Both statements target legacy columns only and remain usable after migration.
+    const oldWriterId = randomUUID();
+    insert.run(oldWriterId, profiles[2].id, "Legacy inserted duplicate", details.fatherName, details.address, "", details.aadhaar, "2026-02-01", "2026-02-01", null);
+    legacy.prepare("UPDATE customers SET name=?,updated_at=? WHERE id=?").run("Legacy edited shared person", "2026-03-01", aliasId);
+    expect(entry.db.customers.list(1)).toMatchObject([{ id: canonicalId, customerCode: "C000001", name: "Legacy edited shared person" }]);
+    expect(entry.db.customers.resolve("C000004")?.id).toBe(canonicalId);
+    expect(legacy.prepare("SELECT body FROM records WHERE id=?").get(snapshot.id)?.body).toBe(storedSnapshot);
+    legacy.close();
+    entry.db.close(); entry.db = createLocalDatabase(entry.directory);
+    expect(entry.db.customers.resolve(oldWriterId)?.customerCode).toBe("C000001");
+    const shared = entry.db.customers.resolve(aliasId)!;
+    expect(entry.db.customers.save(4, { ...shared, name: "Edited from another account" }, canonicalId)).toMatchObject({ id: canonicalId, customerCode: "C000001", name: "Edited from another account" });
+    expect(entry.db.customers.list(1)[0].name).toBe("Edited from another account");
+  });
+  it("excludes imported other-owner customers even when their identifiers match", async () => {
+    const { db, directory } = open(); await profile(db);
+    const first = db.customers.save(1, details);
+    const external = new DatabaseSync(join(directory, "billing.sqlite"));
+    external.prepare("INSERT INTO records(table_name,id,body) VALUES('business_profiles','foreign',?)")
+      .run(JSON.stringify({ id: "foreign", owner_id: "another-owner", account_slot: 4 }));
+    const foreignId = randomUUID();
+    external.prepare("INSERT INTO customers(id,profile_id,name,father_name,address,phone,aadhaar,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)")
+      .run(foreignId, "foreign", "Private name", details.fatherName, details.address, details.phone, details.aadhaar, "2025-01-01", "2027-01-01");
+    external.close();
+    expect(db.customers.list(1)).toEqual([first]);
+    expect(db.customers.resolve(foreignId)).toBeNull();
+    expect(db.customers.resolve("C000002")).toBeNull();
+    expect(db.customers.lookup(1, { aadhaar: details.aadhaar })).toEqual(first);
+    expect(() => db.customers.save(1, details, foreignId)).toThrow("not found");
+    expect(() => db.customers.list(4)).toThrow("Set up");
+  });
+  it("does not merge conflicting Aadhaar, ambiguous blank-ID phone records or names alone", async () => {
+    const { db, directory } = open(); await profile(db); await profile(db, 2); await profile(db, 4);
+    const first = db.customers.save(1, details);
+    const second = db.customers.save(2, { ...details, aadhaar: "999999999999" });
+    const stored = new DatabaseSync(join(directory, "billing.sqlite"));
+    const profileId = (await db.from("business_profiles").select().eq("account_slot", 4).single()).data.id;
+    const blankId = randomUUID();
+    stored.prepare("INSERT INTO customers(id,profile_id,name,father_name,address,phone,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)")
+      .run(blankId, profileId, details.name, details.fatherName, details.address, details.phone, "2026-01-01", "2026-01-01");
+    stored.close();
+    expect(db.customers.list(1)).toHaveLength(3);
+    expect(db.customers.resolve(second.id)?.id).not.toBe(first.id);
+    expect(db.customers.resolve(blankId)?.id).toBe(blankId);
+    expect(() => db.customers.lookup(1, { phone: details.phone })).toThrow("multiple customers");
+    expect(() => db.customers.save(4, { ...details, aadhaar: "" })).toThrow("multiple customers");
+    expect(db.customers.lookup(4, { phone: details.phone, aadhaar: second.aadhaar })?.id).toBe(second.id);
+    expect(db.customers.save(4, details).id).toBe(first.id);
+    expect(() => db.customers.save(2, details, second.id)).toThrow("already exists");
+    expect(db.customers.resolve(second.id)?.aadhaar).toBe(second.aadhaar);
+    db.customers.save(1, { ...details, phone: "", aadhaar: "" });
+    db.customers.save(2, { ...details, phone: "", aadhaar: "" });
+    expect(db.customers.list(1)).toHaveLength(5);
+  });
+  it("allows a shared customer from an unset original slot and links it in any owned configured ledger", async () => {
+    const { db } = open(); await profile(db, 4);
+    const customer = db.customers.save(1, details);
+    expect(db.customers.list(3)).toEqual([customer]);
+    expect(db.customers.lookup(2, { phone: details.phone })).toEqual(customer);
+    expect(() => db.customers.list(5)).toThrow("Set up");
+    const bill = { accountSlot: 4, customerId: customer.id, billDate: "2026-10-29", customerName: "Printed name", fatherName: details.fatherName, address: details.address, phone: details.phone, items: [{ metal: "Gold", particulars: "Ring", grams: 1, assessedValue: 100, loanAmount: 80 }] };
+    const created = await db.rpc("create_bill", { p_owner_id: localOwnerId, p_bill: bill });
+    expect(created.error).toBeNull();
+    expect((await db.from("bills").select().single()).data).toMatchObject({ customer_id: customer.id, customer_code: customer.customerCode });
+    expect((await db.rpc("create_bill", { p_owner_id: localOwnerId, p_bill: { ...bill, accountSlot: 1 } })).error).not.toBeNull();
+  });
+
   it("serializes simultaneous migrations and customer allocation with an older writer", async () => {
     const entry = open(); await profile(entry.db);
     const profileId = (await entry.db.from("business_profiles").select().single()).data.id;
@@ -82,19 +177,19 @@ describe("durable account customer records", () => {
   it("allocates global stable codes and never reuses a deleted customer's number", async () => {
     const entry = open(); await profile(entry.db); await profile(entry.db, 2);
     const first = entry.db.customers.save(1, details);
-    const second = entry.db.customers.save(2, details);
+    const second = entry.db.customers.save(2, { ...details, phone: "8888888888", aadhaar: "999999999999" });
     expect(first.customerCode).toBe("C000001");
     expect(second.customerCode).toBe("C000002");
     expect(entry.db.customers.save(1, { ...details, name: "Changed" }, first.id).customerCode).toBe(first.customerCode);
     expect(entry.db.customers.list(1, "c000001")).toMatchObject([{ id: first.id }]);
-    expect(entry.db.customers.list(2, first.customerCode)).toEqual([]);
+    expect(entry.db.customers.list(2, first.customerCode)).toMatchObject([{ id: first.id }]);
     const external = new DatabaseSync(join(entry.directory, "billing.sqlite"));
     expect(() => external.prepare("UPDATE customers SET customer_number=NULL WHERE id=?").run(first.id)).toThrow("cannot be changed");
     expect(() => external.prepare("UPDATE customers SET customer_number=1 WHERE id=?").run(second.id)).toThrow();
     external.prepare("DELETE FROM customers WHERE id=?").run(second.id); external.close();
     entry.db.close(); entry.db = createLocalDatabase(entry.directory);
     expect(entry.db.customers.lookup(1, { phone: first.phone })?.customerCode).toBe(first.customerCode);
-    expect(entry.db.customers.save(2, details).customerCode).toBe("C000003");
+    expect(entry.db.customers.save(2, { ...details, phone: "8888888888", aadhaar: "999999999999" }).customerCode).toBe("C000003");
   });
   it("backfills legacy rows deterministically and numbers inserts from an older open writer", async () => {
     const entry = open(); await profile(entry.db); await profile(entry.db, 2);
@@ -108,8 +203,8 @@ describe("durable account customer records", () => {
     insert.run("c", profiles[1].id, "Same day second", "Parent", "123 Street", "2026-01-01", "2026-01-01");
     insert.run("a", profiles[0].id, "First", "Parent", "123 Street", "2026-01-01", "2026-01-01");
     entry.db = createLocalDatabase(entry.directory);
-    expect(entry.db.customers.list(1).map(customer => [customer.id, customer.customerCode])).toEqual([["a", "C000001"], ["b", "C000003"]]);
-    expect(entry.db.customers.list(2)[0].customerCode).toBe("C000002");
+    expect(entry.db.customers.list(1).map(customer => [customer.id, customer.customerCode])).toEqual([["a", "C000001"], ["b", "C000003"], ["c", "C000002"]]);
+    expect(entry.db.customers.list(2).map(customer => customer.customerCode)).toContain("C000002");
     // This statement was prepared before migration, like the installed desktop app.
     insert.run("d", profiles[0].id, "Legacy insert", "Parent", "123 Street", "2026-01-03", "2026-01-03");
     legacy.prepare("UPDATE customers SET name=? WHERE id=?").run("Legacy edit", "a");
@@ -119,16 +214,16 @@ describe("durable account customer records", () => {
     legacy.close();
     entry.db.close(); entry.db = createLocalDatabase(entry.directory);
     expect(entry.db.customers.list(1, "c000004")[0].id).toBe("d");
-    expect(entry.db.customers.save(2, details).customerCode).toBe("C000006");
+    expect(entry.db.customers.save(2, details).customerCode).toBe("C000005");
   });
-  it("validates customer bill links by account and snapshots the server's code through edits", async () => {
+  it("validates owner-wide customer bill links and snapshots the server's code through edits", async () => {
     const { db } = open(); await profile(db); await profile(db, 2);
     const first = db.customers.save(1, details);
-    const other = db.customers.save(2, details);
+    const other = db.customers.save(2, { ...details, phone: "8888888888", aadhaar: "999999999999" });
     const second = db.customers.save(1, { ...details, phone: "", aadhaar: "" });
     const bill = { billDate: "2026-10-29", customerName: details.name, fatherName: details.fatherName, address: details.address, phone: details.phone, items: [{ metal: "Gold", particulars: "Ring", grams: 1, assessedValue: 100, loanAmount: 80 }] };
     const call = (name: string, patch: object, id?: string) => db.rpc(name, { p_owner_id: localOwnerId, p_bill_id: id, p_bill: { ...bill, ...patch } });
-    for (const customerId of [other.id, "00000000-0000-4000-8000-000000000000", "C000001"]) {
+    for (const customerId of ["00000000-0000-4000-8000-000000000000", "C000001"]) {
       expect((await call("create_bill", { customerId })).error).not.toBeNull();
     }
     expect((await db.from("bills").select()).data).toHaveLength(0);
@@ -136,7 +231,7 @@ describe("durable account customer records", () => {
     expect(created.error).toBeNull();
     const read = async () => (await db.from("bills").select().eq("id", created.data.id).single()).data;
     expect(await read()).toMatchObject({ bill_number: 1, customer_id: first.id, customer_code: first.customerCode });
-    expect((await call("edit_bill", { customerId: other.id }, created.data.id)).error).not.toBeNull();
+    expect((await call("create_bill", { customerId: other.id, accountSlot: 1 })).error).toBeNull();
     expect((await call("edit_bill", {}, created.data.id)).error).toBeNull();
     expect(await read()).toMatchObject({ customer_id: first.id, customer_code: first.customerCode });
     expect((await call("edit_bill", { customerId: second.id, customerCode: "C999999" }, created.data.id)).error).toBeNull();
@@ -160,29 +255,32 @@ describe("durable account customer records", () => {
     expect(entry.db.customers.list(1, "unmatched")).toEqual([]);
     expect((await entry.db.from("business_profiles").select()).data).toHaveLength(1);
   });
-  it("requires a local owner's existing profile and isolates records and edits by account", async () => {
+  it("shares records and edits across owned accounts and excludes other owners", async () => {
     const { db, directory } = open();
     expect(() => db.customers.save(1, details)).toThrow("Set up");
     await profile(db); await profile(db, 2);
     const first = db.customers.save(1, details);
-    expect(db.customers.list(2)).toEqual([]);
-    expect(db.customers.lookup(2, { phone: details.phone })).toBeNull();
-    expect(() => db.customers.save(2, { ...details, name: "Other" }, first.id)).toThrow("this account");
-    const other = db.customers.save(2, { ...details, name: "Other" });
-    expect(db.customers.list(1)).toEqual([first]);
-    expect(db.customers.list(2)).toEqual([other]);
+    expect(db.customers.list(2)).toEqual([first]);
+    expect(db.customers.lookup(2, { phone: details.phone })).toEqual(first);
+    expect(db.customers.save(2, { ...details, name: "Ignored duplicate" }).id).toBe(first.id);
+    const changed = db.customers.save(2, { ...details, name: "Changed" }, first.id);
+    expect(db.customers.list(1)).toEqual([changed]);
+    const other = db.customers.save(2, { ...details, phone: "8888888888", aadhaar: "999999999999" });
     expect(() => db.customers.list(0)).toThrow("valid business account");
     const external = new DatabaseSync(join(directory, "billing.sqlite"));
     external.prepare("UPDATE records SET body=json_set(body,'$.owner_id','other-owner') WHERE table_name='business_profiles' AND json_extract(body,'$.account_slot')=2").run(); external.close();
-    expect(() => db.customers.list(2)).toThrow("Set up");
+    expect(db.customers.list(2)).toEqual([changed]);
+    expect(db.customers.list(1)).toEqual([changed]);
+    expect(db.customers.resolve(other.id)).toBeNull();
+    expect(() => db.customers.save(1, details, other.id)).toThrow("this account");
   });
-  it("rejects duplicate normalized identifiers, rolls back edits and enforces SQL uniqueness", async () => {
+  it("reuses duplicate normalized identities, rolls back collisions and enforces SQL uniqueness", async () => {
     const { db, directory } = open(); await profile(db);
     const first = db.customers.save(1, details);
     const second = db.customers.save(1, { ...details, name: "Second", phone: "9876543211", aadhaar: "123456789013" });
-    expect(() => db.customers.save(1, { ...details, phone: "+91 98765 43210", aadhaar: "" })).toThrow("already exists");
-    expect(() => db.customers.save(1, { ...details, phone: "", aadhaar: "1234-5678-9012" })).toThrow("already exists");
-    expect(() => db.customers.save(1, { ...second, phone: first.phone }, second.id)).toThrow("already exists");
+    expect(db.customers.save(1, { ...details, phone: "+91 98765 43210", aadhaar: "" }).id).toBe(first.id);
+    expect(db.customers.save(1, { ...details, phone: "", aadhaar: "1234-5678-9012" }).id).toBe(first.id);
+    expect(() => db.customers.save(1, { ...second, aadhaar: first.aadhaar }, second.id)).toThrow("already exists");
     expect(db.customers.lookup(1, { phone: second.phone })).toEqual(second);
     const external = new DatabaseSync(join(directory, "billing.sqlite"));
     expect(() => external.prepare("UPDATE customers SET phone=? WHERE id=?").run(first.phone, second.id)).toThrow();

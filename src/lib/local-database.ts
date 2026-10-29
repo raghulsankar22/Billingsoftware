@@ -47,6 +47,9 @@ export function createLocalDatabase(directory = localDataDirectory()) {
     if (!database.prepare("PRAGMA table_info(customers)").all().some(column => column.name === "customer_number")) {
       database.exec("ALTER TABLE customers ADD COLUMN customer_number INTEGER CHECK(customer_number IS NULL OR (typeof(customer_number)='integer' AND customer_number>0))");
     }
+    if (!database.prepare("PRAGMA table_info(customers)").all().some(column => column.name === "canonical_id")) {
+      database.exec("ALTER TABLE customers ADD COLUMN canonical_id TEXT");
+    }
     database.exec(`CREATE TABLE IF NOT EXISTS customer_number_sequence (
       singleton INTEGER PRIMARY KEY CHECK(singleton=1), last_number INTEGER NOT NULL CHECK(last_number>=0)
     );
@@ -84,16 +87,74 @@ export function createLocalDatabase(directory = localDataDirectory()) {
   const hasBills = (profileId: string) => rows("bills").some(bill => bill.profile_id === profileId);
   const customerProfile = (account: number) => {
     const accountNumber = slot(account);
-    const profile = rows("business_profiles").find(row => row.owner_id === localOwnerId && row.account_slot === accountNumber);
+    const profiles = rows("business_profiles").filter(row => row.owner_id === localOwnerId);
+    const profile = profiles.find(row => row.account_slot === accountNumber)
+      ?? (accountNumber <= 3 ? profiles.sort((left, right) => left.account_slot - right.account_slot)[0] : undefined);
     if (!profile) throw new Error("Set up this business account first.");
     return String(profile.id);
   };
   const toCustomer = (row: Row): Customer => ({ id: String(row.id), customerCode: customerCode(Number(row.customer_number)), name: String(row.name), fatherName: String(row.father_name), address: String(row.address), phone: String(row.phone), aadhaar: String(row.aadhaar), createdAt: String(row.created_at), updatedAt: String(row.updated_at) });
+  // Keep legacy rows, numbers and per-profile SQL intact. Reconcile on every
+  // access because an already-running desktop release can still insert/edit them.
+  const customerIdentities = () => {
+    const ownedProfiles = new Set(rows("business_profiles").filter(profile => profile.owner_id === localOwnerId).map(profile => String(profile.id)));
+    const customers = database.prepare("SELECT * FROM customers ORDER BY customer_number,created_at,id").all().filter(row => ownedProfiles.has(String(row.profile_id)));
+    const parent = customers.map((_, index) => index);
+    const rootOf = (index: number): number => parent[index] === index ? index : (parent[index] = rootOf(parent[index]));
+    const aadhaars = customers.map(row => new Set(row.aadhaar ? [String(row.aadhaar)] : []));
+    const join = (left: number, right: number) => {
+      left = rootOf(left); right = rootOf(right);
+      if (left === right) return;
+      const keys = new Set([...aadhaars[left], ...aadhaars[right]]);
+      if (keys.size > 1) return;
+      const first = Math.min(left, right); const second = Math.max(left, right);
+      parent[second] = first; aadhaars[first] = keys;
+    };
+    const byId = new Map(customers.map((row, index) => [String(row.id), index]));
+    customers.forEach((row, index) => { const previous = byId.get(String(row.canonical_id)); if (previous !== undefined) join(index, previous); });
+    const byAadhaar = new Map<string, number>();
+    customers.forEach((row, index) => {
+      if (!row.aadhaar) return;
+      const previous = byAadhaar.get(String(row.aadhaar));
+      if (previous !== undefined) join(index, previous); else byAadhaar.set(String(row.aadhaar), index);
+    });
+    const byPhone = new Map<string, number[]>();
+    customers.forEach((row, index) => { if (row.phone) byPhone.set(String(row.phone), [...(byPhone.get(String(row.phone)) ?? []), index]); });
+    for (const indexes of byPhone.values()) {
+      // A phone shared by different Aadhaar holders cannot identify its blank-ID
+      // records either. Never let a blank Aadhaar bridge two different people.
+      const keys = new Set(indexes.flatMap(index => [...aadhaars[rootOf(index)]]));
+      if (keys.size <= 1) indexes.slice(1).forEach(index => join(indexes[0], index));
+    }
+    const groups = new Map<number, Row[]>();
+    customers.forEach((row, index) => { const root = rootOf(index); groups.set(root, [...(groups.get(root) ?? []), row]); });
+    const update = database.prepare("UPDATE customers SET canonical_id=? WHERE id=? AND canonical_id IS NOT ?");
+    return [...groups.values()].map(aliases => {
+      const canonical = aliases[0];
+      aliases.forEach(alias => update.run(canonical.id, alias.id, canonical.id));
+      const latest = [...aliases].sort((left, right) => String(right.updated_at).localeCompare(String(left.updated_at)) || Number(left.customer_number) - Number(right.customer_number))[0];
+      const customer = toCustomer({ ...latest, id: canonical.id, customer_number: canonical.customer_number, created_at: canonical.created_at });
+      const ids = aliases.map(alias => String(alias.id));
+      const codes = aliases.map(alias => customerCode(Number(alias.customer_number)));
+      const phones = [...new Set(aliases.map(alias => String(alias.phone)).filter(Boolean))]
+        .filter(phone => !customers.some(row => row.phone === phone && !ids.includes(String(row.id))));
+      const identifiers = { phones, aadhaars: [...new Set(aliases.map(alias => String(alias.aadhaar)).filter(Boolean))] };
+      return { customer, ids, codes, ...identifiers, aliases, detailId: String(latest.id) };
+    });
+  };
+  const findIdentity = (identifier: string) => customerIdentities().find(identity => identity.ids.includes(identifier) || identity.codes.includes(identifier.toUpperCase()));
+  const canonicalBill = (row: Row, identities: ReturnType<typeof customerIdentities>): Row => {
+    if (!rows("business_profiles").some(profile => profile.id === row.profile_id && profile.owner_id === localOwnerId)) return row;
+    const identity = identities.find(candidate => row.customer_id ? candidate.ids.includes(String(row.customer_id)) : row.customer_code && candidate.codes.includes(String(row.customer_code).toUpperCase()));
+    return identity ? { ...row, customer_id: identity.customer.id, customer_code: identity.customer.customerCode } : row;
+  };
   const customerLink = (profileId: string, id?: string) => {
     if (!id) return { customer_id: null, customer_code: null };
-    const customer = database.prepare("SELECT * FROM customers WHERE profile_id=? AND id=?").get(profileId, id);
-    if (!customer) throw new Error("Customer not found in this account.");
-    return { customer_id: String(customer.id), customer_code: customerCode(Number(customer.customer_number)) };
+    if (!rows("business_profiles").some(profile => profile.id === profileId && profile.owner_id === localOwnerId)) throw new Error("Invalid local owner.");
+    // Bill input remains a UUID; codes are accepted only by the search resolver.
+    const identity = findIdentity(id);
+    if (!identity || !identity.ids.includes(id)) throw new Error("Customer not found in this account.");
+    return { customer_id: identity.customer.id, customer_code: identity.customer.customerCode };
   };
   const nextDeliveryNumber = (profile: Row) => rows("bills").filter(bill => bill.profile_id === profile.id && /^\d+$/.test(String(bill.delivery_no ?? ""))).reduce((next, bill) => Math.max(next, Number(bill.delivery_no) + 1), Math.max(1, Number(profile.next_delivery_number) || 1));
   const issue = (ownerId: string, input: Row) => {
@@ -138,7 +199,7 @@ export function createLocalDatabase(directory = localDataDirectory()) {
     savedItems.forEach((item, index) => { if (!item.metal) save("bill_items", { ...item, metal: items[index].metal }); });
     const updated = { ...bill, delivery_no: deliveryNo, delivery_date: input.deliveryDate, delivery_summary: summary, excel_sync_status: "pending", excel_sync_error: null, pdf_storage_path: null, pdf_error: null, delivery_pdf_storage_path: null, delivery_pdf_error: null, updated_at: now };
     save("bills", updated);
-    return { id: bill.id, previousPdfPath: bill.pdf_storage_path, previousDeliveryPdfPath: bill.delivery_pdf_storage_path, bill: { ...updated, bill_items: rows("bill_items").filter(item => item.bill_id === bill.id).sort((left, right) => left.sort_order - right.sort_order) } };
+    return { id: bill.id, previousPdfPath: bill.pdf_storage_path, previousDeliveryPdfPath: bill.delivery_pdf_storage_path, bill: { ...canonicalBill(updated, customerIdentities()), bill_items: rows("bill_items").filter(item => item.bill_id === bill.id).sort((left, right) => left.sort_order - right.sort_order) } };
   };
   class Query {
     private filters: ((row: Row) => boolean)[] = [];
@@ -186,7 +247,11 @@ export function createLocalDatabase(directory = localDataDirectory()) {
           });
         });
         result.sort((a, b) => { for (const order of this.orders) { if (a[order.key] !== b[order.key]) return (a[order.key] < b[order.key] ? -1 : 1) * (order.ascending ? 1 : -1); } return 0; });
-        result = result.slice(this.start, this.end === Infinity ? undefined : this.end + 1).map(row => {
+        const identities = this.table === "bills" ? transaction(customerIdentities) : [];
+        result = result.slice(this.start, this.end === Infinity ? undefined : this.end + 1).map(storedRow => {
+          // Canonicalize references in responses; printed customer/financial
+          // snapshots in stored bills remain byte-for-byte unchanged.
+          const row = this.table === "bills" ? canonicalBill(storedRow, identities) : storedRow;
           const joined = this.columns.includes("bill_items(") ? { ...row, bill_items: rows("bill_items").filter(item => item.bill_id === row.id).sort((a, b) => a.sort_order - b.sort_order) } : row;
           return this.columns.includes("*") ? joined : Object.fromEntries(this.columns.split(",").map(key => [key.trim(), joined[key.trim()]]));
         });
@@ -204,35 +269,61 @@ export function createLocalDatabase(directory = localDataDirectory()) {
   }
   return {
     customers: {
-      list: (account: number, search = ""): Customer[] => {
-        const profileId = customerProfile(account);
+      list: (account: number, search = ""): Customer[] => transaction(() => {
+        customerProfile(account);
         if (search.length > 200) throw new Error("Customer search is too long.");
         const query = search.trim().toLocaleLowerCase();
-        return database.prepare("SELECT * FROM customers WHERE profile_id=? ORDER BY name COLLATE NOCASE, id").all(profileId)
-          .map(toCustomer).filter(customer => !query || [customer.customerCode, customer.name, customer.fatherName, customer.address, customer.phone, customer.aadhaar].some(value => value.toLocaleLowerCase().includes(query)));
-      },
-      lookup: (account: number, identifiers: { phone?: string; aadhaar?: string }): Customer | null => {
-        const profileId = customerProfile(account);
+        return customerIdentities().filter(identity => !query || [...identity.codes, ...identity.ids, ...identity.aliases.flatMap(alias => [alias.name, alias.father_name, alias.address, alias.phone, alias.aadhaar])].some(value => String(value).toLocaleLowerCase().includes(query)))
+          .map(identity => identity.customer).sort((left, right) => left.name.localeCompare(right.name) || left.id.localeCompare(right.id));
+      }),
+      resolve: (identifier: string): Customer | null => transaction(() => findIdentity(identifier)?.customer ?? null),
+      identity: (identifier: string) => transaction(() => {
+        const identity = findIdentity(identifier);
+        if (!identity) return null;
+        const { customer, ids, codes, phones, aadhaars } = identity;
+        return { customer, ids, codes, phones, aadhaars };
+      }),
+      lookup: (account: number, identifiers: { phone?: string; aadhaar?: string }): Customer | null => transaction(() => {
+        customerProfile(account);
         const { phone, aadhaar } = customerSchema.pick({ phone: true, aadhaar: true }).parse(identifiers);
         if (!phone && !aadhaar) return null;
-        const matches = database.prepare("SELECT * FROM customers WHERE profile_id=? AND ((?<>'' AND phone=?) OR (?<>'' AND aadhaar=?))").all(profileId, phone, phone, aadhaar, aadhaar).map(toCustomer);
-        if (phone && aadhaar && matches.some(customer => customer.phone !== phone || customer.aadhaar !== aadhaar)) throw new Error("Phone and Aadhaar do not match the same customer.");
-        return matches[0] ?? null;
-      },
+        const identities = customerIdentities();
+        const matches = identities.filter(identity => identity.aliases.some(alias => (phone && alias.phone === phone) || (aadhaar && alias.aadhaar === aadhaar)));
+        if (phone && aadhaar) {
+          const exact = matches.filter(identity => identity.aliases.some(alias => alias.aadhaar === aadhaar)
+            && identity.aliases.some(alias => alias.phone === phone || !alias.phone));
+          if (exact.length === 1) return exact[0].customer;
+          if (matches.length) throw new Error("Phone and Aadhaar do not match the same customer.");
+        }
+        if (matches.length > 1) throw new Error("This phone belongs to multiple customers. Enter Aadhaar to choose the same customer.");
+        return matches[0]?.customer ?? null;
+      }),
       save: (account: number, value: unknown, id?: string): Customer => {
         const input = customerSchema.parse(value);
         return transaction(() => {
           const profileId = customerProfile(account);
-          const previous = id === undefined ? undefined : database.prepare("SELECT * FROM customers WHERE profile_id=? AND id=?").get(profileId, id);
+          const identities = customerIdentities();
+          const previous = id === undefined ? undefined : identities.find(identity => identity.ids.includes(id));
           if (id !== undefined && !previous) throw new Error("Customer not found in this account.");
-          const customerId = id ?? randomUUID();
-          const duplicate = database.prepare("SELECT id FROM customers WHERE profile_id=? AND id<>? AND ((?<>'' AND phone=?) OR (?<>'' AND aadhaar=?))").get(profileId, customerId, input.phone, input.phone, input.aadhaar, input.aadhaar);
-          if (duplicate) throw new Error("A customer with this phone or Aadhaar already exists in this account.");
-          const now = new Date().toISOString();
-          const customer = { ...input, id: customerId, createdAt: previous ? String(previous.created_at) : now, updatedAt: now };
+          const aadhaarMatches = input.aadhaar ? identities.filter(identity => identity.aadhaars.includes(input.aadhaar)) : [];
+          const phoneMatches = input.phone ? identities.filter(identity => identity.aliases.some(alias => alias.phone === input.phone)) : [];
+          const phoneAadhaars = new Set([...phoneMatches.flatMap(identity => identity.aadhaars), ...(input.aadhaar ? [input.aadhaar] : [])]);
+          if (!input.aadhaar && phoneMatches.length > 1) throw new Error("This phone belongs to multiple customers. Enter Aadhaar to choose the same customer.");
+          const matches = aadhaarMatches.length ? aadhaarMatches : phoneAadhaars.size <= 1 ? phoneMatches : [];
+          if (matches.some(identity => identity !== previous) && previous) throw new Error("A customer with this phone or Aadhaar already exists. Choose that customer instead.");
+          if (!previous && matches.length > 1) throw new Error("This phone belongs to multiple customers. Enter Aadhaar to choose the same customer.");
+          if (!previous && matches.length === 1) {
+            const existing = matches[0];
+            if (input.aadhaar && existing.aadhaars.some(aadhaar => aadhaar !== input.aadhaar)) throw new Error("Phone and Aadhaar do not match the same customer.");
+            return existing.customer;
+          }
+          if (previous && input.aadhaar && previous.aliases.some(alias => alias.id !== previous.detailId && alias.aadhaar && alias.aadhaar !== input.aadhaar)) throw new Error("Phone and Aadhaar do not match the same customer.");
+          const customerId = previous?.detailId ?? randomUUID();
+          const previousTime = previous ? Date.parse(previous.customer.updatedAt) : NaN;
+          const now = new Date(Math.max(Date.now(), Number.isFinite(previousTime) ? previousTime + 1 : 0)).toISOString();
           database.prepare("INSERT INTO customers(id,profile_id,name,father_name,address,phone,aadhaar,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,father_name=excluded.father_name,address=excluded.address,phone=excluded.phone,aadhaar=excluded.aadhaar,updated_at=excluded.updated_at")
-            .run(customer.id, profileId, customer.name, customer.fatherName, customer.address, customer.phone, customer.aadhaar, customer.createdAt, customer.updatedAt);
-          return toCustomer(database.prepare("SELECT * FROM customers WHERE id=?").get(customerId)!);
+            .run(customerId, profileId, input.name, input.fatherName, input.address, input.phone, input.aadhaar, previous?.customer.createdAt ?? now, now);
+          return findIdentity(customerId)!.customer;
         });
       },
     },

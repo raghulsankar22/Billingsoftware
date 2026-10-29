@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { randomUUID } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 import { createLocalDatabase, localOwnerId } from "./local-database";
 import { loadGlobalSearch } from "./global-search";
@@ -28,6 +29,35 @@ beforeEach(() => {
 afterEach(() => { stored.close(); db.close(); rmSync(directory, { recursive: true, force: true }); });
 
 describe("all-account bill search", () => {
+  it("finds canonical and old alias codes/UUIDs across all accounts without changing historical snapshots", async () => {
+    const customer = db.customers.save(1, { name: "Current name", fatherName: "Parent", address: "123 Street", phone: "9876543210", aadhaar: "123456789012" });
+    const aliasId = randomUUID();
+    stored.prepare("INSERT INTO customers(id,profile_id,name,father_name,address,phone,aadhaar,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)")
+      .run(aliasId, "p2", "Old alias name", "Parent", "123 Street", "8888888888", customer.aadhaar, "2026-01-01", "2026-01-01");
+    const aliasCode = `C${String(stored.prepare("SELECT customer_number FROM customers WHERE id=?").get(aliasId)!.customer_number).padStart(6, "0")}`;
+    bill("alias-linked", 2, { customer_id: aliasId, customer_code: aliasCode, customer_name: "Printed old name", phone: "", government_id: "" });
+    bill("canonical-linked", 4, { customer_id: customer.id, customer_code: customer.customerCode, phone: "", government_id: "" });
+    bill("legacy-old-phone", 17, { phone: "8888888888", government_id: "" });
+    bill("legacy-aadhaar", 1, { phone: "", government_id: customer.aadhaar });
+    bill("foreign-alias", 1, { profile_id: "foreign", customer_id: aliasId, customer_code: aliasCode });
+    const original = stored.prepare("SELECT body FROM records WHERE id='alias-linked'").get()!.body;
+    for (const query of [customer.customerCode, aliasCode, customer.id, aliasId]) {
+      const result = await search(query);
+      expect(ids(result)).toEqual(["legacy-aadhaar", "alias-linked", "canonical-linked", "legacy-old-phone"]);
+      expect(result.results.find(result => result.bill.id === "alias-linked")?.bill).toMatchObject({ customerId: customer.id, customerCode: customer.customerCode, customerName: "Printed old name", billDate: "2026-10-01", totalLoanAmount: 100 });
+    }
+    expect(stored.prepare("SELECT body FROM records WHERE id='alias-linked'").get()!.body).toBe(original);
+  });
+  it("requires Aadhaar for legacy bills when different saved people share a phone", async () => {
+    const first = db.customers.save(1, { name: "First Customer", fatherName: "Parent", address: "123 Street", phone: "9876543210", aadhaar: "123456789012" });
+    const second = db.customers.save(2, { name: "Second Customer", fatherName: "Parent", address: "123 Street", phone: first.phone, aadhaar: "999999999999" });
+    bill("no-aadhaar", 4, { government_id: "" });
+    bill("first-aadhaar", 1);
+    bill("second-aadhaar", 2, { government_id: second.aadhaar });
+    expect(ids(await search(first.customerCode))).toEqual(["first-aadhaar"]);
+    expect(ids(await search(second.customerCode))).toEqual(["second-aadhaar"]);
+  });
+
   it("searches all owned profiles, including later accounts, with their own profile and full history", async () => {
     bill("one");
     bill("two", 2, { status: "void" });
@@ -62,7 +92,7 @@ describe("all-account bill search", () => {
     expect(ids(await search("customer_name.eq.Test Customer"))).toEqual([]);
   });
 
-  it("matches canonical codes and UUID links, and resolves legacy bills only by exact same-profile identity", async () => {
+  it("matches canonical codes and UUID links, and resolves legacy bills only by exact owner-wide identity", async () => {
     const customer = db.customers.save(1, { name: "Test Customer", fatherName: "Parent", address: "123 Main Street", phone: "9876543210", aadhaar: "123456789012" });
     const other = db.customers.save(1, { name: "Test Customer", fatherName: "Parent", address: "123 Main Street", phone: "8888888888", aadhaar: "" });
     const elsewhere = db.customers.save(2, { name: "Test Customer", fatherName: "Parent", address: "123 Main Street", phone: "9876543210", aadhaar: "123456789012" });
@@ -76,13 +106,14 @@ describe("all-account bill search", () => {
     bill("different-code", 1, { bill_number: 8, customer_code: other.customerCode });
     bill("different-profile", 2);
     const result = await search(customer.customerCode.toLowerCase());
-    expect(ids(result)).toEqual(["legacy-aadhaar", "legacy-phone", "code-only", "uuid-only", "linked"]);
-    expect(result.total).toBe(5);
-    expect(result.results.filter(result => result.matchedCustomerCode).map(result => result.bill.id)).toEqual(["legacy-aadhaar", "legacy-phone"]);
+    expect(ids(result)).toEqual(["legacy-aadhaar", "legacy-phone", "code-only", "uuid-only", "linked", "different-profile"]);
+    expect(result.total).toBe(6);
+    expect(result.results.filter(result => result.matchedCustomerCode).map(result => result.bill.id)).toEqual(["legacy-aadhaar", "legacy-phone", "different-profile"]);
     expect(result.results[0]).toMatchObject({ matchedCustomerCode: customer.customerCode, bill: { customerCode: undefined, customerId: undefined } });
     expect(ids(await search(`C-${customer.customerCode.slice(1)}`))).toEqual(ids(result));
-    expect(ids(await search(customer.id))).toEqual(["uuid-only", "linked"]);
-    expect(ids(await search(elsewhere.customerCode))).toEqual(["different-profile"]);
+    expect(ids(await search(customer.id))).toEqual(ids(result));
+    expect(elsewhere.id).toBe(customer.id);
+    expect(ids(await search(elsewhere.customerCode))).toEqual(ids(result));
   });
 
   it("sorts and paginates the complete match set without losing or duplicating bills", async () => {

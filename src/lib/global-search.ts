@@ -40,12 +40,12 @@ export async function loadGlobalSearch(database: SearchDatabase, ownerId: string
   const aadhaarQuery = /^[\d\s-]+$/.test(query) ? normalizeAadhaar(query) : "";
   const { data: profiles, error: profileError } = await database.from("business_profiles").select("*").eq("owner_id", ownerId);
   if (profileError) throw profileError;
+  const identityQuery = fullCustomerCode ?? (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(query) ? query : undefined);
+  const identity = identityQuery ? database.customers.identity(identityQuery) : null;
+  const customer = identity?.customer;
   const results: GlobalSearchResult[] = [];
   for (const profile of profiles ?? []) {
     const accountSlot = Number(profile.account_slot);
-    const customer = fullCustomerCode
-      ? database.customers.list(accountSlot).find(saved => saved.customerCode.toUpperCase() === fullCustomerCode)
-      : undefined;
     const { data: rows, error } = await database.from("bills").select("*, bill_items(*)").eq("profile_id", profile.id);
     if (error) throw error;
     for (const row of rows ?? []) {
@@ -55,17 +55,18 @@ export async function loadGlobalSearch(database: SearchDatabase, ownerId: string
       const identifierMatch = (phoneQuery !== "" && /^\d+$/.test(phoneQuery) && normalizePhone(bill.phone).includes(phoneQuery))
         || (aadhaarQuery !== "" && /^\d+$/.test(aadhaarQuery) && normalizeAadhaar(bill.governmentId ?? "").includes(aadhaarQuery));
       const canonicalCodeMatch = fullCustomerCode !== undefined && bill.customerCode?.toUpperCase() === fullCustomerCode;
-      const linkedCustomerMatch = customer !== undefined && bill.customerId === customer.id;
+      const linkedCustomerMatch = identity !== null && ((!!bill.customerId && identity.ids.includes(bill.customerId))
+        || (!!bill.customerCode && identity.codes.includes(bill.customerCode.toUpperCase())));
       // A historical bill without either canonical link may be associated by an
       // exact saved identifier. A conflicting Aadhaar overrides a shared phone;
       // an exact Aadhaar still identifies a customer whose phone has changed.
       const billAadhaar = normalizeAadhaar(bill.governmentId ?? "");
-      const conflictingAadhaar = customer?.aadhaar && /^\d{12}$/.test(billAadhaar) && customer.aadhaar !== billAadhaar;
-      const legacyCustomerMatch = customer !== undefined && !bill.customerId && !bill.customerCode
-        && ((customer.phone !== "" && normalizePhone(bill.phone) === customer.phone && !conflictingAadhaar)
-          || (customer.aadhaar !== "" && billAadhaar === customer.aadhaar));
-      const matches = fullCustomerCode
-        ? canonicalCodeMatch || linkedCustomerMatch || legacyCustomerMatch
+      const conflictingAadhaar = !!identity?.aadhaars.length && /^\d{12}$/.test(billAadhaar) && !identity.aadhaars.includes(billAadhaar);
+      const legacyCustomerMatch = identity !== null && !bill.customerId && !bill.customerCode
+        && ((identity.phones.includes(normalizePhone(bill.phone)) && !conflictingAadhaar)
+          || identity.aadhaars.includes(billAadhaar));
+      const matches = identityQuery
+        ? canonicalCodeMatch || linkedCustomerMatch || legacyCustomerMatch || bill.customerId === identityQuery
         : snapshotMatch || identifierMatch;
       if (!matches) continue;
       results.push({
