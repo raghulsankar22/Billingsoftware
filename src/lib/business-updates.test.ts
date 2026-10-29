@@ -8,12 +8,19 @@ const loan: Bill = {
   amountInWords: "Rupees Ten Thousand Only", excelSyncStatus: "synced", createdAt: "2026-10-28T00:00:00Z",
 };
 
-describe("daily, weekly and monthly business updates", () => {
+describe("billing business update periods", () => {
   it("uses India calendar dates for the default", () => {
     expect(billingToday()).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   });
   it("uses exactly the selected day", () => {
     expect(billingPeriod("daily", "2026-10-28")).toEqual({ from: "2026-10-28", to: "2026-10-28" });
+  });
+  it.each([
+    ["2026-10-28", "2026-10-27"],
+    ["2027-01-01", "2026-12-31"],
+    ["2028-03-01", "2028-02-29"],
+  ])("uses the previous India calendar date before %s", (indiaToday, yesterday) => {
+    expect(billingPeriod("yesterday", indiaToday)).toEqual({ from: yesterday, to: yesterday });
   });
   it.each(["2026-10-26", "2026-10-28", "2026-11-01"])("uses Monday through Sunday for %s", date => {
     expect(billingPeriod("weekly", date)).toEqual({ from: "2026-10-26", to: "2026-11-01" });
@@ -28,6 +35,13 @@ describe("daily, weekly and monthly business updates", () => {
     ["2028-02-20", "2028-02-01", "2028-02-29"],
   ])("uses the complete calendar month for %s", (date, from, to) => {
     expect(billingPeriod("monthly", date)).toEqual({ from, to });
+  });
+  it.each([
+    ["2026-10-28", "2026-01-01", "2026-12-31"],
+    ["2027-01-01", "2027-01-01", "2027-12-31"],
+    ["2028-02-29", "2028-01-01", "2028-12-31"],
+  ])("uses the complete calendar year for %s", (date, from, to) => {
+    expect(billingPeriod("yearly", date)).toEqual({ from, to });
   });
   it.each(["", "2026-02-30", "not-a-date"])("rejects invalid date %s", date => {
     expect(() => billingPeriod("daily", date)).toThrow("valid date");
@@ -48,8 +62,9 @@ describe("daily, weekly and monthly business updates", () => {
     expect(report.voidedLoanAmount).toBe(10000);
     expect(report.recordedLoanAmount).toBe(30000);
   });
-  it.each(["daily", "weekly", "monthly"] as const)("does not hide all-voided bills in the %s report", period => {
-    const datedBills = Array.from({ length: 5 }, (_, index) => ({ ...loan, id: `void-${index}`, billNumber: index + 1, status: "void" as const }));
+  it.each(["yesterday", "daily", "weekly", "monthly", "yearly"] as const)("does not hide all-voided bills in the %s report", period => {
+    const reportDate = period === "yesterday" ? "2026-10-27" : "2026-10-28";
+    const datedBills = Array.from({ length: 5 }, (_, index) => ({ ...loan, id: `void-${index}`, billNumber: index + 1, billDate: reportDate, status: "void" as const }));
     const report = businessUpdates(datedBills, billingPeriod(period, "2026-10-28"));
     expect(report.loans).toHaveLength(5);
     expect(report.activeLoans).toHaveLength(0);
@@ -65,6 +80,19 @@ describe("daily, weekly and monthly business updates", () => {
     expect(report.deliveries).toHaveLength(1);
     expect(report).toMatchObject({ deliveryPrincipal: 10000, deliveryInterest: 200, deliveryTotal: 10200, incompleteDeliveries: 0 });
     expect(businessUpdates([delivered], billingPeriod("daily", "2026-10-28")).deliveries).toEqual([]);
+  });
+  it("filters yearly loans and deliveries by their own dates, including voided loans", () => {
+    const bills = [
+      { ...loan, id: "jan-loan", billDate: "2026-01-01" },
+      { ...loan, id: "void-dec-loan", billDate: "2026-12-31", status: "void" as const, deliveryNo: "1", deliveryDate: "2026-12-31" },
+      { ...loan, id: "outside-loan", billDate: "2027-01-01", deliveryNo: "2", deliveryDate: "2027-01-01" },
+      { ...loan, id: "old-loan-delivered-this-year", billDate: "2025-12-31", deliveryNo: "3", deliveryDate: "2026-01-01" },
+    ];
+    const report = businessUpdates(bills, billingPeriod("yearly", "2026-10-28"));
+    expect(report.loans.map(bill => bill.id)).toEqual(["void-dec-loan", "jan-loan"]);
+    expect(report.activeLoans.map(bill => bill.id)).toEqual(["jan-loan"]);
+    expect(report.voidedLoans.map(bill => bill.id)).toEqual(["void-dec-loan"]);
+    expect(report.deliveries.map(({ bill }) => bill.id).sort()).toEqual(["old-loan-delivered-this-year", "void-dec-loan"]);
   });
   it("sums loan amounts in integer paise", () => {
     expect(businessUpdates([{ ...loan, totalLoanAmount: 0.1 }, { ...loan, id: "second", totalLoanAmount: 0.2 }], billingPeriod("daily", loan.billDate)).loanAmount).toBe(0.3);

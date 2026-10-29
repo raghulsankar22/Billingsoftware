@@ -1,7 +1,7 @@
 import { deliveryBillHistory, deliveryCollection } from "./delivery-history";
 import type { Bill } from "./types";
 
-export type UpdatePeriod = "daily" | "weekly" | "monthly";
+export type UpdatePeriod = "yesterday" | "daily" | "weekly" | "monthly" | "yearly";
 export type PeriodRange = { from: string; to: string };
 
 export function billingToday(): string {
@@ -16,6 +16,11 @@ export function billingPeriod(period: UpdatePeriod, anchor: string): PeriodRange
   if (!Number.isFinite(date.getTime()) || date.toISOString().slice(0, 10) !== anchor) throw new Error("Choose a valid date.");
   const iso = (value: Date) => value.toISOString().slice(0, 10);
   if (period === "daily") return { from: anchor, to: anchor };
+  if (period === "yesterday") {
+    date.setUTCDate(date.getUTCDate() - 1);
+    const yesterday = iso(date);
+    return { from: yesterday, to: yesterday };
+  }
   if (period === "weekly") {
     const monday = new Date(date);
     monday.setUTCDate(monday.getUTCDate() - (monday.getUTCDay() + 6) % 7);
@@ -23,9 +28,12 @@ export function billingPeriod(period: UpdatePeriod, anchor: string): PeriodRange
     sunday.setUTCDate(sunday.getUTCDate() + 6);
     return { from: iso(monday), to: iso(sunday) };
   }
-  const end = new Date(date);
-  end.setUTCMonth(end.getUTCMonth() + 1, 0);
-  return { from: `${anchor.slice(0, 7)}-01`, to: iso(end) };
+  if (period === "monthly") {
+    const end = new Date(date);
+    end.setUTCMonth(end.getUTCMonth() + 1, 0);
+    return { from: `${anchor.slice(0, 7)}-01`, to: iso(end) };
+  }
+  return { from: `${anchor.slice(0, 4)}-01-01`, to: `${anchor.slice(0, 4)}-12-31` };
 }
 
 export function businessUpdates(bills: Bill[], range: PeriodRange) {

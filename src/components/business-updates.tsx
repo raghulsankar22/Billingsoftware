@@ -7,12 +7,14 @@ import { billingPeriod, billingToday, businessUpdates, type UpdatePeriod } from 
 import { formatINR } from "@/lib/money";
 import { api } from "./api";
 
-const labels = { daily: "Daily", weekly: "Weekly", monthly: "Monthly" };
+const labels: Record<UpdatePeriod, string> = { yesterday: "Yesterday", daily: "Today", weekly: "Weekly", monthly: "Monthly", yearly: "Yearly" };
+const periods = ["yesterday", "daily", "weekly", "monthly", "yearly"] as const;
 const displayDate = (value: string) => value.split("-").reverse().join("/");
 
 export function BusinessUpdates({ accountSlot, onBill, onDelivery }: { accountSlot: AccountSlot; onBill: (bill: Bill) => void; onDelivery: (bill: Bill) => void }) {
   const [mode, setMode] = useState<UpdatePeriod>("daily");
   const [date, setDate] = useState(billingToday);
+  const [year, setYear] = useState(() => date.slice(0, 4));
   const [bills, setBills] = useState<Bill[]>([]);
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState("");
@@ -25,15 +27,47 @@ export function BusinessUpdates({ accountSlot, onBill, onDelivery }: { accountSl
       .finally(() => { if (active) setBusy(false); });
     return () => { active = false; };
   }, [accountSlot, refresh]);
-  const range = useMemo(() => { try { return billingPeriod(mode, date); } catch { return null; } }, [mode, date]);
+  const range = useMemo(() => {
+    if (mode === "yearly" && (!/^\d{1,4}$/.test(year) || Number(year) <= 0)) return null;
+    const anchor = mode === "yesterday" ? billingToday()
+      : mode === "yearly" ? `${year.padStart(4, "0")}-01-01`
+      : date;
+    try { return billingPeriod(mode, anchor); } catch { return null; }
+  }, [mode, date, year]);
   const report = useMemo(() => range ? businessUpdates(bills, range) : null, [bills, range]);
+  const selectPeriod = (period: UpdatePeriod) => {
+    setMode(period);
+    if (period === "daily" || period === "yesterday") {
+      const today = billingToday();
+      setDate(today);
+      setYear(today.slice(0, 4));
+    }
+  };
+  const changeDate = (value: string) => {
+    const nextDate = value ? mode === "monthly" ? `${value}-01` : value : "";
+    setDate(nextDate);
+    if (nextDate) setYear(nextDate.slice(0, 4));
+  };
 
   return <section className="panel">
-    <div className="section-heading"><div><p className="eyebrow">ACCOUNT {accountSlot} · BUSINESS ACTIVITY</p><h2>{labels[mode]} update</h2><p className="muted">Daily, Monday–Sunday weekly, and calendar-month summaries in one place.</p></div><button className="secondary" disabled={busy} onClick={() => setRefresh(value => value + 1)}>{busy ? "Loading…" : "Refresh"}</button></div>
-    <div className="updates-controls"><div className="updates-period" role="group" aria-label="Update period">{(["daily", "weekly", "monthly"] as const).map(period => <button key={period} className={mode === period ? "active" : "secondary"} aria-pressed={mode === period} onClick={() => setMode(period)}>{labels[period]}</button>)}</div>
-      <label>{mode === "monthly" ? "Month" : mode === "weekly" ? "Date in week" : "Date"}<input type={mode === "monthly" ? "month" : "date"} value={mode === "monthly" ? date.slice(0, 7) : date} onChange={event => setDate(event.target.value ? mode === "monthly" ? `${event.target.value}-01` : event.target.value : "")} /></label>
+    <div className="section-heading"><div><p className="eyebrow">ACCOUNT {accountSlot} · BUSINESS ACTIVITY</p><h2>{labels[mode]} update</h2><p className="muted">Yesterday follows India’s calendar date. Choose a date to inspect a day, week, or month, or select a calendar year.</p></div><button className="secondary" disabled={busy} onClick={() => setRefresh(value => value + 1)}>{busy ? "Loading…" : "Refresh"}</button></div>
+    <div className="updates-controls"><div className="updates-period" role="group" aria-label="Update period">{periods.map(period => <button key={period} className={mode === period ? "active" : "secondary"} aria-pressed={mode === period} onClick={() => selectPeriod(period)}>{labels[period]}</button>)}</div>
+      {mode !== "yesterday" && <label>{mode === "monthly" ? "Month" : mode === "weekly" ? "Date in week" : mode === "yearly" ? "Year" : "Date"}<input
+        type={mode === "monthly" ? "month" : mode === "yearly" ? "number" : "date"}
+        min={mode === "yearly" ? "1" : undefined}
+        max={mode === "yearly" ? "9999" : undefined}
+        step={mode === "yearly" ? "1" : undefined}
+        value={mode === "monthly" ? date.slice(0, 7) : mode === "yearly" ? year : date}
+        onChange={event => {
+          if (mode === "yearly") {
+            const nextYear = event.target.value;
+            setYear(nextYear);
+            if (/^\d{1,4}$/.test(nextYear) && Number(nextYear) > 0) setDate(`${nextYear.padStart(4, "0")}-01-01`);
+          } else changeDate(event.target.value);
+        }}
+      /></label>}
     </div>
-    {range ? <p className="updates-range">{displayDate(range.from)}{range.to !== range.from && <> – {displayDate(range.to)}</>}</p> : <p className="error">Choose a valid date.</p>}
+    {range ? <p className="updates-range">Date range: {displayDate(range.from)}{range.to !== range.from && <> – {displayDate(range.to)}</>}</p> : <p className="error">Choose a valid date or year.</p>}
     {error && <p className="error" role="alert">{error}</p>}
     {busy && <p className="muted" role="status">Loading business activity…</p>}
     {report && !busy && !error && <>
