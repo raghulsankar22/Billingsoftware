@@ -90,6 +90,43 @@
   font-weight: 700;
 }
 
+.overdue-controls,
+.all-account-search-form {
+  display: flex;
+  align-items: flex-end;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.overdue-controls label,
+.all-account-search-form label {
+  display: grid;
+  gap: 7px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.overdue-search,
+.all-account-search-form label { flex: 1; min-width: 200px; }
+
+.overdue-controls input,
+.all-account-search-form input {
+  width: 100%;
+  background: #0e1a2a;
+  color: var(--ink);
+  border: 1px solid #4a607b;
+  border-radius: 7px;
+  padding: 10px;
+  font: inherit;
+}
+
+.overdue-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); max-width: 640px; }
+.search-scope-tag { padding: 8px 12px; border: 1px solid var(--line); border-radius: 7px; color: #b8dcff; background: var(--sky); white-space: nowrap; }
+.search-result-summary { margin: 20px 0 12px; color: #b8dcff; overflow-wrap: anywhere; }
+.all-account-results { min-width: 1050px; }
+.search-pagination { display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; margin-top: 18px; font-size: 13px; }
+.search-pagination > div { display: flex; align-items: center; gap: 12px; }
+
 @media (max-width: 700px) {
   .app-shell { grid-template-columns: 124px minmax(0, 1fr); }
   .app-shell > .topbar { padding: 16px; }
@@ -98,6 +135,9 @@
   .app-shell > .content { margin: 16px 0; padding: 0 10px 16px 8px; }
   .customer-details-grid,
   .customer-entry .form-grid { grid-template-columns: minmax(0, 1fr); }
+  .overdue-controls, .all-account-search-form { align-items: stretch; flex-direction: column; }
+  .overdue-search, .all-account-search-form label { min-width: 0; }
+  .overdue-summary { grid-template-columns: minmax(0, 1fr); }
 }
 
 @media print {

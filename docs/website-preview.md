@@ -20,3 +20,16 @@ Delivery Bills and Business profile. Dashboard includes the existing Yesterday,
 Today, Weekly, Monthly and Yearly activity reports. New bill shows customer name
 and father's name first, followed by mobile and Aadhaar. Saved customer IDs appear
 in Customer and fill into New bill alongside the saved details.
+
+Overdue reviews the selected calendar month against the same month in the previous
+year. For example, October 2026 shows bills from 1–31 October 2025. Each account has
+its own overdue list. Bills with a completed delivery number and date are excluded;
+voiding alone does not mean delivery or repayment. Select any month or year to
+review another cohort. This is a whole-month report, rather than a rolling 365-day
+cutoff, matching the owner's requested date ranges.
+
+Search looks for bills across every account owned by the local user, including
+added accounts beyond the original three. It accepts customer ID, name, address,
+phone and Aadhaar. Each result identifies its account and bill number; opening or
+downloading a result uses that bill's own account context. Search includes both
+delivered and undelivered history, while Overdue is restricted to pending delivery.

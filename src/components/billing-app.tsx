@@ -15,6 +15,8 @@ import { BillDelivery } from "./bill-delivery";
 import { DeliveryBills } from "./delivery-bills";
 import { BusinessUpdates } from "./business-updates";
 import { Customers } from "./customers";
+import { OverdueBills } from "./overdue-bills";
+import { AllAccountSearch } from "./all-account-search";
 import { ProfileForm } from "./profile-form";
 import { SignIn } from "./sign-in";
 
@@ -50,7 +52,7 @@ export function BillingApp() {
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [bills, setBills] = useState<Bill[]>([]);
   const [query, setQuery] = useState("");
-  const [view, setView] = useState<"bills" | "new" | "customers" | "delivery" | "delivery-bills" | "dashboard" | "settings">("bills");
+  const [view, setView] = useState<"bills" | "new" | "customers" | "delivery" | "delivery-bills" | "dashboard" | "overdue" | "search" | "settings">("bills");
   const [selected, setSelected] = useState<Bill | null>(null);
   const [overviewBill, setOverviewBill] = useState<Bill | null>(null);
   const [deliveryDocumentBill, setDeliveryDocumentBill] = useState<Bill | null>(null);
@@ -265,6 +267,8 @@ export function BillingApp() {
     <nav className="side-nav" aria-label="Billing menu">
       {localStorageEnabled && <button className={view === "dashboard" ? "active" : ""} aria-current={view === "dashboard" ? "page" : undefined} onClick={() => { setExcelNotice(""); setView("dashboard"); }}>Dashboard</button>}
       <button className={view === "bills" ? "active" : ""} aria-current={view === "bills" ? "page" : undefined} onClick={() => { setExcelNotice(""); setView("bills"); }}>Bills</button>
+      {localStorageEnabled && <button className={view === "search" ? "active" : ""} aria-current={view === "search" ? "page" : undefined} onClick={() => { setExcelNotice(""); setView("search"); }}>Search</button>}
+      {localStorageEnabled && <button className={view === "overdue" ? "active" : ""} aria-current={view === "overdue" ? "page" : undefined} onClick={() => { setExcelNotice(""); setView("overdue"); }}>Overdue</button>}
       <button className={view === "new" ? "active" : ""} onClick={() => { setExcelNotice(""); setEditingSource(null); setView("new"); }}>New bill</button>
       {localStorageEnabled && <button className={view === "customers" ? "active" : ""} onClick={() => { setExcelNotice(""); setView("customers"); }}>Customer</button>}
       {localStorageEnabled && <button className={view === "delivery" ? "active" : ""} onClick={() => { setExcelNotice(""); setView("delivery"); }}>Delivery</button>}
@@ -275,7 +279,7 @@ export function BillingApp() {
     <div className="content">
       {error && <p className="error">{error}</p>}
       {excelNotice && <p className="excel-notice" role="status">{excelNotice}</p>}
-      {accountLoaded && !profile && view !== "settings" && <section className="panel setup-callout">
+      {accountLoaded && !profile && view !== "settings" && view !== "search" && <section className="panel setup-callout">
         <h2>Set up Account {accountSlot} before issuing the first bill</h2>
         <p>Add this business&apos;s name, address, phone, logo and first bill number. Each account has separate details and bill history.</p>
         <button onClick={() => setView("settings")}>Set up Account {accountSlot}</button>
@@ -287,6 +291,8 @@ export function BillingApp() {
       {view === "delivery" && profile && accountLoaded && <BillDelivery key={accountSlot} accountSlot={accountSlot} onSaved={(bill) => { setDeliveryDocumentBill(bill); void load(query, accountSlot); }} onBatchSaved={() => void load(query, accountSlot)} onOpen={setSelected} onOverview={setOverviewBill} onReceipt={setDeliveryDocumentBill} />}
       {view === "delivery-bills" && profile && accountLoaded && <DeliveryBills key={accountSlot} accountSlot={accountSlot} onOpen={setDeliveryDocumentBill} onOriginal={setSelected} />}
       {view === "dashboard" && profile && accountLoaded && <BusinessUpdates key={accountSlot} accountSlot={accountSlot} onBill={setSelected} onDelivery={setDeliveryDocumentBill} />}
+      {view === "overdue" && profile && accountLoaded && <OverdueBills key={accountSlot} accountSlot={accountSlot} onOpen={setSelected} onOverview={setOverviewBill} />}
+      {view === "search" && accountLoaded && <AllAccountSearch accountSlot={accountSlot} />}
       {view === "bills" && accountLoaded && profile && <section className="panel">
         <div className="section-heading history-heading">
           <div><p className="eyebrow">ACCOUNT {accountSlot} HISTORY</p><h2>Issued bills</h2></div>
