@@ -57,11 +57,17 @@ export async function loadGlobalSearch(database: SearchDatabase, ownerId: string
       const canonicalCodeMatch = fullCustomerCode !== undefined && bill.customerCode?.toUpperCase() === fullCustomerCode;
       const linkedCustomerMatch = customer !== undefined && bill.customerId === customer.id;
       // A historical bill without either canonical link may be associated by an
-      // exact saved identifier. Names alone never establish customer identity.
+      // exact saved identifier. A conflicting Aadhaar overrides a shared phone;
+      // an exact Aadhaar still identifies a customer whose phone has changed.
+      const billAadhaar = normalizeAadhaar(bill.governmentId ?? "");
+      const conflictingAadhaar = customer?.aadhaar && /^\d{12}$/.test(billAadhaar) && customer.aadhaar !== billAadhaar;
       const legacyCustomerMatch = customer !== undefined && !bill.customerId && !bill.customerCode
-        && ((customer.phone !== "" && normalizePhone(bill.phone) === customer.phone)
-          || (customer.aadhaar !== "" && normalizeAadhaar(bill.governmentId ?? "") === customer.aadhaar));
-      if (!snapshotMatch && !identifierMatch && !canonicalCodeMatch && !linkedCustomerMatch && !legacyCustomerMatch) continue;
+        && ((customer.phone !== "" && normalizePhone(bill.phone) === customer.phone && !conflictingAadhaar)
+          || (customer.aadhaar !== "" && billAadhaar === customer.aadhaar));
+      const matches = fullCustomerCode
+        ? canonicalCodeMatch || linkedCustomerMatch || legacyCustomerMatch
+        : snapshotMatch || identifierMatch;
+      if (!matches) continue;
       results.push({
         accountSlot,
         profile: {

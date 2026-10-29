@@ -105,6 +105,27 @@ describe("all-account bill search", () => {
     expect(await search("Main", { page: "4", pageSize: "100" })).toMatchObject({ results: [], total: 235, hasMore: false });
   });
 
+  it("uses full customer codes as exact identities instead of matching code prefixes or text mentions", async () => {
+    bill("exact-code", 1, { customer_code: "C100000" });
+    bill("longer-code", 1, { bill_number: 2, customer_code: "C1000000" });
+    bill("name-mention", 2, { customer_name: "Customer C100000" });
+    bill("address-mention", 4, { address: "C100000 Main Street" });
+    for (const q of ["C100000", "c100000", "C-100000"]) expect(ids(await search(q))).toEqual(["exact-code"]);
+    expect(ids(await search("C1000000"))).toEqual(["longer-code"]);
+  });
+
+  it("does not infer legacy identity from a shared phone when Aadhaar conflicts", async () => {
+    const customer = db.customers.save(1, { name: "Test Customer", fatherName: "Parent", address: "123 Main Street", phone: "9876543210", aadhaar: "123456789012" });
+    bill("conflicting-aadhaar", 1, { government_id: "9999-9999-9999" });
+    bill("changed-phone", 1, { bill_number: 2, phone: "8888888888", government_id: "1234-5678 9012" });
+    bill("missing-aadhaar", 1, { bill_number: 3, government_id: "" });
+    bill("older-general-id", 1, { bill_number: 4, government_id: "ID-123" });
+    const result = await search(customer.customerCode);
+    expect(ids(result)).toEqual(["older-general-id", "missing-aadhaar", "changed-phone"]);
+    expect(result.results.every(result => result.matchedCustomerCode === customer.customerCode)).toBe(true);
+    expect(ids(await search("9876543210"))).toEqual(["older-general-id", "missing-aadhaar", "conflicting-aadhaar"]);
+  });
+
   it("rejects empty, overlong and malformed pagination inputs", async () => {
     for (const q of ["", " ", "x".repeat(201)]) await expect(search(q)).rejects.toThrow();
     const invalidPages: Record<string, string>[] = [{ page: "0" }, { page: "1.1" }, { page: "-2" }, { page: "9007199254740991" }, { pageSize: "101" }, { pageSize: "0" }, { pageSize: "abc" }];
