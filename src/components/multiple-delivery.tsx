@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { AccountSlot } from "@/lib/account-url";
-import type { Bill } from "@/lib/types";
+import { billReceiptLabels, type Bill, type BillReceiptStatus } from "@/lib/types";
+import { BillReceiptSelect } from "./bill-receipt-select";
 import { billingToday } from "@/lib/business-updates";
 import { calculateRepayment } from "@/lib/interest";
 import { formatINR } from "@/lib/money";
@@ -13,6 +14,7 @@ export function MultipleDelivery({ accountSlot, onSaved, onReceipt, onOpen }: { 
   const [bills, setBills] = useState<Bill[]>([]);
   const [date, setDate] = useState(billingToday);
   const [metals, setMetals] = useState<Record<string, ("Gold" | "Silver" | null)[]>>({});
+  const [receiptStatuses, setReceiptStatuses] = useState<Record<string, BillReceiptStatus | "">>({});
   const [busy, setBusy] = useState<"lookup" | "save" | null>(null);
   const [error, setError] = useState("");
   const [saved, setSaved] = useState(false);
@@ -26,6 +28,7 @@ export function MultipleDelivery({ accountSlot, onSaved, onReceipt, onOpen }: { 
     } catch (failure) { return { bill, collection: null, error: failure instanceof Error ? failure.message : "Choose a valid delivery date." }; }
   }), [bills, date, metals, saved]);
   const complete = rows.length > 0 && rows.every(row => row.collection && !row.collection.missingMetal && row.collection.interest !== null && row.collection.total !== null);
+  const receiptChoicesComplete = bills.length > 0 && bills.every(bill => Boolean(receiptStatuses[bill.id]));
   const sum = (field: "principal" | "interest" | "total") => rows.reduce((paise, row) => paise + Math.round(Number(row.collection?.[field] ?? (field === "principal" ? row.bill.totalLoanAmount : 0)) * 100), 0) / 100;
   const money = (value: number | null) => value === null ? "—" : formatINR(value);
   const minDate = bills.reduce((latest, bill) => bill.billDate > latest ? bill.billDate : latest, "");
@@ -41,6 +44,7 @@ export function MultipleDelivery({ accountSlot, onSaved, onReceipt, onOpen }: { 
       const results = await Promise.all(requested.map(number => api(`/api/delivery?billNumber=${number}`, accountSlot)));
       if (current !== generation.current) return;
       const found = results.map(result => result.bill as Bill);
+      setReceiptStatuses(previous => ({ ...previous, ...Object.fromEntries(found.map(bill => [bill.id, previous[bill.id] ?? bill.deliveryBillReceiptStatus ?? ""])) }));
       setBills(existing => [...existing, ...found.filter(bill => !existing.some(row => row.id === bill.id))]);
       setNumbers("");
     } catch (failure) { if (current === generation.current) setError(failure instanceof Error ? failure.message : "Unable to find these bills."); }
@@ -48,15 +52,20 @@ export function MultipleDelivery({ accountSlot, onSaved, onReceipt, onOpen }: { 
   }
   async function save() {
     if (!complete || busy) return;
+    if (!receiptChoicesComplete) { setError("Choose whether the customer has the bill or lost the bill for every delivery."); return; }
     const current = ++generation.current; setBusy("save"); setError(""); setWarnings([]);
     try {
-      const result = await api("/api/delivery/batch", accountSlot, { method: "POST", body: JSON.stringify({ deliveryDate: date, deliveries: bills.map(bill => ({ billId: bill.id, itemMetals: bill.items.map((item, index) => item.metal ?? metals[bill.id]?.[index] ?? null) })) }) });
+      const result = await api("/api/delivery/batch", accountSlot, { method: "POST", body: JSON.stringify({ deliveryDate: date, deliveries: bills.map(bill => ({ billId: bill.id, billReceiptStatus: receiptStatuses[bill.id], itemMetals: bill.items.map((item, index) => item.metal ?? metals[bill.id]?.[index] ?? null) })) }) });
       if (current !== generation.current) return;
       setBills(result.bills); setWarnings(result.warnings ?? []); setSaved(true); onSaved();
     } catch (failure) { if (current === generation.current) setError(failure instanceof Error ? failure.message : "Unable to save these deliveries."); }
     finally { if (current === generation.current) setBusy(null); }
   }
-  function reset() { setBills([]); setNumbers(""); setDate(billingToday()); setMetals({}); setSaved(false); setWarnings([]); setError(""); }
+  function reset() { setBills([]); setNumbers(""); setDate(billingToday()); setMetals({}); setReceiptStatuses({}); setSaved(false); setWarnings([]); setError(""); }
+  function removeBill(id: string) {
+    setBills(current => current.filter(row => row.id !== id));
+    setReceiptStatuses(current => Object.fromEntries(Object.entries(current).filter(([billId]) => billId !== id)));
+  }
 
   return <section className="panel">
     <div className="section-heading"><div><p className="eyebrow">ACCOUNT {accountSlot} · MULTIPLE DELIVERY</p><h2>{saved ? "Deliveries saved" : "Deliver several bills together"}</h2><p className="muted">Each bill gets its own delivery number and receipt. Review the combined amount to collect below.</p></div>{saved && <button className="secondary" onClick={reset}>Start another delivery</button>}</div>
@@ -66,17 +75,18 @@ export function MultipleDelivery({ accountSlot, onSaved, onReceipt, onOpen }: { 
     {saved && <p className="excel-notice" role="status">{bills.length} delivery bill{bills.length === 1 ? "" : "s"} saved. Open each receipt below to print or download its PDF.</p>}
     {warnings.map((message, index) => <p className="overview-warning" key={index}>{message}</p>)}
     {rows.length > 0 ? <>
-      <div className="item-table-wrap"><table className="history-table batch-delivery-table"><thead><tr><th>Bill / customer</th><th>Particulars</th><th className="batch-money">Principal</th><th className="batch-money">Interest to collect</th><th className="batch-money">Total to collect</th><th /></tr></thead><tbody>{rows.map(({ bill, collection, error: calculationError }) => <tr key={bill.id}>
+      <div className="item-table-wrap"><table className="history-table batch-delivery-table"><thead><tr><th>Bill / customer</th><th>Particulars</th><th>Delivery remarks</th><th className="batch-money">Principal</th><th className="batch-money">Interest to collect</th><th className="batch-money">Total to collect</th><th /></tr></thead><tbody>{rows.map(({ bill, collection, error: calculationError }) => <tr key={bill.id}>
         <td><b>#{bill.billNumber} · {bill.customerName}</b><small>{bill.billDate}{bill.status === "void" ? " · Voided" : ""}</small>{bill.deliveryNo && <small>Delivery #{bill.deliveryNo} · {bill.deliveryDate}{!saved && " · saving updates this delivery"}</small>}</td>
         <td>{bill.items.map((item, index) => <div className="batch-jewellery" key={index}>{item.metal ? `${item.metal}: ` : ""}{item.particulars}{!item.metal && !saved && <select aria-label={`Metal for bill ${bill.billNumber} item ${index + 1}`} value={metals[bill.id]?.[index] ?? ""} disabled={Boolean(busy)} onChange={event => {
           const chosen = event.target.value === "Gold" || event.target.value === "Silver" ? event.target.value : null;
           setMetals(previous => ({ ...previous, [bill.id]: bill.items.map((entry, itemIndex) => itemIndex === index ? chosen : previous[bill.id]?.[itemIndex] ?? entry.metal ?? null) }));
         }}><option value="">Choose metal</option><option value="Gold">Gold</option><option value="Silver">Silver</option></select>}</div>)}{calculationError && <p className="error">{calculationError}</p>}{collection?.missingMetal && <p className="error">Choose Gold or Silver to calculate interest.</p>}</td>
+        <td>{saved ? bill.deliveryBillReceiptStatus ? billReceiptLabels[bill.deliveryBillReceiptStatus] : "Not recorded" : <BillReceiptSelect billNumber={bill.billNumber} value={receiptStatuses[bill.id] ?? ""} disabled={Boolean(busy)} onChange={value => { setReceiptStatuses(current => ({ ...current, [bill.id]: value })); setError(""); }} />}</td>
         <td className="batch-money">{formatINR(collection?.principal ?? bill.totalLoanAmount)}</td><td className="batch-money">{money(collection?.interest ?? null)}</td><td className="batch-money">{money(collection?.total ?? null)}</td>
-        <td><div className="batch-actions"><button type="button" className="text-button" onClick={() => onOpen(bill)}>Open bill</button>{saved ? <button type="button" className="secondary" onClick={() => onReceipt(bill)}>Open receipt #{bill.deliveryNo}</button> : <button type="button" className="text-button danger-text" disabled={Boolean(busy)} onClick={() => setBills(current => current.filter(row => row.id !== bill.id))}>Remove bill #{bill.billNumber}</button>}</div></td>
+        <td><div className="batch-actions"><button type="button" className="text-button" onClick={() => onOpen(bill)}>Open bill</button>{saved ? <button type="button" className="secondary" onClick={() => onReceipt(bill)}>Open receipt #{bill.deliveryNo}</button> : <button type="button" className="text-button danger-text" disabled={Boolean(busy)} onClick={() => removeBill(bill.id)}>Remove bill #{bill.billNumber}</button>}</div></td>
       </tr>)}</tbody></table></div>
       <section className="repayment-summary" aria-label="Combined delivery amounts"><h3>{bills.length} bill{bills.length === 1 ? "" : "s"} · Combined amount to collect</h3><dl><div><dt>Principal</dt><dd>{formatINR(sum("principal"))}</dd></div><div><dt>Interest to collect now</dt><dd>{money(complete ? sum("interest") : null)}</dd></div><div className="collection-total"><dt>Total to collect now</dt><dd>{money(complete ? sum("total") : null)}</dd></div></dl></section>
-      {!saved && <button disabled={!complete || Boolean(busy)} onClick={() => void save()}>{busy === "save" ? "Saving deliveries…" : `Save ${bills.length} deliver${bills.length === 1 ? "y" : "ies"}`}</button>}
+      {!saved && <>{!receiptChoicesComplete && <p className="muted">Choose whether the customer has the bill or lost the bill for every delivery.</p>}<button disabled={!complete || !receiptChoicesComplete || Boolean(busy)} onClick={() => void save()}>{busy === "save" ? "Saving deliveries…" : `Save ${bills.length} deliver${bills.length === 1 ? "y" : "ies"}`}</button></>}
     </> : <p className="empty">Add one or more bill numbers to see the principal, interest and total.</p>}
   </section>;
 }

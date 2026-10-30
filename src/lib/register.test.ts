@@ -17,6 +17,15 @@ async function roundtrip(workbook: ExcelJS.Workbook) {
   return loaded.getWorksheet("Bills")!;
 }
 
+it("keeps both kinds of remarks in the existing Particulars cell without changing register columns", async () => {
+  const workbook = createRegister();
+  appendRegisterBill(workbook, bill({ deliveryNo: "1", deliveryDate: "2026-10-30", deliveryBillReceiptStatus: "lost_bill", items: [{ particulars: "Anklet 1", remarks: "No screw; slightly bent", grams: 2, assessedValue: 110, loanAmount: 100 }] }));
+  const sheet = await roundtrip(workbook);
+  expect(sheet.actualColumnCount).toBe(9);
+  expect(sheet.getCell("G2").value).toBe("Anklet 1 (2 g) [Remarks: No screw; slightly bent] [Delivery: Customer lost bill]");
+  expect(sheet.getCell("I2").value).toBe(80);
+});
+
 it.each([
   ["ASCII words", "Long street address near the market ".repeat(14).slice(0, 500)],
   ["Tamil", "தமிழ்நாடு சென்னை அண்ணா நகர் ".repeat(18).slice(0, 500)],

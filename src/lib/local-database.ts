@@ -168,7 +168,7 @@ export function createLocalDatabase(directory = localDataDirectory()) {
     const now = new Date().toISOString(); const id = randomUUID();
     const cents = (key: "assessedValue" | "loanAmount") => bill.items.reduce((sum, item) => sum + Math.round(item[key] * 100), 0) / 100;
     save("bills", { id, ...link, profile_id: profile.id, bill_number: nextBillNumber, bill_date: bill.billDate, delivery_no: bill.deliveryNo || null, delivery_date: bill.deliveryDate || null, customer_name: bill.customerName, father_name: bill.fatherName, address: bill.address, phone: bill.phone, government_id: bill.governmentId || null, total_assessed_value: cents("assessedValue"), total_loan_amount: cents("loanAmount"), status: "issued", replacement_for_id: null, excel_sync_status: "pending", excel_sync_error: null, pdf_storage_path: null, pdf_error: null, created_at: now, voided_at: null, business_snapshot: { business_name: profile.business_name, address: profile.address, phone: profile.phone, logo_url: profile.logo_url, license_number: profile.license_number ?? null } });
-    bill.items.forEach((item, index) => save("bill_items", { id: randomUUID(), bill_id: id, metal: item.metal, particulars: item.particulars, grams: item.grams, assessed_value: item.assessedValue, loan_amount: item.loanAmount, sort_order: index }));
+    bill.items.forEach((item, index) => save("bill_items", { id: randomUUID(), bill_id: id, metal: item.metal, particulars: item.particulars, remarks: item.remarks, grams: item.grams, assessed_value: item.assessedValue, loan_amount: item.loanAmount, sort_order: index }));
     save("business_profiles", { ...profile, next_bill_number: nextBillNumber + 1, updated_at: now });
     return { id };
   };
@@ -197,7 +197,7 @@ export function createLocalDatabase(directory = localDataDirectory()) {
     const now = new Date().toISOString();
     if (!bill.delivery_no) save("business_profiles", { ...profile, next_delivery_number: nextNumber + 1, updated_at: now });
     savedItems.forEach((item, index) => { if (!item.metal) save("bill_items", { ...item, metal: items[index].metal }); });
-    const updated = { ...bill, delivery_no: deliveryNo, delivery_date: input.deliveryDate, delivery_summary: summary, excel_sync_status: "pending", excel_sync_error: null, pdf_storage_path: null, pdf_error: null, delivery_pdf_storage_path: null, delivery_pdf_error: null, updated_at: now };
+    const updated = { ...bill, delivery_no: deliveryNo, delivery_date: input.deliveryDate, delivery_bill_receipt_status: input.billReceiptStatus, delivery_summary: summary, excel_sync_status: "pending", excel_sync_error: null, pdf_storage_path: null, pdf_error: null, delivery_pdf_storage_path: null, delivery_pdf_error: null, updated_at: now };
     save("bills", updated);
     return { id: bill.id, previousPdfPath: bill.pdf_storage_path, previousDeliveryPdfPath: bill.delivery_pdf_storage_path, bill: { ...canonicalBill(updated, customerIdentities()), bill_items: rows("bill_items").filter(item => item.bill_id === bill.id).sort((left, right) => left.sort_order - right.sort_order) } };
   };
@@ -365,7 +365,7 @@ export function createLocalDatabase(directory = localDataDirectory()) {
         if (name === "record_bill_delivery") return recordDelivery(ownerId, parameters.p_bill_id, parameters.p_account_slot, parameters.p_delivery);
         if (name === "record_bill_deliveries") {
           const input = batchDeliverySchema.parse(parameters.p_delivery);
-          return input.deliveries.map(delivery => recordDelivery(ownerId, delivery.billId, parameters.p_account_slot, { deliveryDate: input.deliveryDate, itemMetals: delivery.itemMetals }));
+          return input.deliveries.map(delivery => recordDelivery(ownerId, delivery.billId, parameters.p_account_slot, { deliveryDate: input.deliveryDate, itemMetals: delivery.itemMetals, billReceiptStatus: delivery.billReceiptStatus }));
         }
         if (name === "edit_bill") {
           const { bill: original, profile } = billOwner(ownerId, parameters.p_bill_id);
@@ -378,7 +378,7 @@ export function createLocalDatabase(directory = localDataDirectory()) {
           const deliverySummary = input.deliveryNo && input.deliveryDate && input.deliveryDate >= input.billDate ? calculateRepayment(input.items, input.billDate, input.deliveryDate) : null;
           save("bills", { ...original, ...link, bill_date: input.billDate, delivery_no: input.deliveryNo || null, delivery_date: input.deliveryDate || null, delivery_summary: deliverySummary, customer_name: input.customerName, father_name: input.fatherName, address: input.address, phone: input.phone, government_id: input.governmentId === undefined ? original.government_id ?? null : input.governmentId || null, total_assessed_value: total("assessedValue"), total_loan_amount: total("loanAmount"), excel_sync_status: "pending", excel_sync_error: null, pdf_storage_path: null, pdf_error: null, delivery_pdf_storage_path: null, delivery_pdf_error: null, updated_at: new Date().toISOString() });
           database.prepare("DELETE FROM records WHERE table_name='bill_items' AND json_extract(body,'$.bill_id')=?").run(original.id);
-          input.items.forEach((item, index) => save("bill_items", { id: randomUUID(), bill_id: original.id, metal: item.metal, particulars: item.particulars, grams: item.grams, assessed_value: item.assessedValue, loan_amount: item.loanAmount, sort_order: index }));
+          input.items.forEach((item, index) => save("bill_items", { id: randomUUID(), bill_id: original.id, metal: item.metal, particulars: item.particulars, remarks: item.remarks, grams: item.grams, assessed_value: item.assessedValue, loan_amount: item.loanAmount, sort_order: index }));
           return { id: original.id, previousPdfPath: original.pdf_storage_path, previousDeliveryPdfPath: original.delivery_pdf_storage_path };
         }
         if (name === "delete_bill") {

@@ -12,7 +12,7 @@ import { ZodError } from "zod";
 
 const addJewelleryOption = "\u0001add-jewellery";
 
-const blankItem = (): BillItemInput => ({ particulars: "", grams: 0, assessedValue: 0, loanAmount: 0 });
+const blankItem = (): BillItemInput => ({ particulars: "", remarks: "", grams: 0, assessedValue: 0, loanAmount: 0 });
 const today = () => {
   const date = new Date();
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
@@ -95,7 +95,7 @@ export function BillForm({ onCreated, editingSource, accountSlot }: { onCreated:
     setForm(current => ({ ...current, ...(previous ? { customerName: "", fatherName: "", address: "", phone: "", governmentId: "" } : {}), customerId: "", [field === "phone" ? "phone" : "governmentId"]: value }));
     setCustomerLookup({ field, value });
   }
-  const item = (index: number, key: keyof BillItemInput, value: string) => setForm((current) => ({ ...current, items: current.items.map((row, rowIndex) => rowIndex === index ? { ...row, [key]: key === "particulars" ? value : Number(value), ...(key === "loanAmount" ? { assessedValue: assessedValueForLoan(Number(value)) } : {}) } : row) }));
+  const item = (index: number, key: keyof BillItemInput, value: string) => setForm((current) => ({ ...current, items: current.items.map((row, rowIndex) => rowIndex === index ? { ...row, [key]: key === "particulars" || key === "remarks" ? value : Number(value), ...(key === "loanAmount" ? { assessedValue: assessedValueForLoan(Number(value)) } : {}) } : row) }));
   const setMetal = (index: number, metal: "Gold" | "Silver") => setForm((current) => ({ ...current, items: current.items.map((row, rowIndex) => rowIndex === index ? { ...row, metal } : row) }));
   function setJewelleryDraft(index: number, patch: { name?: string; quantity?: string; error?: string }) {
     setJewelleryDrafts(current => {
@@ -167,7 +167,7 @@ export function BillForm({ onCreated, editingSource, accountSlot }: { onCreated:
       </div>
       {customerNotice && <p className="notice customer-lookup-notice" role="status">{customerNotice}</p>}
       {catalogueError && <p className="error" role="alert">{catalogueError} <button type="button" className="text-button" onClick={() => setCatalogueRefresh(value => value + 1)}>Retry jewellery list</button></p>}
-      <div className="item-table-wrap"><table className="item-table"><thead><tr>{localStorageEnabled && <th>Metal</th>}<th>Particulars</th><th>Gram</th><th>Loan amount (₹)</th><th>Assessed value (₹)</th><th /></tr></thead><tbody>{form.items.map((row, index) => <tr key={index}>
+      <div className="item-table-wrap"><table className="item-table"><thead><tr>{localStorageEnabled && <th>Metal</th>}<th>Particulars</th>{localStorageEnabled && <th>Remarks <span className="muted">(optional)</span></th>}<th>Gram</th><th>Loan amount (₹)</th><th>Assessed value (₹)</th><th /></tr></thead><tbody>{form.items.map((row, index) => <tr key={index}>
         {localStorageEnabled && <td><div className="metal-choice" role="group" aria-label={`Metal for item ${index + 1}`}>{(["Gold", "Silver"] as const).map((metal) => <label key={metal} className={row.metal === metal ? "selected" : ""}><input type="radio" name={`metal-${index}`} value={metal} checked={row.metal === metal} onChange={() => setMetal(index, metal)} required />{metal}</label>)}</div></td>}
         <td>{localStorageEnabled ? <div className="jewellery-picker">
           <textarea aria-label={`Particulars for item ${index + 1}`} placeholder="e.g. Ring 2, Studs 1" maxLength={180} value={row.particulars} required disabled={busy} onChange={event => item(index, "particulars", event.target.value)} />
@@ -192,6 +192,7 @@ export function BillForm({ onCreated, editingSource, accountSlot }: { onCreated:
             {jewelleryError && <p className="error" id={`jewellery-error-${index}`} role="alert">{jewelleryError}</p>}
           </div>}
         </div> : <input aria-label={`Particulars for item ${index + 1}`} value={row.particulars} onChange={event => item(index, "particulars", event.target.value)} required />}</td>
+        {localStorageEnabled && <td><textarea className="jewellery-remarks" aria-label={`Remarks for item ${index + 1}`} rows={4} maxLength={180} placeholder="e.g. Broken, slightly bent, missing stone, no anklet screw" value={row.remarks ?? ""} disabled={busy} onChange={event => item(index, "remarks", event.target.value)} /></td>}
         <td><input type="number" aria-label={`Gram for item ${index + 1}`} step="0.001" min="0" value={row.grams || ""} onChange={(e) => item(index, "grams", e.target.value)} required /></td>
         <td><div className="currency-input"><span aria-hidden="true">₹</span><input type="number" inputMode="decimal" aria-label={`Loan amount in rupees for item ${index + 1}`} step="0.01" min="0" value={row.loanAmount || ""} onChange={(e) => item(index, "loanAmount", e.target.value)} required /></div></td>
         <td><div className="currency-input"><span aria-hidden="true">₹</span><input type="number" inputMode="decimal" aria-label={`Assessed value in rupees for item ${index + 1}`} step="0.01" min="0" value={row.assessedValue || ""} readOnly required /></div><small className="assessed-note muted">{row.assessedValue === assessedValueForLoan(row.loanAmount) ? "Loan + 10%" : "Saved assessed value"}</small></td>

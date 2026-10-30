@@ -3,6 +3,11 @@ import { toBill, totals } from "./bills";
 import type { BillInput } from "./types";
 
 describe("bill persistence mapping", () => {
+  it("restores jewellery and delivery remarks while leaving legacy choices unrecorded", () => {
+    expect(toBill({ delivery_bill_receipt_status: "lost_bill", items: [{ particulars: "Anklet", remarks: "No screw" }] })).toMatchObject({ deliveryBillReceiptStatus: "lost_bill", items: [{ remarks: "No screw" }] });
+    expect(toBill({ delivery_bill_receipt_status: "invalid" }).deliveryBillReceiptStatus).toBeUndefined();
+    expect(toBill({ items: [{ particulars: "Ring" }] }).items[0].remarks).toBeUndefined();
+  });
   it("restores saved customer links and leaves older bills unlinked", () => {
     expect(toBill({ customer_id: "saved-customer", customer_code: "C000042" })).toMatchObject({ customerId: "saved-customer", customerCode: "C000042" });
     expect(toBill({}).customerId).toBeUndefined();

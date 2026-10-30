@@ -37,6 +37,19 @@ async function pageContents(bytes: Uint8Array) {
 }
 
 describe("bill PDF", () => {
+  it("prints jewellery-condition remarks and the saved customer bill choice on delivery receipts", async () => {
+    const withRemarks = { ...bill, deliveryBillReceiptStatus: "lost_bill" as const, items: [{ ...bill.items[0], remarks: "No screw; slightly bent" }] };
+    const finance = (await pageContents(await createBillPdf(withRemarks, bill.businessSnapshot!))).join("\n");
+    expect(finance).toContain("(Remarks)");
+    expect(finance).toContain("No screw;");
+    expect(finance).not.toContain("Customer lost bill");
+    const delivery = (await pageContents(await createBillPdf(withRemarks, bill.businessSnapshot!, "delivery"))).join("\n");
+    expect(delivery).toContain("Delivery remarks: Customer lost bill");
+    expect(delivery).toContain("No screw;");
+    const legacy = (await pageContents(await createBillPdf(bill, bill.businessSnapshot!, "delivery"))).join("\n");
+    expect(legacy).toContain("Delivery remarks: Not recorded");
+    expect(legacy).not.toContain("(Remarks)");
+  });
   it("visibly marks voided finance bills on the first and continuation pages", async () => {
     const normal = await pageContents(await createBillPdf(bill, bill.businessSnapshot!));
     expect(normal.join("\n")).not.toContain("VOIDED");

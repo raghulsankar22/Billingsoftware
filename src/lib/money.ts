@@ -46,5 +46,5 @@ export function assessedValueForLoan(loan: number): number {
 }
 
 export function itemSummary(items: BillItemInput[]): string {
-  return items.map((item) => `${item.metal ? `${item.metal}: ` : ""}${item.particulars} (${item.grams || 0} g)`).join(", ");
+  return items.map((item) => `${item.metal ? `${item.metal}: ` : ""}${item.particulars} (${item.grams || 0} g)${item.remarks?.trim() ? ` [Remarks: ${item.remarks.trim()}]` : ""}`).join(", ");
 }

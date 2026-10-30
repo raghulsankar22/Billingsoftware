@@ -16,6 +16,22 @@ async function issue(db: ReturnType<typeof open>, input: Record<string, unknown>
 afterEach(() => { for (const { directory, db } of opened.splice(0)) { db.close(); rmSync(directory, { recursive: true, force: true }); } });
 
 describe("durable local ledger", () => {
+  it("persists and edits jewellery remarks and requires a delivery choice before issuing a receipt", async () => {
+    const db = open(); const business = await profile(db);
+    const input = { ...bill, items: [{ ...bill.items[0], remarks: " Slightly bent; missing stone " }] };
+    const first = await issue(db, input);
+    const read = () => db.from("bills").select("*, bill_items(*)").eq("id", first.data.id).single();
+    expect((await read()).data.bill_items[0].remarks).toBe("Slightly bent; missing stone");
+    expect((await db.rpc("record_bill_delivery", { p_owner_id: localOwnerId, p_bill_id: first.data.id, p_account_slot: 1, p_delivery: { deliveryDate: "2026-10-30" } })).error).toBeTruthy();
+    expect((await read()).data.delivery_no).toBeNull();
+    expect((await db.from("business_profiles").select().eq("id", business.id).single()).data.next_delivery_number).toBe(1);
+    expect((await db.rpc("edit_bill", { p_owner_id: localOwnerId, p_bill_id: first.data.id, p_bill: { ...input, items: [{ ...input.items[0], remarks: "No screw" }] } })).error).toBeNull();
+    const delivery = { p_owner_id: localOwnerId, p_bill_id: first.data.id, p_account_slot: 1, p_delivery: { deliveryDate: "2026-10-30", billReceiptStatus: "lost_bill" } };
+    expect((await db.rpc("record_bill_delivery", delivery)).error).toBeNull();
+    expect((await read()).data).toMatchObject({ bill_number: 1, delivery_no: "1", delivery_bill_receipt_status: "lost_bill", bill_items: [{ remarks: "No screw" }] });
+    expect((await db.rpc("record_bill_delivery", { ...delivery, p_delivery: { ...delivery.p_delivery, billReceiptStatus: "has_bill" } })).error).toBeNull();
+    expect((await read()).data).toMatchObject({ delivery_no: "1", delivery_bill_receipt_status: "has_bill" });
+  });
   it("saves separate account licenses, preserves issue snapshots and allows clearing the field", async () => {
     const db = open();
     const save = (accountSlot: number, licenseNumber?: string) => db.rpc("save_business_profile", { p_owner_id: localOwnerId, p_profile: { businessName: "Finance", address: "123 Main Street", phone: "1234567890", accountSlot, ...(licenseNumber === undefined ? {} : { licenseNumber }) } });
@@ -115,24 +131,24 @@ describe("durable local ledger", () => {
     const previousPdfPath = `${saved.id}/${first.data.id}.pdf`;
     await db.from("bills").update({ pdf_storage_path: previousPdfPath }).eq("id", first.data.id);
     const before = (await db.from("bills").select("*, bill_items(*)").eq("id", first.data.id).single()).data;
-    const recorded = await db.rpc("record_bill_delivery", { p_owner_id: localOwnerId, p_bill_id: first.data.id, p_account_slot: 1, p_delivery: { deliveryNo: " DEL-10 ", deliveryDate: "2026-10-28" } });
+    const recorded = await db.rpc("record_bill_delivery", { p_owner_id: localOwnerId, p_bill_id: first.data.id, p_account_slot: 1, p_delivery: { billReceiptStatus: "has_bill", deliveryNo: " DEL-10 ", deliveryDate: "2026-10-28" } });
     expect(recorded.error).toBeNull();
     expect(recorded.data).toMatchObject({ id: first.data.id, previousPdfPath });
     const after = (await db.from("bills").select("*, bill_items(*)").eq("id", first.data.id).single()).data;
     expect(after).toMatchObject({ bill_number: 1, customer_name: before.customer_name, total_loan_amount: before.total_loan_amount, total_assessed_value: before.total_assessed_value, delivery_no: "1", delivery_date: "2026-10-28", status: "issued", excel_sync_status: "pending", pdf_storage_path: null });
     expect(after.bill_items).toEqual(before.bill_items);
     expect((await db.from("business_profiles").select().eq("id", saved.id).single()).data.next_bill_number).toBe(2);
-    expect((await db.rpc("record_bill_delivery", { p_owner_id: localOwnerId, p_bill_id: first.data.id, p_account_slot: 1, p_delivery: { deliveryNo: "DEL-11", deliveryDate: "2026-10-29" } })).error).toBeNull();
+    expect((await db.rpc("record_bill_delivery", { p_owner_id: localOwnerId, p_bill_id: first.data.id, p_account_slot: 1, p_delivery: { billReceiptStatus: "has_bill", deliveryNo: "DEL-11", deliveryDate: "2026-10-29" } })).error).toBeNull();
     expect((await db.from("bills").select()).data).toHaveLength(1);
     expect((await db.from("bills").select().eq("id", first.data.id).single()).data.delivery_no).toBe("1");
     expect((await db.from("business_profiles").select().eq("id", saved.id).single()).data.next_delivery_number).toBe(2);
   });
   it("rejects delivery for another account or invalid dates, but records delivery on a voided bill", async () => {
     const db = open(); await profile(db); await profile(db, 2); const first = await issue(db);
-    const parameters = { p_owner_id: localOwnerId, p_bill_id: first.data.id, p_account_slot: 1, p_delivery: { deliveryNo: "DEL-1", deliveryDate: "2026-10-28" } };
+    const parameters = { p_owner_id: localOwnerId, p_bill_id: first.data.id, p_account_slot: 1, p_delivery: { billReceiptStatus: "has_bill", deliveryNo: "DEL-1", deliveryDate: "2026-10-28" } };
     expect((await db.rpc("record_bill_delivery", { ...parameters, p_account_slot: 2 })).error?.message).toContain("this account");
-    expect((await db.rpc("record_bill_delivery", { ...parameters, p_delivery: { deliveryNo: "DEL-1", deliveryDate: "2026-10-02" } })).error?.message).toContain("before the bill date");
-    expect((await db.rpc("record_bill_delivery", { ...parameters, p_delivery: { deliveryNo: "", deliveryDate: "2026-02-30" } })).error).toBeTruthy();
+    expect((await db.rpc("record_bill_delivery", { ...parameters, p_delivery: { billReceiptStatus: "has_bill", deliveryNo: "DEL-1", deliveryDate: "2026-10-02" } })).error?.message).toContain("before the bill date");
+    expect((await db.rpc("record_bill_delivery", { ...parameters, p_delivery: { billReceiptStatus: "has_bill", deliveryNo: "", deliveryDate: "2026-02-30" } })).error).toBeTruthy();
     expect((await db.from("bills").select().eq("id", first.data.id).single()).data.delivery_no).toBeNull();
     await db.from("bills").update({ status: "void" }).eq("id", first.data.id);
     const voided = (await db.from("bills").select("*, bill_items(*)").eq("id", first.data.id).single()).data;
@@ -146,13 +162,13 @@ describe("durable local ledger", () => {
     const db = open(); await profile(db); await profile(db, 2);
     const loan = { ...bill, billDate: "2026-10-28", items: [{ metal: "Gold", particulars: "Ring", grams: 5, assessedValue: 15000, loanAmount: 10000 }] };
     const first = await issue(db, loan); const second = await issue(db, loan); const other = await issue(db, { ...loan, accountSlot: 2 });
-    const parameters = (id: string, account = 1) => ({ p_owner_id: localOwnerId, p_bill_id: id, p_account_slot: account, p_delivery: { deliveryDate: "2026-11-29" } });
+    const parameters = (id: string, account = 1) => ({ p_owner_id: localOwnerId, p_bill_id: id, p_account_slot: account, p_delivery: { billReceiptStatus: "has_bill", deliveryDate: "2026-11-29" } });
     const results = await Promise.all([db.rpc("record_bill_delivery", parameters(first.data.id)), db.rpc("record_bill_delivery", parameters(second.data.id)), db.rpc("record_bill_delivery", parameters(other.data.id, 2))]);
     expect(results.every(result => !result.error)).toBe(true);
     const saved = await Promise.all([first, second, other].map(result => db.from("bills").select().eq("id", result.data.id).single()));
     expect(saved.map(result => result.data.delivery_no)).toEqual(["1", "2", "1"]);
     expect(saved[0].data.delivery_summary).toMatchObject({ chargedMonths: 1, principal: 10000, initialInterest: 200, interest: 200, total: 10200 });
-    await db.rpc("record_bill_delivery", { ...parameters(first.data.id), p_delivery: { deliveryDate: "2026-12-29" } });
+    await db.rpc("record_bill_delivery", { ...parameters(first.data.id), p_delivery: { billReceiptStatus: "has_bill", deliveryDate: "2026-12-29" } });
     expect((await db.from("bills").select().eq("id", first.data.id).single()).data).toMatchObject({ delivery_no: "1", delivery_summary: { interest: 400, total: 10400 } });
     expect((await db.rpc("get_next_delivery_number", { p_owner_id: localOwnerId, p_account_slot: 1 })).data.number).toBe(3);
   });
@@ -161,7 +177,7 @@ describe("durable local ledger", () => {
     const original = await issue(db, { ...bill, deliveryNo: "15", deliveryDate: "2026-10-28" });
     const next = await issue(db);
     expect((await db.rpc("get_next_delivery_number", { p_owner_id: localOwnerId, p_account_slot: 1 })).data.number).toBe(16);
-    await db.rpc("record_bill_delivery", { p_owner_id: localOwnerId, p_bill_id: next.data.id, p_account_slot: 1, p_delivery: { deliveryDate: "2026-10-28" } });
+    await db.rpc("record_bill_delivery", { p_owner_id: localOwnerId, p_bill_id: next.data.id, p_account_slot: 1, p_delivery: { billReceiptStatus: "has_bill", deliveryDate: "2026-10-28" } });
     expect((await db.from("bills").select().eq("id", original.data.id).single()).data.delivery_no).toBe("15");
     expect((await db.from("bills").select().eq("id", next.data.id).single()).data.delivery_no).toBe("16");
   });
@@ -170,7 +186,7 @@ describe("durable local ledger", () => {
     const stored = new DatabaseSync(join(opened[0].directory, "billing.sqlite"));
     stored.prepare("UPDATE records SET body=json_remove(body,'$.metal') WHERE table_name='bill_items'").run(); stored.close();
     await db.from("bills").update({ status: "void" }).eq("id", first.data.id);
-    const parameters = { p_owner_id: localOwnerId, p_bill_id: first.data.id, p_account_slot: 1, p_delivery: { deliveryDate: "2026-10-28" } };
+    const parameters = { p_owner_id: localOwnerId, p_bill_id: first.data.id, p_account_slot: 1, p_delivery: { billReceiptStatus: "has_bill", deliveryDate: "2026-10-28" } };
     expect((await db.rpc("record_bill_delivery", parameters)).error?.message).toContain("Choose Gold or Silver");
     expect((await db.from("business_profiles").select().eq("id", saved.id).single()).data.next_delivery_number).toBe(1);
     expect((await db.rpc("record_bill_delivery", { ...parameters, p_delivery: { ...parameters.p_delivery, itemMetals: ["Gold", "Silver"] } })).error).toBeNull();
@@ -251,19 +267,19 @@ describe("additional local business accounts", () => {
   it("starts account 4 at bill 1 and delivery 1 while preserving other accounts and register rows", async () => {
     const db = open(); const first = await profile(db); await profile(db, 3);
     const oldBill = await issue(db); await issue(db);
-    await db.rpc("record_bill_delivery", { p_owner_id: localOwnerId, p_bill_id: oldBill.data.id, p_account_slot: 1, p_delivery: { deliveryDate: "2026-10-28" } });
+    await db.rpc("record_bill_delivery", { p_owner_id: localOwnerId, p_bill_id: oldBill.data.id, p_account_slot: 1, p_delivery: { billReceiptStatus: "has_bill", deliveryDate: "2026-10-28" } });
     const previousProfiles = (await db.from("business_profiles").select().order("account_slot")).data;
     const previousBills = (await db.from("bills").select("*, bill_items(*)").eq("profile_id", first.id).order("bill_number")).data;
     const fourth = await add(db); const fifth = await add(db);
     const issued = await issue(db, { ...bill, accountSlot: fourth.data.account_slot });
     expect(issued.error).toBeNull();
-    expect((await db.rpc("record_bill_delivery", { p_owner_id: localOwnerId, p_bill_id: issued.data.id, p_account_slot: 4, p_delivery: { deliveryDate: "2026-10-28" } })).error).toBeNull();
+    expect((await db.rpc("record_bill_delivery", { p_owner_id: localOwnerId, p_bill_id: issued.data.id, p_account_slot: 4, p_delivery: { billReceiptStatus: "has_bill", deliveryDate: "2026-10-28" } })).error).toBeNull();
     expect((await db.from("bills").select().eq("id", issued.data.id).single()).data).toMatchObject({ profile_id: fourth.data.id, bill_number: 1, delivery_no: "1", business_snapshot: { business_name: details.businessName, license_number: details.licenseNumber } });
     expect((await db.from("business_profiles").select().eq("id", fourth.data.id).single()).data).toMatchObject({ next_bill_number: 2, next_delivery_number: 2 });
     expect((await db.from("bills").select().eq("profile_id", fifth.data.id)).data).toEqual([]);
     expect((await db.from("business_profiles").select().lte("account_slot", 3).order("account_slot")).data).toEqual(previousProfiles);
     expect((await db.from("bills").select("*, bill_items(*)").eq("profile_id", first.id).order("bill_number")).data).toEqual(previousBills);
-    expect((await db.rpc("record_bill_delivery", { p_owner_id: localOwnerId, p_bill_id: issued.data.id, p_account_slot: 5, p_delivery: { deliveryDate: "2026-10-29" } })).error?.message).toContain("this account");
+    expect((await db.rpc("record_bill_delivery", { p_owner_id: localOwnerId, p_bill_id: issued.data.id, p_account_slot: 5, p_delivery: { billReceiptStatus: "has_bill", deliveryDate: "2026-10-29" } })).error?.message).toContain("this account");
     expect((await db.rpc("edit_bill", { p_owner_id: localOwnerId, p_bill_id: issued.data.id, p_bill: { ...bill, accountSlot: 1 } })).error?.message).toContain("original account");
     const fifthBill = await issue(db, { ...bill, accountSlot: 5 });
     expect((await db.from("bills").select().eq("id", fifthBill.data.id).single()).data).toMatchObject({ profile_id: fifth.data.id, bill_number: 1 });

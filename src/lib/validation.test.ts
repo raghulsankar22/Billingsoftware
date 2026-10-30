@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { billSchema } from "./validation";
+import { batchDeliverySchema, billSchema, deliverySchema } from "./validation";
 
 const input = {
   billDate: "2026-10-03", customerName: "Customer", fatherName: "Father",
@@ -8,6 +8,21 @@ const input = {
 };
 
 describe("bill validation", () => {
+  it("allows empty jewellery remarks and preserves trimmed condition notes", () => {
+    expect(billSchema.parse(input).items[0].remarks).toBeUndefined();
+    expect(billSchema.parse({ ...input, items: [{ ...input.items[0], remarks: "  Broken; missing stone  " }] }).items[0].remarks).toBe("Broken; missing stone");
+    expect(billSchema.safeParse({ ...input, items: [{ ...input.items[0], remarks: "x".repeat(181) }] }).success).toBe(false);
+  });
+  it("requires an explicit has-bill or lost-bill choice for a single delivery", () => {
+    for (const billReceiptStatus of [undefined, "", "other", null]) expect(deliverySchema.safeParse({ deliveryDate: "2026-10-30", billReceiptStatus }).success).toBe(false);
+    for (const billReceiptStatus of ["has_bill", "lost_bill"]) expect(deliverySchema.safeParse({ deliveryDate: "2026-10-30", billReceiptStatus }).success).toBe(true);
+  });
+  it("requires a separate choice for every bill in a multiple delivery", () => {
+    const first = { billId: "00000000-0000-4000-8000-000000000001", billReceiptStatus: "has_bill" };
+    const second = { billId: "00000000-0000-4000-8000-000000000002" };
+    expect(batchDeliverySchema.safeParse({ deliveryDate: "2026-10-30", deliveries: [first, second] }).success).toBe(false);
+    expect(batchDeliverySchema.safeParse({ deliveryDate: "2026-10-30", deliveries: [first, { ...second, billReceiptStatus: "lost_bill" }] }).success).toBe(true);
+  });
   it.each(["2026-02-30", "2026-13-01", "not-a-date", "2026-10-03junk"])("rejects invalid date %s", (billDate) => {
     expect(billSchema.safeParse({ ...input, billDate }).success).toBe(false);
   });

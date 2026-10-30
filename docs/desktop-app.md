@@ -109,6 +109,13 @@ Failed installations are recorded under the app's user-data `updates/install.log
 Version 1.0.12 ensures the app reopens with a visible window after an update and
 that opening its shortcut brings an existing hidden window back into view.
 
+Website changes awaiting the next desktop release: New Bill and Edit Bill have optional
+jewellery-condition Remarks beside Particulars. Delivery requires choosing **Customer has
+bill** or **Customer lost bill**, separately for every bill in multiple delivery. Jewellery
+remarks appear in finance and delivery PDFs; the bill choice appears on delivery receipts
+and in Delivery Bills history. Both are retained in the Excel register's existing Particulars
+cell. Historical deliveries have no assumed choice and show **Not recorded** until updated.
+
 For another computer or USB drive, copy a whole version folder containing its installer
 and `update.json`; use **Choose update file** in the update dialog. Older or equal versions
 are refused. Updates are local and work offline; new code must first be built into an

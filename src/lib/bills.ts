@@ -13,6 +13,7 @@ export function toBill(row: Record<string, unknown>): Bill {
     status: String(row.status) as Bill["status"],
     deliveryNo: String(row.delivery_no ?? ""),
     deliveryDate: String(row.delivery_date ?? ""),
+    deliveryBillReceiptStatus: row.delivery_bill_receipt_status === "has_bill" || row.delivery_bill_receipt_status === "lost_bill" ? row.delivery_bill_receipt_status : undefined,
     deliverySummary: row.delivery_summary && typeof row.delivery_summary === "object" && "lines" in row.delivery_summary && Array.isArray(row.delivery_summary.lines) ? row.delivery_summary as Bill["deliverySummary"] : undefined,
     billDate: String(row.bill_date),
     customerName: String(row.customer_name),
@@ -22,7 +23,7 @@ export function toBill(row: Record<string, unknown>): Bill {
     governmentId: String(row.government_id ?? ""),
     items: items.map((item) => {
       const source = item as Record<string, unknown>;
-      return { metal: source.metal === "Gold" || source.metal === "Silver" ? source.metal : undefined, particulars: String(source.particulars), grams: Number(source.grams), assessedValue: Number(source.assessed_value), loanAmount: Number(source.loan_amount) };
+      return { metal: source.metal === "Gold" || source.metal === "Silver" ? source.metal : undefined, particulars: String(source.particulars), remarks: typeof source.remarks === "string" ? source.remarks : undefined, grams: Number(source.grams), assessedValue: Number(source.assessed_value), loanAmount: Number(source.loan_amount) };
     }),
     totalAssessedValue: Number(row.total_assessed_value ?? 0),
     totalLoanAmount,

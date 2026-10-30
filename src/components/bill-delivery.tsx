@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { AccountSlot } from "@/lib/account-url";
 import { formatINR } from "@/lib/money";
-import type { Bill } from "@/lib/types";
+import type { Bill, BillReceiptStatus } from "@/lib/types";
+import { BillReceiptSelect } from "./bill-receipt-select";
 import { api } from "./api";
 import { calculateRepayment } from "@/lib/interest";
 import { RepaymentDetails } from "./repayment-details";
@@ -25,6 +26,7 @@ function SingleBillDelivery({ accountSlot, onSaved, onOpen, onOverview, onReceip
   const [bill, setBill] = useState<Bill | null>(null);
   const [deliveryNo, setDeliveryNo] = useState("");
   const [deliveryDate, setDeliveryDate] = useState(today);
+  const [billReceiptStatus, setBillReceiptStatus] = useState<BillReceiptStatus | "">("");
   const [busy, setBusy] = useState<"lookup" | "save" | null>(null);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
@@ -44,11 +46,12 @@ function SingleBillDelivery({ accountSlot, onSaved, onOpen, onOverview, onReceip
   async function findBill(event: React.FormEvent) {
     event.preventDefault();
     const request = ++generation.current;
-    setBusy("lookup"); setError(""); setMessage(""); setWarnings([]); setBill(null);
+    setBusy("lookup"); setError(""); setMessage(""); setWarnings([]); setBill(null); setBillReceiptStatus("");
     try {
       const { bill: found, nextDeliveryNumber } = await api(`/api/delivery?billNumber=${encodeURIComponent(billNumber.trim())}`, accountSlot);
       if (request !== generation.current) return;
       setBill(found);
+      setBillReceiptStatus(found.deliveryBillReceiptStatus ?? "");
       setDeliveryNo(found.deliveryNo || String(nextDeliveryNumber));
       setItemMetals(found.items.map((item: Bill["items"][number]) => item.metal ?? null));
       setDeliveryDate(found.deliveryDate || (today() < found.billDate ? found.billDate : today()));
@@ -62,15 +65,17 @@ function SingleBillDelivery({ accountSlot, onSaved, onOpen, onOverview, onReceip
   async function saveDelivery(event: React.FormEvent) {
     event.preventDefault();
     if (!bill) return;
+    if (!billReceiptStatus) { setError("Choose whether the customer has the bill or lost the bill."); return; }
     if (!collection.repayment || collection.repayment.missingMetal) { setError(collection.error || "Choose Gold or Silver for each item to calculate interest."); return; }
     const request = ++generation.current;
     setBusy("save"); setError(""); setMessage(""); setWarnings([]);
     try {
-      const result = await api(`/api/bills/${bill.id}/delivery`, accountSlot, { method: "PATCH", body: JSON.stringify({ deliveryDate, itemMetals }) });
+      const result = await api(`/api/bills/${bill.id}/delivery`, accountSlot, { method: "PATCH", body: JSON.stringify({ deliveryDate, itemMetals, billReceiptStatus }) });
       if (request !== generation.current) return;
       setBill(result.bill);
       setDeliveryNo(result.bill.deliveryNo);
       setDeliveryDate(result.bill.deliveryDate);
+      setBillReceiptStatus(result.bill.deliveryBillReceiptStatus ?? "");
       setWarnings(result.warnings ?? []);
       setMessage(result.warnings?.length ? `Delivery saved for bill #${bill.billNumber}.` : `Delivery saved for bill #${bill.billNumber}. Excel and PDF updated.`);
       onSaved(result.bill);
@@ -96,6 +101,7 @@ function SingleBillDelivery({ accountSlot, onSaved, onOpen, onOverview, onReceip
       <div className="item-table-wrap"><table className="history-table"><thead><tr><th>Metal</th><th>Particulars</th><th>Gram</th><th>Assessed value</th><th>Principal</th><th>Monthly rate</th><th>Interest to collect</th></tr></thead><tbody>{bill.items.map((item, index) => <tr key={index}><td>{item.metal ?? <select aria-label={`Metal for item ${index + 1}`} value={itemMetals[index] ?? ""} disabled={Boolean(busy)} onChange={(event) => { const metal = event.target.value; setItemMetals(current => current.map((choice, itemIndex) => itemIndex === index ? metal === "Gold" || metal === "Silver" ? metal : null : choice)); setMessage(""); }}><option value="">Choose metal</option><option value="Gold">Gold</option><option value="Silver">Silver</option></select>}</td><td>{item.particulars}</td><td>{item.grams}</td><td>{formatINR(item.assessedValue)}</td><td>{formatINR(item.loanAmount)}</td><td>{collection.repayment?.lines[index].ratePercent == null ? "—" : `${collection.repayment.lines[index].ratePercent}%`}</td><td>{collection.repayment?.lines[index].interest == null ? "—" : formatINR(collection.repayment.lines[index].interest!)}</td></tr>)}</tbody></table></div>
       <div className="delivery-bill-actions"><button type="button" className="secondary" onClick={() => onOpen(bill)}>Open bill</button><button type="button" className="secondary" onClick={() => onOverview(bill)}>Repayment overview</button>{bill.deliveryNo && bill.deliveryDate && <button type="button" className="secondary" onClick={() => onReceipt(bill)}>View delivery bill</button>}</div>
       <form className="delivery-entry" onSubmit={saveDelivery}>
+        <BillReceiptSelect billNumber={bill.billNumber} value={billReceiptStatus} disabled={Boolean(busy)} onChange={value => { setBillReceiptStatus(value); setMessage(""); setError(""); }} />
         <div className="form-grid"><label>Delivery bill number (automatic)<input value={deliveryNo} readOnly /></label><label>Delivery bill date<input type="date" min={bill.billDate} value={deliveryDate} disabled={Boolean(busy)} onChange={(event) => { setDeliveryDate(event.target.value); setMessage(""); }} required /></label></div>
         {collection.error && <p className="error" role="alert">{collection.error}</p>}
         {collection.repayment && <RepaymentDetails repayment={collection.repayment} />}

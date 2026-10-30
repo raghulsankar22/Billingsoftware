@@ -7,9 +7,11 @@ const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use a date in YYYY-M
 
 const precision = (value: number, scale: number) => Math.abs(value * scale - Math.round(value * scale)) <= Number.EPSILON * Math.max(1, Math.abs(value * scale)) * 4;
 const moneySchema = z.coerce.number().finite().positive().max(100_000_000).refine((value) => precision(value, 100), "Amounts can have up to two decimal places.");
+const billReceiptStatusSchema = z.enum(["has_bill", "lost_bill"], { required_error: "Choose whether the customer has the bill or lost the bill.", invalid_type_error: "Choose whether the customer has the bill or lost the bill." });
 
 export const deliverySchema = z.object({
   deliveryDate: dateSchema,
+  billReceiptStatus: billReceiptStatusSchema,
   itemMetals: z.array(z.enum(["Gold", "Silver"]).nullable()).max(30).optional(),
 });
 
@@ -17,6 +19,7 @@ export const batchDeliverySchema = z.object({
   deliveryDate: dateSchema,
   deliveries: z.array(z.object({
     billId: z.string().uuid(),
+    billReceiptStatus: billReceiptStatusSchema,
     itemMetals: z.array(z.enum(["Gold", "Silver"]).nullable()).max(30).optional(),
   })).min(1, "Add at least one bill for delivery.").max(50, "You can deliver up to 50 bills together.")
     .refine(deliveries => new Set(deliveries.map(delivery => delivery.billId)).size === deliveries.length, "Each bill can appear only once."),
@@ -35,6 +38,7 @@ export const billSchema = z.object({
   items: z.array(z.object({
     metal: z.enum(["Gold", "Silver"]).optional(),
     particulars: z.string().trim().min(2).max(180),
+    remarks: z.string().trim().max(180, "Remarks must be at most 180 characters.").optional(),
     grams: z.coerce.number().finite().min(0).max(100_000).refine((value) => precision(value, 1000), "Grams can have up to three decimal places."),
     assessedValue: moneySchema,
     loanAmount: moneySchema,

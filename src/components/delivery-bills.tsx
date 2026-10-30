@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { AccountSlot } from "@/lib/account-url";
-import type { Bill } from "@/lib/types";
+import { billReceiptLabels, type Bill } from "@/lib/types";
 import { deliveryBillHistory, deliveryCollection } from "@/lib/delivery-history";
 import { formatINR } from "@/lib/money";
 import { api } from "./api";
@@ -28,12 +28,12 @@ export function DeliveryBills({ accountSlot, onOpen, onOriginal }: { accountSlot
       <div className="delivery-history-controls"><label className="search"><span className="sr-only">Search delivery bills</span><input placeholder="Delivery no., bill no., name, mobile or date" value={query} maxLength={200} onChange={event => setQuery(event.target.value)} /></label><button className="secondary" disabled={busy} onClick={() => setRefresh(value => value + 1)}>{busy ? "Loading…" : "Refresh"}</button></div>
     </div>
     {error && <p className="error" role="alert">{error}</p>}
-    <div className="item-table-wrap"><table className="history-table"><thead><tr><th>Delivery No.</th><th>Delivery Date</th><th>Bill No.</th><th>Customer</th><th>Principal</th><th>Interest</th><th>Total to collect</th><th /></tr></thead>
+    <div className="item-table-wrap"><table className="history-table"><thead><tr><th>Delivery No.</th><th>Delivery Date</th><th>Bill No.</th><th>Customer</th><th>Delivery remarks</th><th>Principal</th><th>Interest</th><th>Total to collect</th><th /></tr></thead>
       <tbody>{deliveries.map(bill => { const collection = deliveryCollection(bill); return <tr key={bill.id}>
         <td>#{bill.deliveryNo}</td><td>{bill.deliveryDate}</td><td>#{bill.billNumber}{bill.status === "void" && <small>Original bill voided</small>}</td>
-        <td><b>{bill.customerName}</b>{bill.phone && <small>{bill.phone}</small>}</td><td>{formatINR(collection?.principal ?? bill.totalLoanAmount)}</td><td>{collection?.interest == null ? "—" : formatINR(collection.interest)}</td><td>{collection?.total == null ? "—" : formatINR(collection.total)}</td>
+        <td><b>{bill.customerName}</b>{bill.phone && <small>{bill.phone}</small>}</td><td>{bill.deliveryBillReceiptStatus ? billReceiptLabels[bill.deliveryBillReceiptStatus] : "Not recorded"}</td><td>{formatINR(collection?.principal ?? bill.totalLoanAmount)}</td><td>{collection?.interest == null ? "—" : formatINR(collection.interest)}</td><td>{collection?.total == null ? "—" : formatINR(collection.total)}</td>
         <td className="row-actions"><button className="text-button" onClick={() => onOpen(bill)}>Open</button><button className="text-button" onClick={() => onOriginal(bill)}>Original bill</button></td>
-      </tr>; })}{!deliveries.length && <tr><td colSpan={8} className="empty">{busy ? "Loading delivery bills…" : query ? "No delivery bills match your search." : "No delivery bills recorded yet."}</td></tr>}</tbody>
+      </tr>; })}{!deliveries.length && <tr><td colSpan={9} className="empty">{busy ? "Loading delivery bills…" : query ? "No delivery bills match your search." : "No delivery bills recorded yet."}</td></tr>}</tbody>
     </table></div>
     <p className="muted collection-note">Amounts are for the saved delivery date.</p>
   </section>;

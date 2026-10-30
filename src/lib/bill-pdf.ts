@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { currencyFont } from "./currency-font";
 import { amountInWords } from "./money";
 import type { Bill } from "./types";
+import { billReceiptLabels } from "./types";
 import { calculateRepayment } from "./interest";
 import { createConditionsBlock } from "./bill-conditions-pdf";
 import { billPdfTemplateVersion } from "./bill-conditions";
@@ -18,6 +19,7 @@ const money = (value: number) => `₹ ${new Intl.NumberFormat("en-IN", { minimum
 
 export async function createBillPdf(bill: SnapshottedBill, currentProfile: BusinessDetails, documentType: "finance" | "delivery" = "finance"): Promise<Uint8Array> {
   const delivery = documentType === "delivery";
+  const hasRemarks = bill.items.some(item => Boolean(item.remarks?.trim()));
   if (delivery && (!bill.deliveryNo || !bill.deliveryDate)) throw new Error("Save delivery before printing the delivery bill.");
   const repayment = delivery ? bill.deliverySummary ?? calculateRepayment(bill.items, bill.billDate, bill.deliveryDate!) : null;
   if (repayment?.missingMetal) throw new Error("Choose Gold or Silver for every item before printing the delivery bill.");
@@ -71,7 +73,8 @@ export async function createBillPdf(bill: SnapshottedBill, currentProfile: Busin
     pdf.setFont("helvetica", "bold");
     pdf.setFontSize(9);
     pdf.text("Metal", 18, y);
-    pdf.text("Particulars", 44, y);
+    pdf.text("Particulars", hasRemarks ? 40 : 44, y);
+    if (hasRemarks) pdf.text("Remarks", 74, y);
     pdf.text("Gram", 112, y);
     pdf.text("Total Value", 132, y);
     pdf.text("Amount", 169, y);
@@ -109,6 +112,7 @@ export async function createBillPdf(bill: SnapshottedBill, currentProfile: Busin
   y += 7;
   if (delivery) {
     line(`Original Bill No.: ${bill.billNumber}     Bill Date: ${bill.billDate}`, left, 180);
+    line(`Delivery remarks: ${bill.deliveryBillReceiptStatus ? billReceiptLabels[bill.deliveryBillReceiptStatus] : "Not recorded"}`, left, 180, 9);
     if (bill.status === "void") line("Original bill status: Voided - delivery recorded", left, 180, 9);
   } else if (bill.deliveryNo || bill.deliveryDate) {
     line(`Delivery No.: ${bill.deliveryNo || "-"}     Delivery Date: ${bill.deliveryDate || "-"}`, left, 180);
@@ -124,13 +128,15 @@ export async function createBillPdf(bill: SnapshottedBill, currentProfile: Busin
   for (const item of bill.items) {
     pdf.setFont("helvetica", "normal");
     pdf.setFontSize(9);
-    const description = pdf.splitTextToSize(item.particulars, 62) as string[];
-    const height = Math.max(8, description.length * 4.5 + 3);
+    const description = pdf.splitTextToSize(item.particulars, hasRemarks ? 30 : 62) as string[];
+    const remarks = hasRemarks ? pdf.splitTextToSize(item.remarks?.trim() || "", 34) as string[] : [];
+    const height = Math.max(8, Math.max(description.length, remarks.length) * 4.5 + 3);
     if (y + height > 254) { newPage(); tableHeader(); }
     pdf.setFont("helvetica", "normal");
     pdf.setFontSize(9);
     if (item.metal) pdf.text(item.metal, 18, y);
-    pdf.text(description, 44, y);
+    pdf.text(description, hasRemarks ? 40 : 44, y);
+    if (remarks.length) pdf.text(remarks, 74, y);
     pdf.text(String(item.grams), 112, y);
     currency(money(item.assessedValue), 162, 32);
     currency(money(item.loanAmount), 192, 27);
