@@ -12,7 +12,7 @@ const labels: Record<UpdatePeriod, string> = { yesterday: "Yesterday", daily: "T
 const periods = ["yesterday", "daily", "weekly", "monthly", "yearly"] as const;
 const displayDate = (value: string) => value.split("-").reverse().join("/");
 
-export function BusinessUpdates({ accountSlot, onBill, onDelivery }: { accountSlot: AccountSlot; onBill: (bill: Bill) => void; onDelivery: (bill: Bill) => void }) {
+export function BusinessUpdates({ accountSlot, onBill, onDelivery, onExportExcel, onRefreshExcel, isRefreshingExcel }: { accountSlot: AccountSlot; onBill: (bill: Bill) => void; onDelivery: (bill: Bill) => void; onExportExcel: () => void; onRefreshExcel: () => void; isRefreshingExcel: boolean }) {
   const [section, setSection] = useState<"activity" | "jewels" | "gold" | "silver">("activity");
   const [mode, setMode] = useState<UpdatePeriod>("daily");
   const [date, setDate] = useState(billingToday);
@@ -52,7 +52,7 @@ export function BusinessUpdates({ accountSlot, onBill, onDelivery }: { accountSl
   };
 
   return <section className="panel">
-    <div className="section-heading"><div><p className="eyebrow">ACCOUNT {accountSlot}</p><h2>Dashboard</h2><p className="dashboard-period">{section === "activity" ? `${labels[mode]} overview` : "Jewellery held against undelivered loans"}</p></div><button className="secondary" disabled={busy} onClick={() => setRefresh(value => value + 1)}>{busy ? "Loading…" : "Refresh"}</button></div>
+    <div className="section-heading dashboard-heading"><div><p className="eyebrow">ACCOUNT {accountSlot}</p><h2>Dashboard</h2><p className="dashboard-period">{section === "activity" ? `${labels[mode]} overview` : "Jewellery held against undelivered loans"}</p></div><div className="dashboard-actions"><button className="secondary" onClick={onExportExcel}>Download Excel</button><button className="secondary" disabled={isRefreshingExcel} onClick={onRefreshExcel}>{isRefreshingExcel ? "Refreshing Excel…" : "Refresh Excel"}</button><button className="secondary" disabled={busy} onClick={() => setRefresh(value => value + 1)}>{busy ? "Loading…" : "Refresh"}</button></div></div>
     <div className="dashboard-sections" role="group" aria-label="Dashboard sections">{(["activity", "jewels", "gold", "silver"] as const).map(tab => <button type="button" key={tab} className={section === tab ? "active" : "secondary"} aria-pressed={section === tab} onClick={() => setSection(tab)}>{tab === "activity" ? "Activity" : tab === "jewels" ? "Jewels" : tab === "gold" ? "Gold" : "Silver"}</button>)}</div>
     {section === "activity" ? <>
     <p className="muted">Yesterday follows India’s calendar date. Choose a date to inspect a day, week, or month, or select a calendar year.</p>

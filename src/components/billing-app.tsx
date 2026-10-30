@@ -286,9 +286,7 @@ export function BillingApp() {
         {accountLoaded && profile?.license_number && <p className="app-license-number">License No.: {profile.license_number}</p>}
       <div className="top-actions">
         {multiUser && localUser && <><span className="local-user-name">{localUser.username}</span><button className="secondary" onClick={() => void signOutLocal()}>Sign out</button></>}
-        <button className="secondary" onClick={exportExcel} disabled={!profile}>Download Excel</button>
-        <button className="secondary" onClick={() => void refreshExcel()} disabled={!profile || isRefreshingExcel}>{isRefreshingExcel ? "Refreshing…" : "Refresh Excel"}</button>
-        {!localStorageEnabled && <><button className="secondary" onClick={connectGoogleDrive}>Connect Google Drive</button><button className="secondary" onClick={() => createBrowserSupabase().auth.signOut().then(() => setSignedIn(false))}>Sign out</button></>}
+        {!localStorageEnabled && <><button className="secondary" onClick={exportExcel} disabled={!profile}>Download Excel</button><button className="secondary" onClick={() => void refreshExcel()} disabled={!profile || isRefreshingExcel}>{isRefreshingExcel ? "Refreshing…" : "Refresh Excel"}</button><button className="secondary" onClick={connectGoogleDrive}>Connect Google Drive</button><button className="secondary" onClick={() => createBrowserSupabase().auth.signOut().then(() => setSignedIn(false))}>Sign out</button></>}
       </div>
       </div>
     </header>
@@ -324,7 +322,7 @@ export function BillingApp() {
       {view === "customers" && accountLoaded && <Customers key={accountSlot} accountSlot={accountSlot} />}
       {view === "delivery" && profile && accountLoaded && <BillDelivery key={accountSlot} accountSlot={accountSlot} onSaved={(bill) => { setDeliveryDocumentBill(bill); void load(query, accountSlot); }} onBatchSaved={() => void load(query, accountSlot)} onOpen={setSelected} onOverview={setOverviewBill} onReceipt={setDeliveryDocumentBill} />}
       {view === "delivery-bills" && profile && accountLoaded && <DeliveryBills key={accountSlot} accountSlot={accountSlot} onOpen={setDeliveryDocumentBill} onOriginal={setSelected} />}
-      {view === "dashboard" && profile && accountLoaded && <BusinessUpdates key={accountSlot} accountSlot={accountSlot} onBill={setSelected} onDelivery={setDeliveryDocumentBill} />}
+      {view === "dashboard" && profile && accountLoaded && <BusinessUpdates key={accountSlot} accountSlot={accountSlot} onBill={setSelected} onDelivery={setDeliveryDocumentBill} onExportExcel={exportExcel} onRefreshExcel={() => void refreshExcel()} isRefreshingExcel={isRefreshingExcel} />}
       {view === "overdue" && profile && accountLoaded && <OverdueBills key={accountSlot} accountSlot={accountSlot} onOpen={setSelected} onOverview={setOverviewBill} />}
       {view === "notice" && profile && accountLoaded && <NoticeBills key={accountSlot} accountSlot={accountSlot} onOpen={setSelected} onOverview={setOverviewBill} />}
       {view === "search" && accountLoaded && <AllAccountSearch accountSlot={accountSlot} />}
