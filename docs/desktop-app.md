@@ -1,10 +1,10 @@
 # Windows desktop app
 
-Run the Finance Billing shortcut or install `release/1.0.12/Finance-Billing-Setup-1.0.12.exe`.
+Run the Finance Billing shortcut or install `release/1.0.13/Finance-Billing-Setup-1.0.13.exe`.
 The app opens its own window and starts its loopback-only billing server automatically.
 No internet, separate Node installation, Microsoft 365 login or web hosting is needed for daily use.
 
-The multi-user website preview asks the first person to create an administrator username
+The multi-user app asks the first person to create an administrator username
 and password. That first user keeps the existing accounts. The administrator can create
 other users and reset passwords under **Users**; each user has separate business accounts,
 customer records, bills, PDFs and Excel registers. User credentials and sessions are stored
@@ -17,9 +17,8 @@ explains how an administrator can reset another user's password. The offline app
 currently provide automatic recovery if the administrator forgets their own password.
 
 Sign-in limits access through the updated app. Anyone with access to the same Windows
-account can still access local billing files directly. The already-installed version 1.0.12
-predates login and can open the original accounts without it; install a later build when
-the owner requests the desktop update. Updated desktop builds refuse to reuse an older
+account can still access local billing files directly. Version 1.0.12 and earlier
+predate login and can open the original accounts without it. Updated desktop builds refuse to reuse an older
 server that does not enforce the new sign-in.
 
 On this computer all business accounts continue to use `D:\app\data`. Customer records are
@@ -41,7 +40,7 @@ and PDF/Excel downloads use a Save dialog.
 
 1. Install project dependencies and the Electron runtime.
 2. Run `pnpm desktop:prepare` to build and stage the offline server, its hoisted production dependencies, and the bundled Node runtime (no Windows symlink permissions required).
-3. Run `node scripts/verify-desktop.mjs` for isolated local billing integration checks.
+3. Run `node scripts/verify-desktop.mjs` and `node scripts/verify-desktop-users.mjs` for isolated local billing and multi-user checks.
 4. Run `pnpm desktop:start` to test the desktop window.
 5. Run `pnpm desktop:package` to create the per-user Windows installer and unpacked app.
 
@@ -127,7 +126,9 @@ Failed installations are recorded under the app's user-data `updates/install.log
 Version 1.0.12 ensures the app reopens with a visible window after an update and
 that opening its shortcut brings an existing hidden window back into view.
 
-Website changes awaiting the next desktop release: New Bill and Edit Bill have optional
+Version 1.0.13 includes the multi-user sign-in, password-change and administrator reset
+features described above, coloured navigation icons, and the following billing changes.
+New Bill and Edit Bill have optional
 jewellery-condition checkboxes beside Particulars: **None**, **Broken**, **Slightly bent**,
 **Missing stone**, and **No screw**. Several conditions can be selected; None clears the
 others. Older written notes remain available as checked choices when editing.
