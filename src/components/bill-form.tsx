@@ -9,6 +9,7 @@ import { api } from "./api";
 import { localStorageEnabled } from "@/lib/storage-mode";
 import { appendJewelleryParticulars, jewelleryNameSchema, starterJewellery } from "@/lib/jewellery";
 import { ZodError } from "zod";
+import { JewelleryRemarks } from "./jewellery-remarks";
 
 const addJewelleryOption = "\u0001add-jewellery";
 
@@ -192,7 +193,7 @@ export function BillForm({ onCreated, editingSource, accountSlot }: { onCreated:
             {jewelleryError && <p className="error" id={`jewellery-error-${index}`} role="alert">{jewelleryError}</p>}
           </div>}
         </div> : <input aria-label={`Particulars for item ${index + 1}`} value={row.particulars} onChange={event => item(index, "particulars", event.target.value)} required />}</td>
-        {localStorageEnabled && <td><textarea className="jewellery-remarks" aria-label={`Remarks for item ${index + 1}`} rows={4} maxLength={180} placeholder="e.g. Broken, slightly bent, missing stone, no anklet screw" value={row.remarks ?? ""} disabled={busy} onChange={event => item(index, "remarks", event.target.value)} /></td>}
+        {localStorageEnabled && <td><JewelleryRemarks index={index} value={row.remarks} disabled={busy} onChange={value => item(index, "remarks", value)} /></td>}
         <td><input type="number" aria-label={`Gram for item ${index + 1}`} step="0.001" min="0" value={row.grams || ""} onChange={(e) => item(index, "grams", e.target.value)} required /></td>
         <td><div className="currency-input"><span aria-hidden="true">₹</span><input type="number" inputMode="decimal" aria-label={`Loan amount in rupees for item ${index + 1}`} step="0.01" min="0" value={row.loanAmount || ""} onChange={(e) => item(index, "loanAmount", e.target.value)} required /></div></td>
         <td><div className="currency-input"><span aria-hidden="true">₹</span><input type="number" inputMode="decimal" aria-label={`Assessed value in rupees for item ${index + 1}`} step="0.01" min="0" value={row.assessedValue || ""} readOnly required /></div><small className="assessed-note muted">{row.assessedValue === assessedValueForLoan(row.loanAmount) ? "Loan + 10%" : "Saved assessed value"}</small></td>

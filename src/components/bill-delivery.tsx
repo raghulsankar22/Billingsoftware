@@ -9,6 +9,8 @@ import { api } from "./api";
 import { calculateRepayment } from "@/lib/interest";
 import { RepaymentDetails } from "./repayment-details";
 import { MultipleDelivery } from "./multiple-delivery";
+import { DeliveredBillNotice } from "./delivered-bill-notice";
+import { deliveryBillHistory } from "@/lib/delivery-history";
 
 function today() {
   const date = new Date();
@@ -18,10 +20,11 @@ function today() {
 type DeliveryProps = { accountSlot: AccountSlot; onSaved: (bill: Bill) => void; onBatchSaved: () => void; onOpen: (bill: Bill) => void; onOverview: (bill: Bill) => void; onReceipt: (bill: Bill) => void };
 export function BillDelivery(props: DeliveryProps) {
   const [mode, setMode] = useState<"single" | "multiple">("single");
-  return <><div className="delivery-mode" role="group" aria-label="Delivery mode"><button className={mode === "single" ? "active" : "secondary"} aria-pressed={mode === "single"} onClick={() => setMode("single")}>Single Delivery</button><button className={mode === "multiple" ? "active" : "secondary"} aria-pressed={mode === "multiple"} onClick={() => setMode("multiple")}>Multiple Delivery</button></div>{mode === "single" ? <SingleBillDelivery {...props} /> : <MultipleDelivery accountSlot={props.accountSlot} onSaved={props.onBatchSaved} onOpen={props.onOpen} onReceipt={props.onReceipt} />}</>;
+  const [alreadyDelivered, setAlreadyDelivered] = useState<Bill[]>([]);
+  return <><div className="delivery-mode" role="group" aria-label="Delivery mode"><button className={mode === "single" ? "active" : "secondary"} aria-pressed={mode === "single"} onClick={() => setMode("single")}>Single Delivery</button><button className={mode === "multiple" ? "active" : "secondary"} aria-pressed={mode === "multiple"} onClick={() => setMode("multiple")}>Multiple Delivery</button></div>{mode === "single" ? <SingleBillDelivery {...props} onAlreadyDelivered={setAlreadyDelivered} /> : <MultipleDelivery accountSlot={props.accountSlot} onSaved={props.onBatchSaved} onOpen={props.onOpen} onReceipt={props.onReceipt} onAlreadyDelivered={setAlreadyDelivered} />}{alreadyDelivered.length > 0 && <DeliveredBillNotice bills={alreadyDelivered} onClose={() => setAlreadyDelivered([])} />}</>;
 }
 
-function SingleBillDelivery({ accountSlot, onSaved, onOpen, onOverview, onReceipt }: DeliveryProps) {
+function SingleBillDelivery({ accountSlot, onSaved, onOpen, onOverview, onReceipt, onAlreadyDelivered }: DeliveryProps & { onAlreadyDelivered: (bills: Bill[]) => void }) {
   const [billNumber, setBillNumber] = useState("");
   const [bill, setBill] = useState<Bill | null>(null);
   const [deliveryNo, setDeliveryNo] = useState("");
@@ -55,6 +58,8 @@ function SingleBillDelivery({ accountSlot, onSaved, onOpen, onOverview, onReceip
       setDeliveryNo(found.deliveryNo || String(nextDeliveryNumber));
       setItemMetals(found.items.map((item: Bill["items"][number]) => item.metal ?? null));
       setDeliveryDate(found.deliveryDate || (today() < found.billDate ? found.billDate : today()));
+      const delivered = deliveryBillHistory([found]);
+      if (delivered.length) onAlreadyDelivered(delivered);
     } catch (failure) {
       if (request === generation.current) setError(failure instanceof Error ? failure.message : "Unable to find this bill.");
     } finally {

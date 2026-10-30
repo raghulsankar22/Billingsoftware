@@ -110,11 +110,18 @@ Version 1.0.12 ensures the app reopens with a visible window after an update and
 that opening its shortcut brings an existing hidden window back into view.
 
 Website changes awaiting the next desktop release: New Bill and Edit Bill have optional
-jewellery-condition Remarks beside Particulars. Delivery requires choosing **Customer has
+jewellery-condition checkboxes beside Particulars: **None**, **Broken**, **Slightly bent**,
+**Missing stone**, and **No screw**. Several conditions can be selected; None clears the
+others. Older written notes remain available as checked choices when editing.
+Delivery requires choosing **Customer has
 bill** or **Customer lost bill**, separately for every bill in multiple delivery. Jewellery
 remarks appear in finance and delivery PDFs; the bill choice appears on delivery receipts
 and in Delivery Bills history. Both are retained in the Excel register's existing Particulars
 cell. Historical deliveries have no assumed choice and show **Not recorded** until updated.
+Looking up an already-delivered bill opens a notice showing its delivery number and date.
+Multiple Delivery lists all delivered bills found in the requested selection in one notice,
+including bills whose original loan was voided. Looking up or dismissing a notice does not
+record another delivery; saving remains a separate action.
 
 For another computer or USB drive, copy a whole version folder containing its installer
 and `update.json`; use **Choose update file** in the update dialog. Older or equal versions

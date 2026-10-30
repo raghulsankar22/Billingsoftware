@@ -8,8 +8,9 @@ import { billingToday } from "@/lib/business-updates";
 import { calculateRepayment } from "@/lib/interest";
 import { formatINR } from "@/lib/money";
 import { api } from "./api";
+import { deliveryBillHistory } from "@/lib/delivery-history";
 
-export function MultipleDelivery({ accountSlot, onSaved, onReceipt, onOpen }: { accountSlot: AccountSlot; onSaved: () => void; onReceipt: (bill: Bill) => void; onOpen: (bill: Bill) => void }) {
+export function MultipleDelivery({ accountSlot, onSaved, onReceipt, onOpen, onAlreadyDelivered }: { accountSlot: AccountSlot; onSaved: () => void; onReceipt: (bill: Bill) => void; onOpen: (bill: Bill) => void; onAlreadyDelivered: (bills: Bill[]) => void }) {
   const [numbers, setNumbers] = useState("");
   const [bills, setBills] = useState<Bill[]>([]);
   const [date, setDate] = useState(billingToday);
@@ -47,6 +48,8 @@ export function MultipleDelivery({ accountSlot, onSaved, onReceipt, onOpen }: { 
       setReceiptStatuses(previous => ({ ...previous, ...Object.fromEntries(found.map(bill => [bill.id, previous[bill.id] ?? bill.deliveryBillReceiptStatus ?? ""])) }));
       setBills(existing => [...existing, ...found.filter(bill => !existing.some(row => row.id === bill.id))]);
       setNumbers("");
+      const delivered = deliveryBillHistory(found);
+      if (delivered.length) onAlreadyDelivered(delivered);
     } catch (failure) { if (current === generation.current) setError(failure instanceof Error ? failure.message : "Unable to find these bills."); }
     finally { if (current === generation.current) setBusy(null); }
   }
