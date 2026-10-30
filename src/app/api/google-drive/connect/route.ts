@@ -1,10 +1,11 @@
+import { withLocalSession } from "../../../../lib/local-request";
 import { NextResponse } from "next/server";
 import { accountSlot } from "@/lib/accounts";
 import { requireUser, requireOwnerProfile } from "@/lib/auth";
 import { createAdminSupabase } from "@/lib/supabase";
 import { beginGoogleConnection, googleConfigured, googleCookie } from "@/lib/google-oauth";
 
-export async function GET(request: Request) {
+async function GETHandler(request: Request) {
   try {
     const user = await requireUser(request);
     const profile = await requireOwnerProfile(user.id, accountSlot(request));
@@ -15,7 +16,7 @@ export async function GET(request: Request) {
   } catch (error) { return NextResponse.json({ error: error instanceof Error ? error.message : "Unable to read Google Drive connection" }, { status: 400 }); }
 }
 
-export async function POST(request: Request) {
+async function POSTHandler(request: Request) {
   try {
     const user = await requireUser(request);
     const profile = await requireOwnerProfile(user.id, accountSlot(request));
@@ -29,3 +30,6 @@ export async function POST(request: Request) {
 }
 
 
+
+export const GET = withLocalSession(GETHandler);
+export const POST = withLocalSession(POSTHandler);

@@ -1,3 +1,4 @@
+import { withLocalSession } from "../../../../../lib/local-request";
 import { NextResponse } from "next/server";
 import { accountSlot } from "@/lib/accounts";
 import { requireOwnerProfile, requireUser } from "@/lib/auth";
@@ -5,7 +6,7 @@ import { createAdminSupabase } from "@/lib/supabase";
 import { toBill } from "@/lib/bills";
 import { loadBillPdf } from "@/lib/bill-pdf-storage";
 
-export async function GET(request: Request, context: { params: Promise<{ id: string }> }) {
+async function GETHandler(request: Request, context: { params: Promise<{ id: string }> }) {
   try {
     const user = await requireUser(request);
     const profile = await requireOwnerProfile(user.id, accountSlot(request));
@@ -20,3 +21,5 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
     return NextResponse.json({ error: error instanceof Error ? error.message : "Unable to load bill PDF" }, { status: 400 });
   }
 }
+
+export const GET = withLocalSession(GETHandler);

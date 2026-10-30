@@ -1,10 +1,11 @@
+import { withLocalSession } from "../../../lib/local-request";
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth";
 import { createAdminSupabase } from "@/lib/supabase";
 import { localStorageEnabled } from "@/lib/storage-mode";
 import { profileSchema } from "@/lib/profile-validation";
 
-export async function POST(request: Request) {
+async function POSTHandler(request: Request) {
   try {
     if (!localStorageEnabled) return NextResponse.json({ error: "Adding business accounts is available only in local billing." }, { status: 400 });
     const user = await requireUser(request);
@@ -16,3 +17,5 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Unable to create business account" }, { status: 400 });
   }
 }
+
+export const POST = withLocalSession(POSTHandler);

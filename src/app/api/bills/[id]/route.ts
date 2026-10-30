@@ -1,3 +1,4 @@
+import { withLocalSession } from "../../../../lib/local-request";
 import { NextResponse } from "next/server";
 import { accountSlot } from "@/lib/accounts";
 import { requireOwnerProfile, requireUser } from "@/lib/auth";
@@ -11,7 +12,7 @@ import { localBillPdfPaths } from "@/lib/local-bill-pdfs";
 
 type Context = { params: Promise<{ id: string }> };
 
-export async function PATCH(request: Request, context: Context) {
+async function PATCHHandler(request: Request, context: Context) {
   try {
     if (!localStorageEnabled) return NextResponse.json({ error: "In-place editing is available in local billing mode." }, { status: 501 });
     const user = await requireUser(request);
@@ -33,7 +34,7 @@ export async function PATCH(request: Request, context: Context) {
   }
 }
 
-export async function DELETE(request: Request, context: Context) {
+async function DELETEHandler(request: Request, context: Context) {
   try {
     if (!localStorageEnabled) return NextResponse.json({ error: "Bill deletion is available in local billing mode." }, { status: 501 });
     const user = await requireUser(request);
@@ -63,3 +64,6 @@ export async function DELETE(request: Request, context: Context) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Unable to delete bill" }, { status: 400 });
   }
 }
+
+export const PATCH = withLocalSession(PATCHHandler);
+export const DELETE = withLocalSession(DELETEHandler);

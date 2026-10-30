@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth";
 import { localStorageEnabled } from "@/lib/storage-mode";
-import { localDataDirectory } from "@/lib/local-database";
+import { baseDataDirectory, multiUserEnabled } from "@/lib/local-session-context";
 
 export async function GET(request: Request) {
   try {
     await requireUser(request);
-    return NextResponse.json({ application: "finance-billing", storage: localStorageEnabled ? "local" : "cloud", dataDirectory: localStorageEnabled ? localDataDirectory() : null }, { headers: { "cache-control": "no-store" } });
+    return NextResponse.json({ application: "finance-billing", storage: localStorageEnabled ? "local" : "cloud", dataDirectory: localStorageEnabled ? baseDataDirectory() : null, ...(localStorageEnabled && multiUserEnabled() ? { authentication: "local-users-v1" } : {}) }, { headers: { "cache-control": "no-store" } });
   } catch {
     return NextResponse.json({ error: "Open billing on this computer." }, { status: 403 });
   }

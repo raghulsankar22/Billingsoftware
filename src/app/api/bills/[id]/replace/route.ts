@@ -1,3 +1,4 @@
+import { withLocalSession } from "../../../../../lib/local-request";
 import { NextResponse } from "next/server";
 import { accountSlot } from "@/lib/accounts";
 import { billSchema } from "@/lib/validation";
@@ -7,7 +8,7 @@ import { toBill, totals } from "@/lib/bills";
 import { markBillVoidInRegister, syncBillToRegister } from "@/lib/register-sync";
 import { persistBillPdf } from "@/lib/bill-pdf-storage";
 
-export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
+async function POSTHandler(request: Request, context: { params: Promise<{ id: string }> }) {
   try {
     const user = await requireUser(request);
     const profile = await requireOwnerProfile(user.id, accountSlot(request));
@@ -62,3 +63,5 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     return NextResponse.json({ error: error instanceof Error ? error.message : "Unable to replace bill" }, { status: 400 });
   }
 }
+
+export const POST = withLocalSession(POSTHandler);

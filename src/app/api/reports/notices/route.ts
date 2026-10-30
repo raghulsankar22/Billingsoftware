@@ -1,3 +1,4 @@
+import { withLocalSession } from "../../../../lib/local-request";
 import { NextResponse } from "next/server";
 import { accountSlot } from "@/lib/accounts";
 import { requireOwnerProfile, requireUser } from "@/lib/auth";
@@ -5,7 +6,7 @@ import { loadReportBills } from "@/lib/excel-report";
 import { buildNoticeRegister, noticeReportFilters } from "@/lib/notice-report";
 import { noticeBillHistory } from "@/lib/notices";
 
-export async function GET(request: Request) {
+async function GETHandler(request: Request) {
   try {
     const user = await requireUser(request);
     const account = accountSlot(request);
@@ -23,3 +24,5 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Unable to export notice Excel." }, { status: 400, headers: { "cache-control": "private, no-store" } });
   }
 }
+
+export const GET = withLocalSession(GETHandler);

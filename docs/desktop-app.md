@@ -4,6 +4,19 @@ Run the Finance Billing shortcut or install `release/1.0.12/Finance-Billing-Setu
 The app opens its own window and starts its loopback-only billing server automatically.
 No internet, separate Node installation, Microsoft 365 login or web hosting is needed for daily use.
 
+The multi-user website preview asks the first person to create an administrator username
+and password. That first user keeps the existing accounts. The administrator can create
+other users and reset passwords under **Users**; each user has separate business accounts,
+customer records, bills, PDFs and Excel registers. User credentials and sessions are stored
+in `users.sqlite` in the billing data folder; other users' files live in its `users` folder.
+Back up the entire folder, including these files and subfolders, with billing closed.
+
+Sign-in limits access through the updated app. Anyone with access to the same Windows
+account can still access local billing files directly. The already-installed version 1.0.12
+predates login and can open the original accounts without it; install a later build when
+the owner requests the desktop update. Updated desktop builds refuse to reuse an older
+server that does not enforce the new sign-in.
+
 On this computer all business accounts continue to use `D:\app\data`. Customer records are
 not copied into the installer. Updates and uninstalling the desktop program do not delete
 this data directory. On computers without a D: drive, the app uses a data directory inside

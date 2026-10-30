@@ -1,3 +1,4 @@
+import { withLocalSession } from "../../../lib/local-request";
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth";
 import { createLocalDatabase } from "@/lib/local-database";
@@ -9,7 +10,7 @@ async function catalogue(request: Request) {
   return createLocalDatabase().jewellery;
 }
 
-export async function GET(request: Request) {
+async function GETHandler(request: Request) {
   try {
     const jewellery = await catalogue(request);
     return NextResponse.json({ items: jewellery.list() }, { headers: { "cache-control": "no-store" } });
@@ -18,7 +19,7 @@ export async function GET(request: Request) {
   }
 }
 
-export async function POST(request: Request) {
+async function POSTHandler(request: Request) {
   try {
     const jewellery = await catalogue(request);
     const input = await request.json();
@@ -27,3 +28,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Unable to save jewellery." }, { status: 400 });
   }
 }
+
+export const GET = withLocalSession(GETHandler);
+export const POST = withLocalSession(POSTHandler);

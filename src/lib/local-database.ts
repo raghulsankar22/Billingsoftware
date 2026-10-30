@@ -8,13 +8,14 @@ import { jewelleryChoices, jewelleryKey, jewelleryNameSchema } from "./jewellery
 import { isAccountSlot } from "./account-url";
 import { profileSchema } from "./profile-validation";
 import { customerCode, customerSchema, type Customer } from "./customers";
+import { scopedDataDirectory } from "./local-session-context";
 
 type Row = Record<string, any>;
 type Result = { data: any; error: Error | null; count?: number | null };
 const tables = new Set(["business_profiles", "bills", "bill_items"]);
 const connections = new Map<string, DatabaseSync>();
 export const localOwnerId = "local-owner";
-export function localDataDirectory() { return resolve(process.env.LOCAL_DATA_DIR || resolve(process.cwd(), "data")); }
+export function localDataDirectory() { return scopedDataDirectory(); }
 function failure(error: unknown) { return { data: null, error: error instanceof Error ? error : new Error(String(error)), count: null }; }
 
 /** Server-only, durable local ledger. Transactions serialize numbering and corrections. */

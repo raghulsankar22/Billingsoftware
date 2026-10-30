@@ -29,6 +29,8 @@ describe("offline desktop security and server lifecycle", () => {
     expect(isBillingHealth(health, dataDirectory)).toBe(true);
     expect(isBillingHealth({ ...health, storage: "cloud" }, dataDirectory)).toBe(false);
     expect(isBillingHealth({ ...health, dataDirectory: path.resolve("other-data") }, dataDirectory)).toBe(false);
+    expect(isBillingHealth(health, dataDirectory, true)).toBe(false);
+    expect(isBillingHealth({ ...health, authentication: "local-users-v1" }, dataDirectory, true)).toBe(true);
     expect(isBillingHealth(null, dataDirectory)).toBe(false);
   });
   it("reuses the correct existing server and does not stop it when the app closes", async () => {

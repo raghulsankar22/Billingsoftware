@@ -1,3 +1,4 @@
+import { withLocalSession } from "../../../lib/local-request";
 import { NextResponse } from "next/server";
 import { accountSlot } from "@/lib/accounts";
 import { billSchema } from "@/lib/validation";
@@ -8,7 +9,7 @@ import { syncBillToRegister } from "@/lib/register-sync";
 import { persistBillPdf } from "@/lib/bill-pdf-storage";
 import { loadBillHistory } from "@/lib/bill-history";
 
-export async function GET(request: Request) {
+async function GETHandler(request: Request) {
   try {
     const user = await requireUser(request);
     const profile = await requireOwnerProfile(user.id, accountSlot(request));
@@ -18,7 +19,7 @@ export async function GET(request: Request) {
   } catch (error) { return NextResponse.json({ error: error instanceof Error ? error.message : "Unable to load bills" }, { status: 400 }); }
 }
 
-export async function POST(request: Request) {
+async function POSTHandler(request: Request) {
   try {
     const user = await requireUser(request);
     const profile = await requireOwnerProfile(user.id, accountSlot(request));
@@ -48,3 +49,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ bill }, { status: 201 });
   } catch (error) { return NextResponse.json({ error: error instanceof Error ? error.message : "Unable to create bill" }, { status: 400 }); }
 }
+
+export const GET = withLocalSession(GETHandler);
+export const POST = withLocalSession(POSTHandler);

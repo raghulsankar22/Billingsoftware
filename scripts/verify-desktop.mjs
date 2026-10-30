@@ -6,6 +6,8 @@ import { fileURLToPath } from 'node:url';
 import { ensureBillingServer, probeServer } from '../desktop/server.cjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+// Legacy flow checks run against disposable data without a login; separate multi-user tests cover authentication.
+process.env.BILLING_MULTI_USER = '0';
 await mkdir(path.join(root, 'tmp'), { recursive: true });
 const dataDirectory = await mkdtemp(path.join(root, 'tmp/desktop-verification-'));
 const listener = createServer();

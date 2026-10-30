@@ -1,3 +1,4 @@
+import { withLocalSession } from "../../../../../lib/local-request";
 import { NextResponse } from "next/server";
 import { accountSlot } from "@/lib/accounts";
 import { requireOwnerProfile, requireUser } from "@/lib/auth";
@@ -7,7 +8,7 @@ import { localStorageEnabled } from "@/lib/storage-mode";
 import { createAdminSupabase } from "@/lib/supabase";
 import { deliverySchema } from "@/lib/validation";
 
-export async function PATCH(request: Request, context: { params: Promise<{ id: string }> }) {
+async function PATCHHandler(request: Request, context: { params: Promise<{ id: string }> }) {
   try {
     if (!localStorageEnabled) return NextResponse.json({ error: "Delivery is available in local billing mode." }, { status: 501 });
     const user = await requireUser(request);
@@ -28,3 +29,5 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
     return NextResponse.json({ error: error instanceof Error ? error.message : "Unable to save delivery." }, { status: 400 });
   }
 }
+
+export const PATCH = withLocalSession(PATCHHandler);

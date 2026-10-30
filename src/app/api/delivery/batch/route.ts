@@ -1,3 +1,4 @@
+import { withLocalSession } from "../../../../lib/local-request";
 import { NextResponse } from "next/server";
 import { accountSlot } from "@/lib/accounts";
 import { requireOwnerProfile, requireUser } from "@/lib/auth";
@@ -9,7 +10,7 @@ import { createAdminSupabase } from "@/lib/supabase";
 import { batchDeliverySchema } from "@/lib/validation";
 import type { Bill } from "@/lib/types";
 
-export async function POST(request: Request) {
+async function POSTHandler(request: Request) {
   try {
     if (!localStorageEnabled) return NextResponse.json({ error: "Multiple delivery is available in offline billing." }, { status: 501 });
     const user = await requireUser(request);
@@ -52,3 +53,5 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Unable to save deliveries." }, { status: 400 });
   }
 }
+
+export const POST = withLocalSession(POSTHandler);

@@ -1,3 +1,4 @@
+import { withLocalSession } from "../../../lib/local-request";
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth";
 import { loadGlobalSearch } from "@/lib/global-search";
@@ -6,7 +7,7 @@ import { localStorageEnabled } from "@/lib/storage-mode";
 
 const headers = { "cache-control": "no-store" };
 
-export async function GET(request: Request) {
+async function GETHandler(request: Request) {
   try {
     if (!localStorageEnabled) throw new Error("All-account search is available in offline billing.");
     const user = await requireUser(request);
@@ -17,3 +18,5 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Unable to search bills." }, { status: 400, headers });
   }
 }
+
+export const GET = withLocalSession(GETHandler);

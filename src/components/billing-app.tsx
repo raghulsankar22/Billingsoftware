@@ -19,6 +19,9 @@ import { NoticeBills, OverdueBills } from "./overdue-bills";
 import { AllAccountSearch } from "./all-account-search";
 import { ProfileForm } from "./profile-form";
 import { SignIn } from "./sign-in";
+import { LocalSignIn, localAuth } from "./local-sign-in";
+import { LocalUserManagement } from "./local-user-management";
+import type { LocalUser } from "@/lib/local-users";
 
 type Profile = {
   id?: string;
@@ -52,7 +55,10 @@ export function BillingApp() {
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [bills, setBills] = useState<Bill[]>([]);
   const [query, setQuery] = useState("");
-  const [view, setView] = useState<"bills" | "new" | "customers" | "delivery" | "delivery-bills" | "dashboard" | "notice" | "overdue" | "search" | "settings">("bills");
+  const [view, setView] = useState<"bills" | "new" | "customers" | "delivery" | "delivery-bills" | "dashboard" | "notice" | "overdue" | "search" | "settings" | "users">("bills");
+  const [multiUser, setMultiUser] = useState(false);
+  const [needsSetup, setNeedsSetup] = useState(false);
+  const [localUser, setLocalUser] = useState<LocalUser | null>(null);
   const [selected, setSelected] = useState<Bill | null>(null);
   const [overviewBill, setOverviewBill] = useState<Bill | null>(null);
   const [deliveryDocumentBill, setDeliveryDocumentBill] = useState<Bill | null>(null);
@@ -67,7 +73,12 @@ export function BillingApp() {
 
   useEffect(() => {
     if (localStorageEnabled) {
-      setSignedIn(true);
+      fetch("/api/local-auth", { cache: "no-store" }).then(async response => {
+        if (!response.ok) throw new Error("Unable to check sign-in.");
+        const result = await response.json();
+        setMultiUser(Boolean(result.enabled)); setNeedsSetup(Boolean(result.needsSetup)); setLocalUser(result.user ?? null);
+        setSignedIn(!result.enabled || Boolean(result.user));
+      }).catch(() => { setError("Unable to check sign-in. Reopen the app and try again."); setSignedIn(false); setMultiUser(true); });
     } else if (configured) {
       createBrowserSupabase().auth.getSession()
         .then(({ data }) => setSignedIn(Boolean(data.session)))
@@ -93,6 +104,14 @@ export function BillingApp() {
       // Selection persistence is optional; requests always use the current account state.
     }
   }, [accountReady, accountSlot]);
+
+  useEffect(() => {
+    if (!multiUser) return;
+    const clear = () => { loadGeneration.current++; setSignedIn(false); setLocalUser(null); setProfile(null); setProfiles([]); setBills([]); setSelected(null); setOverviewBill(null); setDeliveryDocumentBill(null); setEditingSource(null); setLoadedSlot(null); setQuery(""); setAccountSlot(1); setView("bills"); };
+    const changed = (event: StorageEvent) => { if (event.key === "finance-billing-user-change") clear(); };
+    window.addEventListener("billing-session-expired", clear); window.addEventListener("storage", changed);
+    return () => { window.removeEventListener("billing-session-expired", clear); window.removeEventListener("storage", changed); };
+  }, [multiUser]);
 
   async function load(search = "", slot: AccountSlot = accountSlot) {
     const generation = ++loadGeneration.current;
@@ -122,7 +141,16 @@ export function BillingApp() {
 
   if (!configured) return <main className="auth-shell"><section className="auth-card"><p className="eyebrow">ONE-TIME SETUP REQUIRED</p><h1>Finance Billing</h1><p>The app is installed correctly, but needs its secure cloud database details before it can accept bills.</p><ol className="setup-steps"><li>Create a Supabase project.</li><li>Apply all SQL files in <code>supabase/migrations</code> in order (001–004, then the Google Drive migration).</li><li>Copy <code>.env.example</code> to <code>.env.local</code> and add the Supabase URL, anon key, and server service-role key.</li><li>Restart this server.</li></ol><p className="notice">Your Google Drive details can be added after this first setup.</p></section></main>;
   if (signedIn === null || !accountReady) return <main className="auth-shell"><p>Loading secure billing…</p></main>;
-  if (!signedIn) return <SignIn onSignedIn={() => setSignedIn(true)} />;
+  if (!signedIn) return localStorageEnabled && multiUser ? <LocalSignIn setup={needsSetup} onSignedIn={user => { setLocalUser(user); setNeedsSetup(false); setAccountSlot(1); setSignedIn(true); try { window.localStorage.setItem("finance-billing-user-change", crypto.randomUUID()); } catch {} }} /> : <SignIn onSignedIn={() => setSignedIn(true)} />;
+
+  function clearLocalSession() {
+    loadGeneration.current++; setSignedIn(false); setLocalUser(null); setProfile(null); setProfiles([]); setBills([]); setSelected(null); setOverviewBill(null); setDeliveryDocumentBill(null); setEditingSource(null); setLoadedSlot(null); setQuery(""); setAccountSlot(1); setView("bills");
+    try { window.localStorage.setItem("finance-billing-user-change", crypto.randomUUID()); } catch {}
+  }
+  async function signOutLocal() {
+    if ((view === "new" || view === "customers" || view === "settings") && !window.confirm("Sign out? Unsaved changes will be discarded.")) return;
+    try { await localAuth("logout"); clearLocalSession(); } catch (failure) { setError(failure instanceof Error ? failure.message : "Unable to sign out."); }
+  }
 
   function selectAccount(value: string, created = false) {
     if (value === addAccountOption) { setAddingAccount(true); return; }
@@ -255,6 +283,7 @@ export function BillingApp() {
       <div className="topbar-controls">
         {accountLoaded && profile?.license_number && <p className="app-license-number">License No.: {profile.license_number}</p>}
       <div className="top-actions">
+        {multiUser && localUser && <><span className="local-user-name">{localUser.username}</span><button className="secondary" onClick={() => void signOutLocal()}>Sign out</button></>}
         <button className="secondary" onClick={exportExcel} disabled={!profile}>Download Excel</button>
         <button className="secondary" onClick={() => void refreshExcel()} disabled={!profile || isRefreshingExcel}>{isRefreshingExcel ? "Refreshing…" : "Refresh Excel"}</button>
         {!localStorageEnabled && <><button className="secondary" onClick={connectGoogleDrive}>Connect Google Drive</button><button className="secondary" onClick={() => createBrowserSupabase().auth.signOut().then(() => setSignedIn(false))}>Sign out</button></>}
@@ -272,12 +301,14 @@ export function BillingApp() {
       {localStorageEnabled && <button className={view === "notice" ? "active" : ""} aria-current={view === "notice" ? "page" : undefined} onClick={() => { setExcelNotice(""); setView("notice"); }}><span className="nav-icon" aria-hidden="true">📨</span>Notice</button>}
       {localStorageEnabled && <button className={view === "overdue" ? "active" : ""} aria-current={view === "overdue" ? "page" : undefined} onClick={() => { setExcelNotice(""); setView("overdue"); }}><span className="nav-icon" aria-hidden="true">⏰</span>Overdue</button>}
       {localStorageEnabled && <button className={view === "search" ? "active" : ""} aria-current={view === "search" ? "page" : undefined} onClick={() => { setExcelNotice(""); setView("search"); }}><span className="nav-icon" aria-hidden="true">🔍</span>Search</button>}
+      {multiUser && localUser?.administrator && <button className={view === "users" ? "active" : ""} onClick={() => { setExcelNotice(""); setView("users"); }}><span className="nav-icon" aria-hidden="true">👤</span>Users</button>}
       <button className={`business-profile-tab${view === "settings" ? " active" : ""}`} onClick={() => { setExcelNotice(""); setView("settings"); }}><span className="nav-icon" aria-hidden="true">⚙️</span>Business profile</button>
     </nav>
 
     <div className="content">
       {error && <p className="error">{error}</p>}
       {excelNotice && <p className="excel-notice" role="status">{excelNotice}</p>}
+      {view === "users" && localUser?.administrator && <LocalUserManagement currentUser={localUser} onSignedOut={clearLocalSession} />}
       {accountLoaded && !profile && view !== "settings" && view !== "search" && view !== "customers" && <section className="panel setup-callout">
         <h2>Set up Account {accountSlot} before issuing the first bill</h2>
         <p>Add this business&apos;s name, address, phone, logo and first bill number. Each account has separate details and bill history.</p>

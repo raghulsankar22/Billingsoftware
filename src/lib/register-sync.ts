@@ -5,12 +5,13 @@ import { buildReportRegister, loadReportBills } from "./excel-report";
 import { syncBillToGoogleDrive, markBillVoidInGoogleDrive } from "./google-drive";
 import { localStorageEnabled } from "./storage-mode";
 import type { Bill } from "./types";
+import { localDataDirectory } from "./local-database";
 
 let queue: Promise<void> = Promise.resolve();
 async function localRegister(profileId: string) {
   const next = queue.catch(() => {}).then(async () => {
     if (!/^[\w-]+$/.test(profileId)) throw new Error("Invalid register account.");
-    const directory = path.resolve(process.env.LOCAL_DATA_DIR || path.join(process.cwd(), "data"), "registers");
+    const directory = path.join(localDataDirectory(), "registers");
     await fs.mkdir(directory, { recursive: true });
     const bytes = await buildReportRegister(await loadReportBills(profileId, { query: "" })).xlsx.writeBuffer();
     const target = path.join(directory, `${profileId}.xlsx`);

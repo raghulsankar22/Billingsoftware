@@ -1,3 +1,4 @@
+import { withLocalSession } from "../../../lib/local-request";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { accountSlot } from "@/lib/accounts";
@@ -19,7 +20,7 @@ function failure(error: unknown) {
   return NextResponse.json({ error: error instanceof z.ZodError ? error.issues[0]?.message : error instanceof Error ? error.message : "Unable to access customers." }, { status: 400, headers });
 }
 
-export async function GET(request: Request) {
+async function GETHandler(request: Request) {
   try {
     const { account, customers } = await context(request);
     const query = new URL(request.url).searchParams;
@@ -30,7 +31,7 @@ export async function GET(request: Request) {
   } catch (error) { return failure(error); }
 }
 
-export async function POST(request: Request) {
+async function POSTHandler(request: Request) {
   try {
     const { account, customers } = await context(request);
     const customer = customers.save(account, await request.json());
@@ -38,7 +39,7 @@ export async function POST(request: Request) {
   } catch (error) { return failure(error); }
 }
 
-export async function PATCH(request: Request) {
+async function PATCHHandler(request: Request) {
   try {
     const { account, customers } = await context(request);
     const input = await request.json();
@@ -46,3 +47,7 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ customer: customers.save(account, input, id) }, { headers });
   } catch (error) { return failure(error); }
 }
+
+export const GET = withLocalSession(GETHandler);
+export const POST = withLocalSession(POSTHandler);
+export const PATCH = withLocalSession(PATCHHandler);

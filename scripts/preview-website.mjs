@@ -14,6 +14,7 @@ const server = spawn(process.execPath, [path.join(root, 'node_modules/next/dist/
   env: {
     ...process.env,
     NEXT_PUBLIC_BILLING_STORAGE: 'local',
+    BILLING_MULTI_USER: process.env.BILLING_MULTI_USER ?? '1',
     NEXT_TELEMETRY_DISABLED: '1',
     BILLING_NEXT_DIST_DIR: `.next-website-${port}`,
     LOCAL_DATA_DIR: process.env.LOCAL_DATA_DIR || path.join(root, 'data'),

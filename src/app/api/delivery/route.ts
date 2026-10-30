@@ -1,3 +1,4 @@
+import { withLocalSession } from "../../../lib/local-request";
 import { NextResponse } from "next/server";
 import { accountSlot } from "@/lib/accounts";
 import { requireOwnerProfile, requireUser } from "@/lib/auth";
@@ -5,7 +6,7 @@ import { toBill } from "@/lib/bills";
 import { localStorageEnabled } from "@/lib/storage-mode";
 import { createAdminSupabase } from "@/lib/supabase";
 
-export async function GET(request: Request) {
+async function GETHandler(request: Request) {
   try {
     if (!localStorageEnabled) return NextResponse.json({ error: "Delivery is available in local billing mode." }, { status: 501 });
     const user = await requireUser(request);
@@ -24,3 +25,5 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Unable to find this bill." }, { status: 400 });
   }
 }
+
+export const GET = withLocalSession(GETHandler);

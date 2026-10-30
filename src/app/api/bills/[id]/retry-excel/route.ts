@@ -1,3 +1,4 @@
+import { withLocalSession } from "../../../../../lib/local-request";
 import { NextResponse } from "next/server";
 import { accountSlot } from "@/lib/accounts";
 import { requireOwnerProfile, requireUser } from "@/lib/auth";
@@ -5,7 +6,7 @@ import { createAdminSupabase } from "@/lib/supabase";
 import { toBill } from "@/lib/bills";
 import { syncBillToRegister } from "@/lib/register-sync";
 
-export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
+async function POSTHandler(request: Request, context: { params: Promise<{ id: string }> }) {
   try {
     const user = await requireUser(request); const profile = await requireOwnerProfile(user.id, accountSlot(request));
     if (!profile) throw new Error("Business profile is required.");
@@ -28,3 +29,5 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     return NextResponse.json({ ok: true });
   } catch (error) { return NextResponse.json({ error: error instanceof Error ? error.message : "Unable to retry Excel sync" }, { status: 400 }); }
 }
+
+export const POST = withLocalSession(POSTHandler);

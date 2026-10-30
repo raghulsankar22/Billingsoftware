@@ -1,10 +1,11 @@
+import { withLocalSession } from "../../../lib/local-request";
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth";
 import { createAdminSupabase } from "@/lib/supabase";
 import { accountSlot } from "@/lib/accounts";
 import { profileSchema } from "@/lib/profile-validation";
 
-export async function GET(request: Request) {
+async function GETHandler(request: Request) {
   try {
     const user = await requireUser(request);
     const account = accountSlot(request);
@@ -14,7 +15,7 @@ export async function GET(request: Request) {
   } catch (error) { return NextResponse.json({ error: error instanceof Error ? error.message : "Unable to load profile" }, { status: 401 }); }
 }
 
-export async function POST(request: Request) {
+async function POSTHandler(request: Request) {
   try {
     const user = await requireUser(request);
     const input = { ...profileSchema.parse(await request.json()), accountSlot: accountSlot(request) };
@@ -23,3 +24,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ profile: data });
   } catch (error) { return NextResponse.json({ error: error instanceof Error ? error.message : "Unable to save profile" }, { status: 400 }); }
 }
+
+export const GET = withLocalSession(GETHandler);
+export const POST = withLocalSession(POSTHandler);

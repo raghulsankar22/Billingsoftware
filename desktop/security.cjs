@@ -7,8 +7,9 @@ function isAppUrl(value, origin) {
   } catch { return false; }
 }
 
-function isBillingHealth(value, directory) {
+function isBillingHealth(value, directory, requireMultiUser = false) {
   return value?.application === 'finance-billing' && value.storage === 'local'
+    && (!requireMultiUser || value.authentication === 'local-users-v1')
     && typeof value.dataDirectory === 'string'
     && path.resolve(value.dataDirectory).toLowerCase() === path.resolve(directory).toLowerCase();
 }

@@ -1,9 +1,10 @@
+import { withLocalSession } from "../../../../lib/local-request";
 import { NextRequest, NextResponse } from "next/server";
 import { encrypt } from "@/lib/crypto";
 import { createAdminSupabase } from "@/lib/supabase";
 import { applicationUrl, driveWorkbookName, exchangeGoogleCode, googleCookie, readGoogleConnection } from "@/lib/google-oauth";
 
-export async function GET(request: Request) {
+async function GETHandler(request: Request) {
   const url = new URL(request.url);
   let account = 1;
   const redirect = (query: string) => {
@@ -28,3 +29,5 @@ export async function GET(request: Request) {
   } catch (error) { return redirect(`google-drive=error&message=${encodeURIComponent(error instanceof Error ? error.message : "Connection failed")}`); }
 }
 
+
+export const GET = withLocalSession(GETHandler);
