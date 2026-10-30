@@ -13,7 +13,7 @@
     "check:configuration": "node scripts/check-configuration.mjs",
     "desktop:prepare": "node scripts/prepare-desktop.mjs",
     "desktop:start": "electron desktop",
-    "desktop:package": "electron-builder --projectDir desktop --config ../electron-builder.cjs --win nsis --x64"
+    "desktop:package": "node scripts/package-desktop.mjs"
   },
   "dependencies": {
     "@azure/msal-browser": "^4.8.0",

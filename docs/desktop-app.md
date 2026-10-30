@@ -1,6 +1,6 @@
 # Windows desktop app
 
-Run the Finance Billing shortcut or install `release/1.0.10/Finance-Billing-Setup-1.0.10.exe`.
+Run the Finance Billing shortcut or install `release/1.0.11/Finance-Billing-Setup-1.0.11.exe`.
 The app opens its own window and starts its loopback-only billing server automatically.
 No internet, separate Node installation, Microsoft 365 login or web hosting is needed for daily use.
 
@@ -94,5 +94,23 @@ The first-month interest-at-issue row, amount and explanatory notes are removed 
 overviews, delivery screens, Dashboard notes, printed receipts and PDFs. Previously
 saved PDFs regenerate when downloaded so the updated template also applies to old bills.
 
-The installer is not digitally signed. Distribution with a verified publisher identity
-requires a separate Windows code-signing certificate. No online updater is configured.
+Version 1.0.11 includes Notice 1/Notice 2 with separate Excel downloads, the expanded
+Dashboard loan table, visible VOIDED labels in bill PDFs, wrapped Excel register text,
+and cleanup of every owned PDF version when a bill is permanently deleted.
+
+Use **Help > Check for updates** in the desktop app. It checks `release/latest.json`
+beside the data folder (on this computer, `D:\app\release\latest.json`). Building with
+`pnpm desktop:package` publishes this file only after the new installer is complete.
+Save unfinished work, then choose **Install and restart**. The updater checks the
+installer's size and SHA-256, stages a separate copy, waits for billing to close, runs
+the per-user installer, and reopens the app. It does not change the billing data folder.
+Failed installations are recorded under the app's user-data `updates/install.log`.
+
+For another computer or USB drive, copy a whole version folder containing its installer
+and `update.json`; use **Choose update file** in the update dialog. Older or equal versions
+are refused. Updates are local and work offline; new code must first be built into an
+installer. Editing the website alone does not update the installed desktop app.
+
+The installer is not digitally signed. SHA-256 detects a changed or incomplete installer;
+it does not authenticate its publisher. Only choose update files from your own builds.
+Distribution with a verified publisher identity requires a Windows code-signing certificate.

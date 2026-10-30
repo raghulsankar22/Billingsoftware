@@ -3,6 +3,7 @@ const { existsSync } = require('node:fs');
 const path = require('node:path');
 const { ensureBillingServer } = require('./server.cjs');
 const { isAppUrl } = require('./security.cjs');
+const { createUpdateAction } = require('./updates.cjs');
 
 let window;
 let server;
@@ -48,7 +49,11 @@ else {
       ] },
       { label: 'Edit', submenu: [{ role: 'undo' }, { role: 'redo' }, { type: 'separator' }, { role: 'cut' }, { role: 'copy' }, { role: 'paste' }, { role: 'selectAll' }] },
       { label: 'View', submenu: [{ role: 'reload' }, { role: 'resetZoom' }, { role: 'zoomIn' }, { role: 'zoomOut' }, { role: 'togglefullscreen' }] },
-      { label: 'Help', submenu: [{ label: 'About Finance Billing', click: () => dialog.showMessageBox(window, { title: 'Finance Billing', message: `Finance Billing ${app.getVersion()}`, detail: `Offline billing with separate business accounts.\n\nBills, PDFs and Excel registers are saved in:\n${dataDirectory}\n\nBack up this folder regularly after closing billing. Internet is not required.` }) }] },
+      { label: 'Help', submenu: [
+        { label: 'Check for updates…', click: createUpdateAction({ app, dialog, getWindow: () => window, dataDirectory }) },
+        { type: 'separator' },
+        { label: 'About Finance Billing', click: () => dialog.showMessageBox(window, { title: 'Finance Billing', message: `Finance Billing ${app.getVersion()}`, detail: `Offline billing with separate business accounts.\n\nBills, PDFs and Excel registers are saved in:\n${dataDirectory}\n\nBack up this folder regularly after closing billing. Internet is not required.` }) },
+      ] },
     ]));
     await window.loadURL(server.origin);
     window.show();
