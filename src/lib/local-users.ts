@@ -28,6 +28,15 @@ export function createLocalUsers(directory: string) {
     return row ? rowToUser(row) : null;
   };
   const requireAdmin = (token: unknown) => { const user = active(token); if (!user?.administrator) throw new Error("Administrator sign-in is required."); return user; };
+  const checkLock = (name: string) => {
+    const row = db.prepare("SELECT locked_until FROM login_attempts WHERE username=? COLLATE NOCASE").get(name);
+    if (Number(row?.locked_until ?? 0) > Date.now()) throw new Error("Too many password attempts. Try again in five minutes.");
+  };
+  const recordFailure = (name: string) => {
+    db.prepare(`INSERT INTO login_attempts(username,failures,locked_until) VALUES(?,1,0)
+      ON CONFLICT(username) DO UPDATE SET failures=CASE WHEN locked_until>0 AND locked_until<=? THEN 1 ELSE failures+1 END,
+      locked_until=CASE WHEN locked_until>0 AND locked_until<=? THEN 0 WHEN failures+1>=5 THEN ? ELSE locked_until END`).run(name, Date.now(), Date.now(), Date.now()+5*60*1000);
+  };
   return {
     needsSetup: () => Number(db.prepare("SELECT count(*) AS n FROM users").get()?.n) === 0,
     async create(name: unknown, password: unknown, adminToken?: string) {
@@ -45,15 +54,12 @@ export function createLocalUsers(directory: string) {
     },
     async login(name: unknown, password: unknown) {
       const nameValue = username(name);
-      const attempts = db.prepare("SELECT locked_until FROM login_attempts WHERE username=? COLLATE NOCASE").get(nameValue);
-      if (Number(attempts?.locked_until ?? 0) > Date.now()) throw new Error("Too many sign-in attempts. Try again in five minutes.");
+      checkLock(nameValue);
       const row = db.prepare("SELECT * FROM users WHERE username=? COLLATE NOCASE").get(nameValue) as any;
       const dummy = `scrypt-v1$${"0".repeat(32)}$${"0".repeat(128)}`;
       const matches = await verifyLocalPassword(password, row?.password_hash ?? dummy);
       if (!row || !matches) {
-        db.prepare(`INSERT INTO login_attempts(username,failures,locked_until) VALUES(?,1,0)
-          ON CONFLICT(username) DO UPDATE SET failures=CASE WHEN locked_until>0 AND locked_until<=? THEN 1 ELSE failures+1 END,
-          locked_until=CASE WHEN locked_until>0 AND locked_until<=? THEN 0 WHEN failures+1>=5 THEN ? ELSE locked_until END`).run(nameValue, Date.now(), Date.now(), Date.now()+5*60*1000);
+        recordFailure(nameValue);
         throw new Error("Username or password is incorrect.");
       }
       const token = randomBytes(32).toString("hex");
@@ -71,6 +77,24 @@ export function createLocalUsers(directory: string) {
     session: active,
     logout(token: string) { db.prepare("DELETE FROM sessions WHERE token_hash=?").run(tokenHash(token)); },
     list(adminToken: string) { requireAdmin(adminToken); return db.prepare("SELECT * FROM users ORDER BY created_at,id").all().map(rowToUser); },
+    async changePassword(token: string, currentPassword: unknown, newPassword: unknown) {
+      const user = active(token);
+      if (!user) throw new Error("Sign in is required.");
+      checkLock(user.username);
+      const row = db.prepare("SELECT password_hash FROM users WHERE id=?").get(user.id);
+      if (!row || !await verifyLocalPassword(currentPassword, row.password_hash)) { recordFailure(user.username); throw new Error("Current password is incorrect."); }
+      const hash = await hashLocalPassword(newPassword as string);
+      db.exec("BEGIN IMMEDIATE");
+      try {
+        const stillActive = active(token);
+        const current = db.prepare("SELECT password_hash FROM users WHERE id=?").get(user.id);
+        if (!stillActive || !current || current.password_hash !== row.password_hash) throw new Error("Your session or password changed. Sign in again.");
+        db.prepare("UPDATE users SET password_hash=? WHERE id=?").run(hash, user.id);
+        db.prepare("DELETE FROM sessions WHERE user_id=?").run(user.id);
+        db.prepare("DELETE FROM login_attempts WHERE username=? COLLATE NOCASE").run(user.username);
+        db.exec("COMMIT");
+      } catch (error) { db.exec("ROLLBACK"); throw error; }
+    },
     async resetPassword(adminToken: string, userId: string, password: string) {
       requireAdmin(adminToken);
       const hash = await hashLocalPassword(password);

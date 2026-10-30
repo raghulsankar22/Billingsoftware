@@ -48,3 +48,21 @@ it("clears a user's lockout when an administrator resets their password", async 
     expect((await users.login("father", "new password")).user.id).toBe(father.id);
   } finally { users.close(); }
 });
+it("requires the current password and invalidates every session after a user changes it", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "billing-users-")); directories.push(directory);
+  const users = createLocalUsers(directory);
+  try {
+    await users.create("owner", "password one"); const admin = await users.login("owner", "password one");
+    const father = await users.create("father", "password two", admin.token);
+    const first = await users.login("father", "password two"); const second = await users.login("father", "password two");
+    await expect(users.changePassword(first.token, "wrong password", "new password")).rejects.toThrow("Current password is incorrect");
+    expect(users.session(first.token)?.id).toBe(father.id);
+    await expect(users.changePassword(first.token, "password two", "short")).rejects.toThrow("8 and 256");
+    await users.changePassword(first.token, "password two", "new password");
+    expect(users.session(first.token)).toBeNull(); expect(users.session(second.token)).toBeNull();
+    expect(users.session(admin.token)?.administrator).toBe(true);
+    await expect(users.login("father", "password two")).rejects.toThrow("incorrect");
+    expect((await users.login("father", "new password")).user.id).toBe(father.id);
+    await expect(users.changePassword(first.token, "new password", "another password")).rejects.toThrow("Sign in is required");
+  } finally { users.close(); }
+});

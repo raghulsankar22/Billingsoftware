@@ -30,6 +30,11 @@ export async function POST(request: Request) {
     } else if (input.action === "reset") {
       await users.resetPassword(token!, input.userId, input.password);
       return NextResponse.json({ ok: true }, { headers });
+    } else if (input.action === "change-password") {
+      await users.changePassword(token!, input.currentPassword, input.newPassword);
+      const response = NextResponse.json({ ok: true }, { headers });
+      response.cookies.set(sessionCookie, "", { httpOnly: true, sameSite: "strict", path: "/", maxAge: 0 });
+      return response;
     } else if (input.action === "list") {
       return NextResponse.json({ users: users.list(token!) }, { headers });
     } else if (input.action === "logout") {

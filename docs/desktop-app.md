@@ -11,6 +11,11 @@ customer records, bills, PDFs and Excel registers. User credentials and sessions
 in `users.sqlite` in the billing data folder; other users' files live in its `users` folder.
 Back up the entire folder, including these files and subfolders, with billing closed.
 
+Every user can change their own password under **My account** using their current password.
+Changing it signs the user out on all sessions. **Forgot password?** on the sign-in page
+explains how an administrator can reset another user's password. The offline app does not
+currently provide automatic recovery if the administrator forgets their own password.
+
 Sign-in limits access through the updated app. Anyone with access to the same Windows
 account can still access local billing files directly. The already-installed version 1.0.12
 predates login and can open the original accounts without it; install a later build when

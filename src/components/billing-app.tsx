@@ -21,6 +21,7 @@ import { ProfileForm } from "./profile-form";
 import { SignIn } from "./sign-in";
 import { LocalSignIn, localAuth } from "./local-sign-in";
 import { LocalUserManagement } from "./local-user-management";
+import { LocalMyAccount } from "./local-my-account";
 import type { LocalUser } from "@/lib/local-users";
 
 type Profile = {
@@ -55,10 +56,11 @@ export function BillingApp() {
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [bills, setBills] = useState<Bill[]>([]);
   const [query, setQuery] = useState("");
-  const [view, setView] = useState<"bills" | "new" | "customers" | "delivery" | "delivery-bills" | "dashboard" | "notice" | "overdue" | "search" | "settings" | "users">("bills");
+  const [view, setView] = useState<"bills" | "new" | "customers" | "delivery" | "delivery-bills" | "dashboard" | "notice" | "overdue" | "search" | "settings" | "users" | "my-account">("bills");
   const [multiUser, setMultiUser] = useState(false);
   const [needsSetup, setNeedsSetup] = useState(false);
   const [localUser, setLocalUser] = useState<LocalUser | null>(null);
+  const [loginNotice, setLoginNotice] = useState("");
   const [selected, setSelected] = useState<Bill | null>(null);
   const [overviewBill, setOverviewBill] = useState<Bill | null>(null);
   const [deliveryDocumentBill, setDeliveryDocumentBill] = useState<Bill | null>(null);
@@ -141,7 +143,7 @@ export function BillingApp() {
 
   if (!configured) return <main className="auth-shell"><section className="auth-card"><p className="eyebrow">ONE-TIME SETUP REQUIRED</p><h1>Finance Billing</h1><p>The app is installed correctly, but needs its secure cloud database details before it can accept bills.</p><ol className="setup-steps"><li>Create a Supabase project.</li><li>Apply all SQL files in <code>supabase/migrations</code> in order (001–004, then the Google Drive migration).</li><li>Copy <code>.env.example</code> to <code>.env.local</code> and add the Supabase URL, anon key, and server service-role key.</li><li>Restart this server.</li></ol><p className="notice">Your Google Drive details can be added after this first setup.</p></section></main>;
   if (signedIn === null || !accountReady) return <main className="auth-shell"><p>Loading secure billing…</p></main>;
-  if (!signedIn) return localStorageEnabled && multiUser ? <LocalSignIn setup={needsSetup} onSignedIn={user => { setLocalUser(user); setNeedsSetup(false); setAccountSlot(1); setSignedIn(true); try { window.localStorage.setItem("finance-billing-user-change", crypto.randomUUID()); } catch {} }} /> : <SignIn onSignedIn={() => setSignedIn(true)} />;
+  if (!signedIn) return localStorageEnabled && multiUser ? <LocalSignIn setup={needsSetup} notice={loginNotice} onSignedIn={user => { setLoginNotice(""); setLocalUser(user); setNeedsSetup(false); setAccountSlot(1); setSignedIn(true); try { window.localStorage.setItem("finance-billing-user-change", crypto.randomUUID()); } catch {} }} /> : <SignIn onSignedIn={() => setSignedIn(true)} />;
 
   function clearLocalSession() {
     loadGeneration.current++; setSignedIn(false); setLocalUser(null); setProfile(null); setProfiles([]); setBills([]); setSelected(null); setOverviewBill(null); setDeliveryDocumentBill(null); setEditingSource(null); setLoadedSlot(null); setQuery(""); setAccountSlot(1); setView("bills");
@@ -301,6 +303,7 @@ export function BillingApp() {
       {localStorageEnabled && <button className={view === "notice" ? "active" : ""} aria-current={view === "notice" ? "page" : undefined} onClick={() => { setExcelNotice(""); setView("notice"); }}><span className="nav-icon" aria-hidden="true">📨</span>Notice</button>}
       {localStorageEnabled && <button className={view === "overdue" ? "active" : ""} aria-current={view === "overdue" ? "page" : undefined} onClick={() => { setExcelNotice(""); setView("overdue"); }}><span className="nav-icon" aria-hidden="true">⏰</span>Overdue</button>}
       {localStorageEnabled && <button className={view === "search" ? "active" : ""} aria-current={view === "search" ? "page" : undefined} onClick={() => { setExcelNotice(""); setView("search"); }}><span className="nav-icon" aria-hidden="true">🔍</span>Search</button>}
+      {multiUser && localUser && <button className={view === "my-account" ? "active" : ""} onClick={() => { setExcelNotice(""); setView("my-account"); }}><span className="nav-icon" aria-hidden="true">🔐</span>My account</button>}
       {multiUser && localUser?.administrator && <button className={view === "users" ? "active" : ""} onClick={() => { setExcelNotice(""); setView("users"); }}><span className="nav-icon" aria-hidden="true">👤</span>Users</button>}
       <button className={`business-profile-tab${view === "settings" ? " active" : ""}`} onClick={() => { setExcelNotice(""); setView("settings"); }}><span className="nav-icon" aria-hidden="true">⚙️</span>Business profile</button>
     </nav>
@@ -309,7 +312,8 @@ export function BillingApp() {
       {error && <p className="error">{error}</p>}
       {excelNotice && <p className="excel-notice" role="status">{excelNotice}</p>}
       {view === "users" && localUser?.administrator && <LocalUserManagement currentUser={localUser} onSignedOut={clearLocalSession} />}
-      {accountLoaded && !profile && view !== "settings" && view !== "search" && view !== "customers" && <section className="panel setup-callout">
+      {view === "my-account" && localUser && <LocalMyAccount user={localUser} onChanged={() => { setLoginNotice("Password changed. Sign in with your new password."); clearLocalSession(); }} />}
+      {accountLoaded && !profile && view !== "settings" && view !== "search" && view !== "customers" && view !== "my-account" && view !== "users" && <section className="panel setup-callout">
         <h2>Set up Account {accountSlot} before issuing the first bill</h2>
         <p>Add this business&apos;s name, address, phone, logo and first bill number. Each account has separate details and bill history.</p>
         <button onClick={() => setView("settings")}>Set up Account {accountSlot}</button>
