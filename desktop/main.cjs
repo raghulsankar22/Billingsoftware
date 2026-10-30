@@ -17,7 +17,7 @@ if (testing) app.setPath('userData', path.join(dataDirectory, 'desktop-profile')
 
 if (!app.requestSingleInstanceLock()) app.quit();
 else {
-  app.on('second-instance', () => { if (window) { if (window.isMinimized()) window.restore(); window.focus(); } });
+  app.on('second-instance', () => { if (window) { if (window.isMinimized()) window.restore(); window.show(); window.focus(); } });
   app.whenReady().then(async () => {
     server = await ensureBillingServer({
       runtimeDirectory: app.isPackaged ? path.join(process.resourcesPath, 'billing-runtime') : path.resolve(__dirname, '..', '.desktop-runtime'),

@@ -16,7 +16,8 @@ try {
   $updateProcess = Start-Process -FilePath $Installer -ArgumentList '/S' -WindowStyle Hidden -Wait -PassThru
   if ($updateProcess.ExitCode -ne 0) { throw "The installer returned exit code $($updateProcess.ExitCode)." }
   Add-Content -LiteralPath $LogFile -Value "$(Get-Date -Format o) Update installed successfully."
-  Start-Process -FilePath $Executable -WindowStyle Hidden
+  # The helper stays hidden; the billing app is an interactive window.
+  Start-Process -FilePath $Executable -WindowStyle Normal
 } catch {
   Add-Content -LiteralPath $LogFile -Value "$(Get-Date -Format o) $($_.Exception.Message)"
   Add-Type -AssemblyName PresentationFramework

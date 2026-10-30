@@ -1,6 +1,6 @@
 # Windows desktop app
 
-Run the Finance Billing shortcut or install `release/1.0.11/Finance-Billing-Setup-1.0.11.exe`.
+Run the Finance Billing shortcut or install `release/1.0.12/Finance-Billing-Setup-1.0.12.exe`.
 The app opens its own window and starts its loopback-only billing server automatically.
 No internet, separate Node installation, Microsoft 365 login or web hosting is needed for daily use.
 
@@ -105,6 +105,9 @@ Save unfinished work, then choose **Install and restart**. The updater checks th
 installer's size and SHA-256, stages a separate copy, waits for billing to close, runs
 the per-user installer, and reopens the app. It does not change the billing data folder.
 Failed installations are recorded under the app's user-data `updates/install.log`.
+
+Version 1.0.12 ensures the app reopens with a visible window after an update and
+that opening its shortcut brings an existing hidden window back into view.
 
 For another computer or USB drive, copy a whole version folder containing its installer
 and `update.json`; use **Choose update file** in the update dialog. Older or equal versions
