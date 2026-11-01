@@ -52,6 +52,29 @@ export function createLocalUsers(directory: string) {
         return { id, username: nameValue, administrator: first, legacyData: first };
       } catch (error) { db.exec("ROLLBACK"); throw error; }
     },
+    /** From the sign-in screen: the administrator's own password authorises a new user, and no session is opened. */
+    async createWithAdminPassword(adminName: unknown, adminPassword: unknown, name: unknown, password: unknown) {
+      const refused = "Administrator username or password is incorrect.";
+      const nameValue = username(name);
+      const hash = await hashLocalPassword(password as string);
+      const adminValue = username(adminName);
+      checkLock(adminValue);
+      const admin = db.prepare("SELECT * FROM users WHERE username=? COLLATE NOCASE").get(adminValue) as any;
+      const dummy = `scrypt-v1$${"0".repeat(32)}$${"0".repeat(128)}`;
+      const matches = await verifyLocalPassword(adminPassword, admin?.password_hash ?? dummy);
+      if (!admin || !matches || !admin.administrator) { recordFailure(adminValue); throw new Error(refused); }
+      db.exec("BEGIN IMMEDIATE");
+      try {
+        const current = db.prepare("SELECT password_hash,administrator FROM users WHERE id=?").get(admin.id) as any;
+        if (!current?.administrator || current.password_hash !== admin.password_hash) throw new Error(refused);
+        if (db.prepare("SELECT 1 FROM users WHERE username=? COLLATE NOCASE").get(nameValue)) throw new Error("This username is already taken.");
+        const id = randomUUID();
+        db.prepare("INSERT INTO users VALUES(?,?,?,?,?,?)").run(id, nameValue, hash, 0, 0, new Date().toISOString());
+        db.prepare("DELETE FROM login_attempts WHERE username=? COLLATE NOCASE").run(adminValue);
+        db.exec("COMMIT");
+        return { id, username: nameValue, administrator: false, legacyData: false };
+      } catch (error) { db.exec("ROLLBACK"); throw error; }
+    },
     async login(name: unknown, password: unknown) {
       const nameValue = username(name);
       checkLock(nameValue);

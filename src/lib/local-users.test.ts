@@ -66,3 +66,32 @@ it("requires the current password and invalidates every session after a user cha
     await expect(users.changePassword(first.token, "new password", "another password")).rejects.toThrow("Sign in is required");
   } finally { users.close(); }
 });
+
+it("creates a user from the sign-in screen only with the administrator's password", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "billing-users-")); directories.push(directory);
+  const users = createLocalUsers(directory);
+  try {
+    await users.create("owner", "password one");
+    const admin = await users.login("owner", "password one");
+    await users.create("staffer", "password two", admin.token);
+    await expect(users.createWithAdminPassword("owner", "wrong password", "newuser", "password three")).rejects.toThrow("Administrator username or password");
+    await expect(users.createWithAdminPassword("staffer", "password two", "newuser", "password three")).rejects.toThrow("Administrator username or password");
+    await expect(users.createWithAdminPassword("nobody", "password one", "newuser", "password three")).rejects.toThrow("Administrator username or password");
+    await expect(users.login("newuser", "password three")).rejects.toThrow("incorrect");
+    await expect(users.createWithAdminPassword("owner", "password one", "NEWUSER", "short")).rejects.toThrow("between 8 and 256");
+    const created = await users.createWithAdminPassword("OWNER", "password one", "newuser", "password three");
+    expect(created).toMatchObject({ username: "newuser", administrator: false, legacyData: false });
+    await expect(users.createWithAdminPassword("owner", "password one", "NewUser", "password four")).rejects.toThrow("already taken");
+    expect((await users.login("newuser", "password three")).user.administrator).toBe(false);
+  } finally { users.close(); }
+});
+
+it("locks the sign-in screen's create option after repeated wrong administrator passwords", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "billing-users-")); directories.push(directory);
+  const users = createLocalUsers(directory);
+  try {
+    await users.create("owner", "password one");
+    for (let attempt = 0; attempt < 5; attempt++) await expect(users.createWithAdminPassword("owner", "wrong password", "newuser", "password three")).rejects.toThrow("incorrect");
+    await expect(users.createWithAdminPassword("owner", "password one", "newuser", "password three")).rejects.toThrow("Too many");
+  } finally { users.close(); }
+});

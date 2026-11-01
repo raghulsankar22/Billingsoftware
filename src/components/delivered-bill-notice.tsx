@@ -1,10 +1,13 @@
 "use client";
 
+import { useLanguage } from "./language-provider";
+
 import { useEffect, useRef } from "react";
 import { deliveryLabel } from "@/lib/delivery-status";
 import type { Bill } from "@/lib/types";
 
 export function DeliveredBillNotice({ bills, onClose }: { bills: Bill[]; onClose: () => void }) {
+  const { t } = useLanguage();
   const closeButton = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     const previous = document.activeElement;
@@ -15,8 +18,8 @@ export function DeliveredBillNotice({ bills, onClose }: { bills: Bill[]; onClose
     if (event.key === "Escape") { event.preventDefault(); onClose(); }
     if (event.key === "Tab") { event.preventDefault(); closeButton.current?.focus(); }
   }}>
-    <h2 id="delivered-notice-title">{bills.length === 1 ? "This bill has been delivered" : "These bills have been delivered"}</h2>
-    <div id="delivered-notice-details">{bills.map(bill => <p key={bill.id}><b>Bill #{bill.billNumber} · {bill.customerName}</b><br />{deliveryLabel(bill)}</p>)}</div>
-    <button type="button" ref={closeButton} onClick={onClose}>OK</button>
+    <h2 id="delivered-notice-title">{bills.length === 1 ? t("This bill has been delivered") : t("These bills have been delivered")}</h2>
+    <div id="delivered-notice-details">{bills.map(bill => <p key={bill.id}><b>{t("Bill #")}{bill.billNumber} · {bill.customerName}</b><br />{t(deliveryLabel(bill))}</p>)}</div>
+    <button type="button" ref={closeButton} onClick={onClose}>{t("OK")}</button>
   </section></div>;
 }

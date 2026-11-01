@@ -15,13 +15,26 @@ describe("bill validation", () => {
   });
   it("requires an explicit has-bill or lost-bill choice for a single delivery", () => {
     for (const billReceiptStatus of [undefined, "", "other", null]) expect(deliverySchema.safeParse({ deliveryDate: "2026-10-30", billReceiptStatus }).success).toBe(false);
-    for (const billReceiptStatus of ["has_bill", "lost_bill"]) expect(deliverySchema.safeParse({ deliveryDate: "2026-10-30", billReceiptStatus }).success).toBe(true);
+    for (const billReceiptStatus of ["has_bill", "lost_bill"]) expect(deliverySchema.safeParse({ deliveryDate: "2026-10-30", billReceiptStatus, collectedByRelation: "self" }).success).toBe(true);
+  });
+  it("requires who is taking the jewellery, with a name unless it's the customer", () => {
+    const delivery = { deliveryDate: "2026-10-30", billReceiptStatus: "has_bill" };
+    expect(deliverySchema.safeParse(delivery).success).toBe(false);
+    expect(deliverySchema.safeParse({ ...delivery, collectedByRelation: "cousin" }).success).toBe(false);
+    expect(deliverySchema.safeParse({ ...delivery, collectedByRelation: "son" }).success).toBe(false);
+    expect(deliverySchema.safeParse({ ...delivery, collectedByRelation: "son", collectedByName: " " }).success).toBe(false);
+    expect(deliverySchema.safeParse({ ...delivery, collectedByRelation: "son", collectedByName: "குமார்" }).success).toBe(false);
+    expect(deliverySchema.safeParse({ ...delivery, collectedByRelation: "son", collectedByName: "Arun" }).success).toBe(true);
+    expect(deliverySchema.safeParse({ ...delivery, collectedByRelation: "self" }).success).toBe(true);
+    const billId = "00000000-0000-4000-8000-000000000001";
+    expect(batchDeliverySchema.safeParse({ deliveryDate: "2026-10-30", deliveries: [{ billId, billReceiptStatus: "has_bill" }] }).success).toBe(false);
+    expect(batchDeliverySchema.safeParse({ deliveryDate: "2026-10-30", deliveries: [{ billId, billReceiptStatus: "has_bill", collectedByRelation: "wife", collectedByName: "Lakshmi" }] }).success).toBe(true);
   });
   it("requires a separate choice for every bill in a multiple delivery", () => {
-    const first = { billId: "00000000-0000-4000-8000-000000000001", billReceiptStatus: "has_bill" };
+    const first = { billId: "00000000-0000-4000-8000-000000000001", billReceiptStatus: "has_bill", collectedByRelation: "self" };
     const second = { billId: "00000000-0000-4000-8000-000000000002" };
     expect(batchDeliverySchema.safeParse({ deliveryDate: "2026-10-30", deliveries: [first, second] }).success).toBe(false);
-    expect(batchDeliverySchema.safeParse({ deliveryDate: "2026-10-30", deliveries: [first, { ...second, billReceiptStatus: "lost_bill" }] }).success).toBe(true);
+    expect(batchDeliverySchema.safeParse({ deliveryDate: "2026-10-30", deliveries: [first, { ...second, billReceiptStatus: "lost_bill", collectedByRelation: "self" }] }).success).toBe(true);
   });
   it.each(["2026-02-30", "2026-13-01", "not-a-date", "2026-10-03junk"])("rejects invalid date %s", (billDate) => {
     expect(billSchema.safeParse({ ...input, billDate }).success).toBe(false);

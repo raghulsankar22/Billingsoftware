@@ -1,9 +1,12 @@
 "use client";
 
+import { useLanguage } from "./language-provider";
+
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { AccountSlot } from "@/lib/account-url";
-import { billReceiptLabels, type Bill, type BillReceiptStatus } from "@/lib/types";
+import { billReceiptLabels, collectedByComplete, collectedByText, type Bill, type BillReceiptStatus, type CollectedBy } from "@/lib/types";
 import { BillReceiptSelect } from "./bill-receipt-select";
+import { CollectedByFields } from "./collected-by-fields";
 import { billingToday } from "@/lib/business-updates";
 import { calculateRepayment } from "@/lib/interest";
 import { formatINR } from "@/lib/money";
@@ -11,11 +14,13 @@ import { api } from "./api";
 import { deliveryBillHistory } from "@/lib/delivery-history";
 
 export function MultipleDelivery({ accountSlot, onSaved, onReceipt, onOpen, onAlreadyDelivered }: { accountSlot: AccountSlot; onSaved: () => void; onReceipt: (bill: Bill) => void; onOpen: (bill: Bill) => void; onAlreadyDelivered: (bills: Bill[]) => void }) {
+  const { t } = useLanguage();
   const [numbers, setNumbers] = useState("");
   const [bills, setBills] = useState<Bill[]>([]);
   const [date, setDate] = useState(billingToday);
   const [metals, setMetals] = useState<Record<string, ("Gold" | "Silver" | null)[]>>({});
   const [receiptStatuses, setReceiptStatuses] = useState<Record<string, BillReceiptStatus | "">>({});
+  const [collectedBy, setCollectedBy] = useState<CollectedBy>({ relation: "", name: "" });
   const [busy, setBusy] = useState<"lookup" | "save" | null>(null);
   const [error, setError] = useState("");
   const [saved, setSaved] = useState(false);
@@ -58,40 +63,42 @@ export function MultipleDelivery({ accountSlot, onSaved, onReceipt, onOpen, onAl
   async function save() {
     if (!complete || busy) return;
     if (!receiptChoicesComplete) { setError("Choose whether the customer has the bill or lost the bill for every delivery."); return; }
+    if (!collectedByComplete(collectedBy)) { setError(collectedBy.relation ? "Enter the name of the person taking the jewellery." : "Choose who is taking the jewellery."); return; }
     const current = ++generation.current; setBusy("save"); setError(""); setWarnings([]);
     try {
-      const result = await api("/api/delivery/batch", accountSlot, { method: "POST", body: JSON.stringify({ deliveryDate: date, deliveries: bills.map(bill => ({ billId: bill.id, billReceiptStatus: receiptStatuses[bill.id], itemMetals: bill.items.map((item, index) => item.metal ?? metals[bill.id]?.[index] ?? null) })) }) });
+      const result = await api("/api/delivery/batch", accountSlot, { method: "POST", body: JSON.stringify({ deliveryDate: date, deliveries: bills.map(bill => ({ billId: bill.id, billReceiptStatus: receiptStatuses[bill.id], collectedByRelation: collectedBy.relation, ...(collectedBy.relation === "self" ? {} : { collectedByName: collectedBy.name }), itemMetals: bill.items.map((item, index) => item.metal ?? metals[bill.id]?.[index] ?? null) })) }) });
       if (current !== generation.current) return;
       setBills(result.bills); setWarnings(result.warnings ?? []); setSaved(true); onSaved();
     } catch (failure) { if (current === generation.current) setError(failure instanceof Error ? failure.message : "Unable to save these deliveries."); }
     finally { if (current === generation.current) setBusy(null); }
   }
-  function reset() { setBills([]); setNumbers(""); setDate(billingToday()); setMetals({}); setReceiptStatuses({}); setSaved(false); setWarnings([]); setError(""); }
+  function reset() { setBills([]); setNumbers(""); setDate(billingToday()); setMetals({}); setReceiptStatuses({}); setCollectedBy({ relation: "", name: "" }); setSaved(false); setWarnings([]); setError(""); }
   function removeBill(id: string) {
     setBills(current => current.filter(row => row.id !== id));
     setReceiptStatuses(current => Object.fromEntries(Object.entries(current).filter(([billId]) => billId !== id)));
   }
 
   return <section className="panel">
-    <div className="section-heading"><div><p className="eyebrow">ACCOUNT {accountSlot} · MULTIPLE DELIVERY</p><h2>{saved ? "Deliveries saved" : "Deliver several bills together"}</h2><p className="muted">Each bill gets its own delivery number and receipt. Review the combined amount to collect below.</p></div>{saved && <button className="secondary" onClick={reset}>Start another delivery</button>}</div>
-    {!saved && <form className="delivery-search" onSubmit={findBills}><label htmlFor="multiple-bill-numbers">Bill numbers<input id="multiple-bill-numbers" placeholder="e.g. 1, 2, 3" value={numbers} disabled={Boolean(busy)} onChange={event => setNumbers(event.target.value)} required /></label><button disabled={Boolean(busy)}>{busy === "lookup" ? "Finding…" : "Add bills"}</button></form>}
-    <label className="overview-date">Delivery date<input type="date" value={date} min={minDate || undefined} disabled={Boolean(busy) || saved} onChange={event => { setDate(event.target.value); setError(""); }} required /></label>
-    {error && <p className="error" role="alert">{error}</p>}
-    {saved && <p className="excel-notice" role="status">{bills.length} delivery bill{bills.length === 1 ? "" : "s"} saved. Open each receipt below to print or download its PDF.</p>}
-    {warnings.map((message, index) => <p className="overview-warning" key={index}>{message}</p>)}
+    <div className="section-heading"><div><p className="eyebrow">{t("ACCOUNT")} {accountSlot} {t("· MULTIPLE DELIVERY")}</p><h2>{saved ? t("Deliveries saved") : t("Deliver several bills together")}</h2><p className="muted">{t("Each bill gets its own delivery number and receipt. Review the combined amount to collect below.")}</p></div>{saved && <button className="secondary" onClick={reset}>{t("Start another delivery")}</button>}</div>
+    {!saved && <form className="delivery-search" onSubmit={findBills}><label htmlFor="multiple-bill-numbers">{t("Bill numbers")}<input id="multiple-bill-numbers" placeholder={t("e.g. 1, 2, 3")} value={numbers} disabled={Boolean(busy)} onChange={event => setNumbers(event.target.value)} required /></label><button disabled={Boolean(busy)}>{busy === "lookup" ? t("Finding…") : t("Add bills")}</button></form>}
+    <label className="overview-date">{t("Delivery date")}<input type="date" value={date} min={minDate || undefined} disabled={Boolean(busy) || saved} onChange={event => { setDate(event.target.value); setError(""); }} required /></label>
+    {!saved && bills.length > 0 && <CollectedByFields value={collectedBy} disabled={Boolean(busy)} onChange={value => { setCollectedBy(value); setError(""); }} />}
+    {error && <p className="error" role="alert">{t(error)}</p>}
+    {saved && <p className="excel-notice" role="status">{bills.length} {t("delivery bill")}{bills.length === 1 ? "" : t("s")} {t("saved. Open each receipt below to print or download its PDF.")}</p>}
+    {warnings.map((message, index) => <p className="overview-warning" key={index}>{t(message)}</p>)}
     {rows.length > 0 ? <>
-      <div className="item-table-wrap"><table className="history-table batch-delivery-table"><thead><tr><th>Bill / customer</th><th>Particulars</th><th>Delivery remarks</th><th className="batch-money">Principal</th><th className="batch-money">Interest to collect</th><th className="batch-money">Total to collect</th><th /></tr></thead><tbody>{rows.map(({ bill, collection, error: calculationError }) => <tr key={bill.id}>
-        <td><b>#{bill.billNumber} · {bill.customerName}</b><small>{bill.billDate}{bill.status === "void" ? " · Voided" : ""}</small>{bill.deliveryNo && <small>Delivery #{bill.deliveryNo} · {bill.deliveryDate}{!saved && " · saving updates this delivery"}</small>}</td>
-        <td>{bill.items.map((item, index) => <div className="batch-jewellery" key={index}>{item.metal ? `${item.metal}: ` : ""}{item.particulars}{!item.metal && !saved && <select aria-label={`Metal for bill ${bill.billNumber} item ${index + 1}`} value={metals[bill.id]?.[index] ?? ""} disabled={Boolean(busy)} onChange={event => {
+      <div className="item-table-wrap"><table className="history-table batch-delivery-table"><thead><tr><th>{t("Bill / customer")}</th><th>{t("Particulars")}</th><th>{t("Delivery remarks")}</th><th className="batch-money">{t("Principal")}</th><th className="batch-money">{t("Interest to collect")}</th><th className="batch-money">{t("Total to collect")}</th><th /></tr></thead><tbody>{rows.map(({ bill, collection, error: calculationError }) => <tr key={bill.id}>
+        <td><b>#{bill.billNumber} · {bill.customerName}</b><small>{bill.billDate}{bill.status === "void" ? t(" · Voided") : ""}</small>{bill.deliveryNo && <small>{t("Delivery #")}{bill.deliveryNo} · {bill.deliveryDate}{!saved && t(" · saving updates this delivery")}</small>}</td>
+        <td>{bill.items.map((item, index) => <div className="batch-jewellery" key={index}>{item.metal ? `${t(item.metal)}: ` : ""}{item.particulars}{!item.metal && !saved && <select aria-label={t(`Metal for bill ${bill.billNumber} item ${index + 1}`)} value={metals[bill.id]?.[index] ?? ""} disabled={Boolean(busy)} onChange={event => {
           const chosen = event.target.value === "Gold" || event.target.value === "Silver" ? event.target.value : null;
           setMetals(previous => ({ ...previous, [bill.id]: bill.items.map((entry, itemIndex) => itemIndex === index ? chosen : previous[bill.id]?.[itemIndex] ?? entry.metal ?? null) }));
-        }}><option value="">Choose metal</option><option value="Gold">Gold</option><option value="Silver">Silver</option></select>}</div>)}{calculationError && <p className="error">{calculationError}</p>}{collection?.missingMetal && <p className="error">Choose Gold or Silver to calculate interest.</p>}</td>
-        <td>{saved ? bill.deliveryBillReceiptStatus ? billReceiptLabels[bill.deliveryBillReceiptStatus] : "Not recorded" : <BillReceiptSelect billNumber={bill.billNumber} value={receiptStatuses[bill.id] ?? ""} disabled={Boolean(busy)} onChange={value => { setReceiptStatuses(current => ({ ...current, [bill.id]: value })); setError(""); }} />}</td>
+        }}><option value="">{t("Choose metal")}</option><option value="Gold">{t("Gold")}</option><option value="Silver">{t("Silver")}</option></select>}</div>)}{calculationError && <p className="error">{t(calculationError)}</p>}{collection?.missingMetal && <p className="error">{t("Choose Gold or Silver to calculate interest.")}</p>}</td>
+        <td>{saved ? bill.deliveryBillReceiptStatus ? <>{t(billReceiptLabels[bill.deliveryBillReceiptStatus])}{collectedByText(bill) && <small>{t("Taken by")}: {collectedByText(bill)}</small>}</> : t("Not recorded") : <BillReceiptSelect billNumber={bill.billNumber} value={receiptStatuses[bill.id] ?? ""} disabled={Boolean(busy)} onChange={value => { setReceiptStatuses(current => ({ ...current, [bill.id]: value })); setError(""); }} />}</td>
         <td className="batch-money">{formatINR(collection?.principal ?? bill.totalLoanAmount)}</td><td className="batch-money">{money(collection?.interest ?? null)}</td><td className="batch-money">{money(collection?.total ?? null)}</td>
-        <td><div className="batch-actions"><button type="button" className="text-button" onClick={() => onOpen(bill)}>Open bill</button>{saved ? <button type="button" className="secondary" onClick={() => onReceipt(bill)}>Open receipt #{bill.deliveryNo}</button> : <button type="button" className="text-button danger-text" disabled={Boolean(busy)} onClick={() => removeBill(bill.id)}>Remove bill #{bill.billNumber}</button>}</div></td>
+        <td><div className="batch-actions"><button type="button" className="text-button" onClick={() => onOpen(bill)}>{t("Open bill")}</button>{saved ? <button type="button" className="secondary" onClick={() => onReceipt(bill)}>{t("Open receipt #")}{bill.deliveryNo}</button> : <button type="button" className="text-button danger-text" disabled={Boolean(busy)} onClick={() => removeBill(bill.id)}>{t("Remove bill #")}{bill.billNumber}</button>}</div></td>
       </tr>)}</tbody></table></div>
-      <section className="repayment-summary" aria-label="Combined delivery amounts"><h3>{bills.length} bill{bills.length === 1 ? "" : "s"} · Combined amount to collect</h3><dl><div><dt>Principal</dt><dd>{formatINR(sum("principal"))}</dd></div><div><dt>Interest to collect now</dt><dd>{money(complete ? sum("interest") : null)}</dd></div><div className="collection-total"><dt>Total to collect now</dt><dd>{money(complete ? sum("total") : null)}</dd></div></dl></section>
-      {!saved && <>{!receiptChoicesComplete && <p className="muted">Choose whether the customer has the bill or lost the bill for every delivery.</p>}<button disabled={!complete || !receiptChoicesComplete || Boolean(busy)} onClick={() => void save()}>{busy === "save" ? "Saving deliveries…" : `Save ${bills.length} deliver${bills.length === 1 ? "y" : "ies"}`}</button></>}
-    </> : <p className="empty">Add one or more bill numbers to see the principal, interest and total.</p>}
+      <section className="repayment-summary" aria-label={t("Combined delivery amounts")}><h3>{bills.length} {t("bill")}{bills.length === 1 ? "" : t("s")} {t("· Combined amount to collect")}</h3><dl><div><dt>{t("Principal")}</dt><dd>{formatINR(sum("principal"))}</dd></div><div><dt>{t("Interest to collect now")}</dt><dd>{money(complete ? sum("interest") : null)}</dd></div><div className="collection-total"><dt>{t("Total to collect now")}</dt><dd>{money(complete ? sum("total") : null)}</dd></div></dl></section>
+      {!saved && <>{!receiptChoicesComplete && <p className="muted">{t("Choose whether the customer has the bill or lost the bill for every delivery.")}</p>}<button disabled={!complete || !receiptChoicesComplete || !collectedByComplete(collectedBy) || Boolean(busy)} onClick={() => void save()}>{busy === "save" ? t("Saving deliveries…") : t(`Save ${bills.length} deliver${bills.length === 1 ? "y" : "ies"}`)}</button></>}
+    </> : <p className="empty">{t("Add one or more bill numbers to see the principal, interest and total.")}</p>}
   </section>;
 }

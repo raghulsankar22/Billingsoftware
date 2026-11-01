@@ -14,7 +14,8 @@ const listener = createServer();
 await new Promise(resolve => listener.listen(0, '127.0.0.1', resolve));
 const port = listener.address().port;
 await new Promise(resolve => listener.close(resolve));
-const server = await ensureBillingServer({ runtimeDirectory: path.join(root, '.desktop-runtime'), dataDirectory, port });
+const runtimeDirectory = path.resolve(process.env.BILLING_TEST_RUNTIME_DIR || path.join(root, '.desktop-runtime'));
+const server = await ensureBillingServer({ runtimeDirectory, dataDirectory, port });
 try {
   if (!server.owned) throw new Error('Desktop verification must use an isolated server.');
   const html = await (await fetch(server.origin)).text();

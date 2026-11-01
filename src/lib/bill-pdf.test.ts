@@ -46,6 +46,9 @@ describe("bill PDF", () => {
     const delivery = (await pageContents(await createBillPdf(withRemarks, bill.businessSnapshot!, "delivery"))).join("\n");
     expect(delivery).toContain("Delivery remarks: Customer lost bill");
     expect(delivery).toContain("No screw;");
+    const collected = (await pageContents(await createBillPdf({ ...withRemarks, deliveryCollectedByName: "Arun", deliveryCollectedByRelation: "son" as const }, bill.businessSnapshot!, "delivery"))).join("\n");
+    expect(collected).toContain("Jewellery taken by: Arun \\(Son\\)");
+    expect(delivery).toContain("Jewellery taken by: Not recorded");
     const legacy = (await pageContents(await createBillPdf(bill, bill.businessSnapshot!, "delivery"))).join("\n");
     expect(legacy).toContain("Delivery remarks: Not recorded");
     expect(legacy).not.toContain("(Remarks)");

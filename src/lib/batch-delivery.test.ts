@@ -16,14 +16,14 @@ async function loan(metal = "Gold", amount = 10000, accountSlot = 1, billDate = 
   expect(result.error).toBeNull(); return result.data.id as string;
 }
 function deliver(ids: string[], deliveryDate = "2026-11-29") {
-  return db.rpc("record_bill_deliveries", { p_owner_id: localOwnerId, p_account_slot: 1, p_delivery: { deliveryDate, deliveries: ids.map((billId, index) => ({ billId, billReceiptStatus: index === 1 ? "lost_bill" : "has_bill" })) } });
+  return db.rpc("record_bill_deliveries", { p_owner_id: localOwnerId, p_account_slot: 1, p_delivery: { deliveryDate, deliveries: ids.map((billId, index) => ({ billId, billReceiptStatus: index === 1 ? "lost_bill" : "has_bill", collectedByRelation: "self" })) } });
 }
 afterEach(() => { db?.close(); if (directory) rmSync(directory, { recursive: true, force: true }); });
 
 describe("atomic multiple bill deliveries", () => {
   it("rejects a missing choice without delivering any bill or consuming a number", async () => {
     await open(); const first = await loan(); const second = await loan();
-    const result = await db.rpc("record_bill_deliveries", { p_owner_id: localOwnerId, p_account_slot: 1, p_delivery: { deliveryDate: "2026-11-29", deliveries: [{ billId: first, billReceiptStatus: "has_bill" }, { billId: second }] } });
+    const result = await db.rpc("record_bill_deliveries", { p_owner_id: localOwnerId, p_account_slot: 1, p_delivery: { deliveryDate: "2026-11-29", deliveries: [{ billId: first, billReceiptStatus: "has_bill", collectedByRelation: "self" }, { billId: second }] } });
     expect(result.error).toBeTruthy();
     expect((await db.from("bills").select()).data.every((row: any) => !row.delivery_no && !row.delivery_bill_receipt_status)).toBe(true);
     expect((await db.rpc("get_next_delivery_number", { p_owner_id: localOwnerId, p_account_slot: 1 })).data.number).toBe(1);

@@ -1,6 +1,6 @@
 # Windows desktop app
 
-Run the Finance Billing shortcut or install `release/1.0.14/Finance-Billing-Setup-1.0.14.exe`.
+Run the Finance Billing shortcut or install `release/1.0.15/Finance-Billing-Setup-1.0.15.exe`.
 The app opens its own window and starts its loopback-only billing server automatically.
 No internet, separate Node installation, Microsoft 365 login or web hosting is needed for daily use.
 
@@ -51,6 +51,13 @@ and PDF/Excel downloads use a Save dialog.
 3. Run `node scripts/verify-desktop.mjs` and `node scripts/verify-desktop-users.mjs` for isolated local billing and multi-user checks.
 4. Run `pnpm desktop:start` to test the desktop window.
 5. Run `pnpm desktop:package` to create the per-user Windows installer and unpacked app.
+
+To repeat the isolated checks against the packaged files rather than staging, set
+`BILLING_TEST_RUNTIME_DIR` to the absolute path of
+`release/<version>/win-unpacked/resources/billing-runtime` and run both verification
+scripts again. They create disposable ledgers under `tmp/` and choose unused ports;
+they do not use the installed app's billing data. These are HTTP/runtime checks,
+not a visual click-through or an installer installation test.
 
 Builds are stored under `release/<version>/`, so creating a new version never replaces
 program files in an older running build. Close the installed app before running the new
@@ -154,6 +161,22 @@ Family members can share a mobile number. New bill lists the saved customers for
 number so staff can choose one or enter a different person. The Customer tab asks before
 saving someone with different details under a number that is already saved. Aadhaar still
 identifies one person.
+
+Version 1.0.15 packages the reviewed register-import, shared-phone, delivery-date,
+data-location and disabled-sync safety changes. The release verifier also checks
+shared-phone confirmation, early-delivery rejection, sample workbook imports and
+duplicate-import rejection. Online sync remains disabled and incomplete.
+
+Version 1.0.16 opens in Tamil with an English switch while records, Excel and PDFs stay in English. Switching
+accounts opens the Dashboard. Import old bills, My account, Users and Business profile move to the File menu.
+A new bill with a phone or Aadhaar creates a customer ID, and name, address and particulars get capital letters
+as you type. An Aadhaar saved for someone with another name stops the bill. Delivery records who took the
+jewellery and their relation. Password boxes have a Show button, and **Create new user** on the sign-in screen
+works only with the administrator's username and password.
+
+Version 1.0.17 keeps a name box beside **Who is taking the jewellery?** and adds **Cancel delivery bill** to the
+Delivery tab. Cancelling returns the bill to awaiting delivery, removes its delivery PDF and updates Excel. The
+cancelled delivery is kept on the bill, and its number is not used again.
 
 For another computer or USB drive, copy a whole version folder containing its installer
 and `update.json`; use **Choose update file** in the update dialog. Older or equal versions

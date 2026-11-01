@@ -27,6 +27,9 @@ export async function POST(request: Request) {
     } else if (input.action === "create") {
       await users.create(input.username, input.password, token);
       return NextResponse.json({ users: users.list(token!) }, { headers });
+    } else if (input.action === "create-with-admin") {
+      const created = await users.createWithAdminPassword(input.adminUsername, input.adminPassword, input.username, input.password);
+      return NextResponse.json({ username: created.username }, { headers });
     } else if (input.action === "reset") {
       await users.resetPassword(token!, input.userId, input.password);
       return NextResponse.json({ ok: true }, { headers });

@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { currencyFont } from "./currency-font";
 import { amountInWords } from "./money";
 import type { Bill } from "./types";
-import { billReceiptLabels } from "./types";
+import { billReceiptLabels, collectedByText } from "./types";
 import { calculateRepayment } from "./interest";
 import { createConditionsBlock } from "./bill-conditions-pdf";
 import { billPdfTemplateVersion } from "./bill-conditions";
@@ -116,6 +116,7 @@ export async function createBillPdf(bill: SnapshottedBill, currentProfile: Busin
   if (delivery) {
     line(`Original Bill No.: ${bill.billNumber}     Bill Date: ${bill.billDate}`, left, 180);
     line(`Delivery remarks: ${bill.deliveryBillReceiptStatus ? billReceiptLabels[bill.deliveryBillReceiptStatus] : "Not recorded"}`, left, 180, 9);
+    line(`Jewellery taken by: ${collectedByText(bill) || "Not recorded"}`, left, 180, 9);
     if (bill.status === "void") line("Original bill status: Voided - delivery recorded", left, 180, 9);
   } else if (bill.deliveryNo || bill.deliveryDate) {
     line(`Delivery No.: ${bill.deliveryNo || "-"}     Delivery Date: ${bill.deliveryDate || "-"}`, left, 180);

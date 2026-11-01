@@ -27,13 +27,19 @@
   white-space: normal;
 }
 
-.side-nav .nav-icon { display: inline-block; width: 1.6em; margin-right: 0.45em; text-align: center; flex-shrink: 0; }
+.side-nav .nav-icon { display: inline-block; width: 1.6em; text-align: center; }
 .local-user-name { align-self: center; font-weight: 700; }
 .dashboard-heading { flex-wrap: wrap; }
 .dashboard-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .auth-card .forgot-password-button { display: inline-block; margin-top: 18px; padding: 0; color: #b8dcff; text-align: left; }
 .form-grid select { width: 100%; border: 1px solid #4a607b; border-radius: 7px; padding: 10px; background: #0e1a2a; color: var(--ink); font: inherit; }
 .side-nav button {
+  display: grid;
+  grid-template-columns: 1.6em minmax(0, 1fr);
+  align-items: start;
+  column-gap: 0.45em;
+  overflow-wrap: anywhere;
+  line-height: 1.5;
   width: 100%;
   min-height: 44px;
   padding: 12px;
@@ -138,7 +144,14 @@
 .stock-scope { margin: 20px 0 12px; color: #b8dcff; font-weight: 700; }
 .stock-summary small { color: var(--muted); line-height: 1.5; }
 
+html[lang="ta"] .app-shell { grid-template-columns: 320px minmax(0, 1fr); }
+
+@media (min-width: 701px) {
+  html[lang="ta"] .side-nav button { overflow-wrap: normal; word-break: normal; }
+}
+
 @media (max-width: 700px) {
+  html[lang="ta"] .app-shell { grid-template-columns: 150px minmax(0, 1fr); }
   .app-shell { grid-template-columns: 124px minmax(0, 1fr); }
   .app-shell > .topbar { padding: 16px; }
   .app-shell > .side-nav { margin: 16px 0 16px 8px; padding: 5px; top: 8px; }
@@ -153,4 +166,20 @@
 
 @media print {
   .app-shell { display: block; }
+}
+
+.password-field {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.password-field input {
+  flex: 1;
+  min-width: 0;
+}
+
+.password-field button {
+  flex: none;
+  padding: 0 14px;
 }

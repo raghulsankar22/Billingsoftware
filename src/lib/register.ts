@@ -1,6 +1,6 @@
 import ExcelJS from "exceljs";
 import { excelINRFormat, itemSummary } from "./money";
-import { billReceiptLabels, registerHeaders, type Bill } from "./types";
+import { billReceiptLabels, collectedByText, registerHeaders, type Bill } from "./types";
 
 const optionalCell = (value?: string | null) => value?.trim() || null;
 const registerWidths = [16, 16, 14, 12, 34, 26, 55, 18, 18];
@@ -69,7 +69,8 @@ export function formatRegisterSheet(sheet: ExcelJS.Worksheet) {
 }
 
 export function billRegisterRow(bill: Bill) {
-  const deliveryRemark = bill.deliveryNo && bill.deliveryDate && bill.deliveryBillReceiptStatus ? ` [Delivery: ${billReceiptLabels[bill.deliveryBillReceiptStatus]}]` : "";
+  const delivered = Boolean(bill.deliveryNo && bill.deliveryDate);
+  const deliveryRemark = (delivered && bill.deliveryBillReceiptStatus ? ` [Delivery: ${billReceiptLabels[bill.deliveryBillReceiptStatus]}]` : "") + (delivered && collectedByText(bill) ? ` [Taken by: ${collectedByText(bill)}]` : "");
   return [optionalCell(bill.deliveryNo), optionalCell(bill.deliveryDate), bill.billDate, bill.billNumber, bill.address, bill.customerName, `${bill.status === "void" ? "VOID — " : ""}${itemSummary(bill.items)}${deliveryRemark}`, optionalCell(bill.phone), bill.totalLoanAmount];
 }
 

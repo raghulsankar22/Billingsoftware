@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { isEnglishRecord, englishRecordMessage } from "./english-records";
 
 export const starterJewellery = [
   "Ring", "Necklace", "Haram", "Chain", "Bangle", "Bracelet", "Earrings",
@@ -9,7 +10,7 @@ export const jewelleryNameSchema = z.string()
   .transform(value => value.normalize("NFKC").replace(/\s+/g, " ").trim())
   .pipe(z.string().min(2, "Enter at least 2 characters for the jewellery name.")
     .max(180, "Jewellery names can have up to 180 characters.")
-    .regex(/^[^\u0000-\u001f\u007f]+$/, "Enter a valid jewellery name."));
+    .regex(/^[^\u0000-\u001f\u007f]+$/, "Enter a valid jewellery name.").refine(isEnglishRecord, englishRecordMessage));
 
 export const jewelleryKey = (name: string) => name.toLocaleLowerCase("en-IN");
 

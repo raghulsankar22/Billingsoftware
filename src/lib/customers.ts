@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { isEnglishRecord, englishRecordMessage } from "./english-records";
 
 export interface CustomerInput {
   name: string;
@@ -16,9 +17,11 @@ export interface Customer extends CustomerInput {
 }
 
 /** The phone is saved for someone with different details: staff must decide who this is. */
+export const aadhaarOwnerNotice = "but the name on this bill is different";
+export const sharedPhoneQuestion = "Is this a different person?";
 export class SharedPhoneError extends Error {
   constructor(public readonly customer: Pick<Customer, "name" | "customerCode">) {
-    super(`This phone is already saved for ${customer.name} (${customer.customerCode}). Is this a different person?`);
+    super(`This phone is already saved for ${customer.name} (${customer.customerCode}). ${sharedPhoneQuestion}`);
     this.name = "SharedPhoneError";
   }
 }
@@ -39,9 +42,9 @@ export function normalizeAadhaar(value: string): string {
 }
 
 export const customerSchema = z.object({
-  name: z.string().trim().min(2, "Enter the customer's name.").max(120),
-  fatherName: z.string().trim().min(2, "Enter the father's name.").max(120),
-  address: z.string().trim().min(5, "Enter the customer's address.").max(500),
+  name: z.string().trim().min(2, "Enter the customer's name.").max(120).refine(isEnglishRecord, englishRecordMessage),
+  fatherName: z.string().trim().min(2, "Enter the father's name.").max(120).refine(isEnglishRecord, englishRecordMessage),
+  address: z.string().trim().min(5, "Enter the customer's address.").max(500).refine(isEnglishRecord, englishRecordMessage),
   phone: z.string().max(80).default("").transform(normalizePhone)
     .refine(value => !value || /^\d{10}$/.test(value), "Enter a 10-digit phone number, optionally with +91."),
   aadhaar: z.string().max(80).default("").transform(normalizeAadhaar)

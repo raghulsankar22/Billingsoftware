@@ -30,13 +30,13 @@ describe("offline jewellery catalogue", () => {
     for (const quantity of ["", 0, -1, 1.5, 10000, Infinity, "abc"]) expect(() => appendJewelleryParticulars("Ring 2", "Studs", quantity)).toThrow();
     expect(() => appendJewelleryParticulars("X".repeat(178), "Ring", 1)).toThrow("180 characters");
   });
-  it("provides starter choices and persists custom English and Tamil names after reopening", () => {
+  it("persists English choices and refuses new Tamil catalogue names", () => {
     const db = open();
     expect(db.jewellery.list()).toEqual(starterJewellery);
     expect(db.jewellery.add("  Stone   Jhumka ").name).toBe("Stone Jhumka");
-    db.jewellery.add("காப்பு");
+    expect(() => db.jewellery.add("காப்பு")).toThrow("confirmed English");
     db.close(); database = createLocalDatabase(directory);
-    expect(database.jewellery.list()).toEqual(expect.arrayContaining(["Ring", "Necklace", "Haram", "Stone Jhumka", "காப்பு"]));
+    expect(database.jewellery.list()).toEqual(expect.arrayContaining(["Ring", "Necklace", "Haram", "Stone Jhumka"]));
     expect(database.jewellery.add("stone jhumka").name).toBe("Stone Jhumka");
     expect(database.jewellery.list().filter(name => name.toLowerCase() === "stone jhumka")).toHaveLength(1);
   });

@@ -43,6 +43,13 @@ it.each([
   expect(sheet.getCell("F2").value).toBe(address.slice(0, 120));
 });
 
+it("records who took the jewellery in the Particulars cell, and nothing for older deliveries", () => {
+  const delivered = { deliveryNo: "1", deliveryDate: "2026-10-30", deliveryBillReceiptStatus: "has_bill" as const };
+  expect(billRegisterRow(bill({ ...delivered, deliveryCollectedByName: "Arun", deliveryCollectedByRelation: "son" }))[6]).toBe("Gold ring (2 g) [Delivery: Customer has bill] [Taken by: Arun (Son)]");
+  expect(billRegisterRow(bill({ ...delivered, deliveryCollectedByName: "Customer", deliveryCollectedByRelation: "self" }))[6]).toContain("[Taken by: Customer (Customer)]");
+  expect(billRegisterRow(bill(delivered))[6]).toBe("Gold ring (2 g) [Delivery: Customer has bill]");
+});
+
 it("counts explicit newlines and preserves short-row and header readability", async () => {
   const workbook = createRegister();
   appendRegisterBill(workbook, bill({ address: "One\r\nTwo\n\nFour" }));

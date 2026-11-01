@@ -51,8 +51,15 @@ else {
     contents.session.on('will-download', (_event, item) => {
       item.setSaveDialogOptions({ title: 'Save billing document', defaultPath: path.join(app.getPath('downloads'), path.basename(item.getFilename())) });
     });
+    // The page has no Electron access, so the menu tells it which page to open; the page checks the user may see it.
+    const openPage = page => () => contents.executeJavaScript(`window.dispatchEvent(new CustomEvent('billing-file-menu', { detail: ${JSON.stringify(page)} }))`);
     Menu.setApplicationMenu(Menu.buildFromTemplate([
       { label: 'File', submenu: [
+        { label: 'Import old bills', click: openPage('import') },
+        { label: 'My account', click: openPage('my-account') },
+        { label: 'Users', click: openPage('users') },
+        { label: 'Business profile', click: openPage('settings') },
+        { type: 'separator' },
         { label: 'Print current bill', accelerator: 'CmdOrCtrl+P', click: () => contents.print({ printBackground: true }) },
         { label: 'Open billing data folder', click: () => shell.openPath(dataDirectory) },
         { type: 'separator' }, { role: 'quit' },

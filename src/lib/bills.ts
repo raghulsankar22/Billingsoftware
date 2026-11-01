@@ -1,4 +1,5 @@
 import type { Bill, BillInput, BusinessSnapshot } from "./types";
+import { collectedByRelationLabels, type CollectedByRelation } from "./types";
 import { amountInWords } from "./money";
 
 export function toBill(row: Record<string, unknown>): Bill {
@@ -17,6 +18,9 @@ export function toBill(row: Record<string, unknown>): Bill {
     historicalMissingDetails: row.historical_missing_details === true,
     historicalImport: row.historical_import === true,
     deliveryBillReceiptStatus: row.delivery_bill_receipt_status === "has_bill" || row.delivery_bill_receipt_status === "lost_bill" ? row.delivery_bill_receipt_status : undefined,
+    deliveryCollectedByName: row.delivery_collected_by_name ? String(row.delivery_collected_by_name) : undefined,
+    deliveryCollectedByRelation: typeof row.delivery_collected_by_relation === "string" && row.delivery_collected_by_relation in collectedByRelationLabels ? row.delivery_collected_by_relation as CollectedByRelation : undefined,
+    cancelledDeliveries: Array.isArray(row.cancelled_deliveries) ? row.cancelled_deliveries.map((entry: { delivery_no?: unknown; delivery_date?: unknown; cancelled_at?: unknown }) => ({ deliveryNo: String(entry.delivery_no ?? ""), deliveryDate: String(entry.delivery_date ?? ""), cancelledAt: String(entry.cancelled_at ?? "") })) : undefined,
     deliverySummary: row.delivery_summary && typeof row.delivery_summary === "object" && "lines" in row.delivery_summary && Array.isArray(row.delivery_summary.lines) ? row.delivery_summary as Bill["deliverySummary"] : undefined,
     billDate: String(row.bill_date),
     customerName: String(row.customer_name),

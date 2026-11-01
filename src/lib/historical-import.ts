@@ -1,3 +1,4 @@
+import { containsTamil, englishRecordMessage } from "./english-records";
 import ExcelJS from "exceljs";
 import { maxSequenceDeliveryNumber, sequenceDeliveryNumber } from "./delivery-status";
 
@@ -120,6 +121,9 @@ export async function previewHistoricalWorkbook(bytes: Buffer, today = localToda
       if (cellValue(deliveryDateRaw) != null && stringValue(deliveryDateRaw) !== "" && !deliveryDate) issues.push("Check delivery date");
       if (deliveryDate && deliveryDate > today) issues.push("Delivery date is in the future");
       if (billDate && deliveryDate && deliveryDate < billDate) issues.push("Delivery date is before bill date");
+      for (const [column, value] of Object.entries({ "Customer name": name, Address: address, Particulars: particulars, Phone: phone, "Delivery number": deliveryNo })) {
+        if (containsTamil(value)) issues.push(`${column}: ${englishRecordMessage}`);
+      }
       if (!name || !particulars) issues.push("Missing customer or particulars");
       if (name.length > 120) issues.push("Customer name is too long (120 characters maximum)");
       if (particulars.length > 180) issues.push("Particulars are too long (180 characters maximum)");

@@ -13,7 +13,7 @@ vi.mock("@/lib/validation", async () => import("../../../../lib/validation"));
 
 const id = "00000000-0000-4000-8000-000000000001";
 const snapshot = { id, profile_id: "profile", bill_number: 1, bill_date: "2026-10-28", status: "issued", customer_name: "Customer", father_name: "Parent", address: "123 Test Street", phone: "", total_assessed_value: 20000, total_loan_amount: 10000, delivery_no: "1", delivery_date: "2026-11-29", created_at: "2026-10-28T00:00:00Z", excel_sync_status: "pending", bill_items: [{ metal: "Gold", particulars: "Ring 2", grams: 3, assessed_value: 20000, loan_amount: 10000, sort_order: 0 }], delivery_summary: { chargedMonths: 1, lines: [], principal: 10000, initialInterest: 200, interest: 200, total: 10200, missingMetal: false } };
-const request = () => new Request("http://localhost:3115/api/delivery/batch", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ deliveryDate: "2026-11-29", deliveries: [{ billId: id, billReceiptStatus: "has_bill" }] }) });
+const request = () => new Request("http://localhost:3115/api/delivery/batch", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ deliveryDate: "2026-11-29", deliveries: [{ billId: id, billReceiptStatus: "has_bill", collectedByRelation: "self" }] }) });
 
 beforeEach(() => {
   mocks.user.mockResolvedValue({ id: "local-owner" });

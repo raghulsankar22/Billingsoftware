@@ -1,3 +1,4 @@
+import { verifyTamilPreviewDirectory } from './tamil-preview-safety.mjs';
 import { spawn } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
@@ -7,6 +8,12 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const port = Number(process.env.BILLING_PREVIEW_PORT || 3101);
 if (!Number.isInteger(port) || port < 1024 || port > 65535 || port === 3100) {
   throw new Error('Choose a website preview port from 1024 to 65535, excluding the desktop app port 3100.');
+}
+
+if (port === 3103 || process.env.BILLING_TAMIL_PREVIEW === '1') {
+  if (port !== 3103) throw new Error('Tamil demo must use port 3103.');
+  verifyTamilPreviewDirectory(root, process.env.LOCAL_DATA_DIR);
+  process.env.BILLING_TAMIL_PREVIEW = '1';
 }
 
 // Next writes this preview's private build folder into these tracked files when it starts.

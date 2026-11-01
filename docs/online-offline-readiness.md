@@ -35,6 +35,21 @@ Cloud account creation, profile saving and one bill-create sync path are impleme
 
 No existing local billing data has been moved, and there is no automatic offline-to-cloud sync yet.
 
+## Desktop release verification (1.0.15)
+
+The production build and all 435 automated tests pass. Typechecking passes and
+lint has no errors (five existing warnings remain). The staged runtime and the
+runtime copied into the unpacked desktop package both pass isolated HTTP checks
+for billing, PDFs, Excel, shared-phone confirmation/selection, delivery-date
+validation, sample register preview/import and duplicate-import rejection. The
+multi-user checks also pass sign-in, account isolation and password-change session
+invalidation. Test ledgers are disposable and do not use the real billing folder.
+
+These checks do not establish visual UI correctness, successful installation over
+the existing app, Windows publisher identity, or production Supabase behaviour.
+The installer is not signed; the installed app has not been updated as part of
+this verification. No cloud migration or sync enablement was performed.
+
 ## Sync safety rules now in place
 
 - A change the server can't accept is set aside with its reason in the local review list (`held`), and other bills keep syncing. It pauses later changes to the same bill and, because numbers must arrive in order, later new bills. Permission can't be released while any remain.
@@ -49,7 +64,7 @@ No existing local billing data has been moved, and there is no automatic offline
 ## Still required before sync can be enabled
 
 - Connect the app to the sync path; nothing in the running app calls it yet.
-- Add delivery and deletion sync. `decideBillChange` records the delivery rules, but only the bill create and edit paths exist on the server, so those rules aren't enforced there yet.
+- Add the delivery collector fields (who took the jewellery and their relation) to the cloud schema, then add delivery and deletion sync. `decideBillChange` records the delivery rules, but only the bill create and edit paths exist on the server, so those rules aren't enforced there yet.
 - Sync customers. A bill linked to a saved customer is currently refused by the server and goes to review.
 - Add inbound sync, so a device can download a newer version of a bill.
 - Build the administrator screens for the local review list, for recovery and for `needs_review` server records.
