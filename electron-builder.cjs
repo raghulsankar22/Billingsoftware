@@ -2,7 +2,7 @@ module.exports = {
   appId: 'in.financebilling.desktop', productName: 'Finance Billing',
   directories: { app: '.', output: `../release/${require('./desktop/package.json').version}`, buildResources: 'assets' },
   electronVersion: '45.1.0', npmRebuild: false,
-  files: ['main.cjs', 'data-location.cjs', 'server.cjs', 'security.cjs', 'updates.cjs', 'install-update.ps1', 'package.json', 'assets/icon.png'],
+  files: ['main.cjs', 'data-location.cjs', 'device-identity.cjs', 'server.cjs', 'security.cjs', 'updates.cjs', 'install-update.ps1', 'package.json', 'assets/icon.png'],
   extraResources: [{ from: '../.desktop-runtime', to: 'billing-runtime', filter: ['**/*', '!**/.env*'] }],
   asar: true,
   artifactName: 'Finance-Billing-Setup-${version}.${ext}',

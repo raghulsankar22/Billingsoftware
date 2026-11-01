@@ -32,8 +32,20 @@ export function createLocalIssuerStore(db: DatabaseSync) {
     catch (error) { db.exec("ROLLBACK"); throw error; }
   };
   const validate = (profileId: string, deviceId: string, epoch: number) => { uuid.parse(profileId); uuid.parse(deviceId); epochValue.parse(epoch); };
+  const counters = (profileId: string): Counters => {
+    const profileRow = db.prepare("SELECT body FROM records WHERE table_name='business_profiles' AND id=?").get(profileId);
+    if (!profileRow) throw new Error("Business account not found on this device.");
+    const profile = JSON.parse(String(profileRow.body));
+    const bills = db.prepare("SELECT body FROM records WHERE table_name='bills' AND json_extract(body,'$.profile_id')=?").all(profileId).map(row => JSON.parse(String(row.body)));
+    return {
+      nextBillNumber: bills.length ? Number(profile.next_bill_number) : 1,
+      nextDeliveryNumber: bills.reduce((next: number, bill: { delivery_no?: unknown }) => Math.max(next, (sequenceDeliveryNumber(bill.delivery_no) ?? 0) + 1), Math.max(1, Number(profile.next_delivery_number) || 1)),
+    };
+  };
   return {
     read,
+    /** Sent with the claim so the server can refuse a mismatch before reserving the account. */
+    counters,
     saveAssignment(profileId: string, deviceId: string, epoch: number, serverCounters: Counters) {
       validate(profileId, deviceId, epoch);
       const remote = countersSchema.parse(serverCounters);
@@ -41,13 +53,8 @@ export function createLocalIssuerStore(db: DatabaseSync) {
         const current = read(profileId);
         if (current?.state === "assigned" && current.deviceId === deviceId && current.epoch === epoch) return current;
         if (current && (current.state !== "unassigned" || epoch <= current.epoch)) throw new Error("Existing offline permission must be released before accepting a new assignment.");
-        const profileRow = db.prepare("SELECT body FROM records WHERE table_name='business_profiles' AND id=?").get(profileId);
-        if (!profileRow) throw new Error("Business account not found on this device.");
-        const profile = JSON.parse(String(profileRow.body));
-        const bills = db.prepare("SELECT body FROM records WHERE table_name='bills' AND json_extract(body,'$.profile_id')=?").all(profileId).map(row => JSON.parse(String(row.body)));
-        const nextBill = bills.length ? Number(profile.next_bill_number) : 1;
-        const nextDelivery = bills.reduce((next: number, bill: { delivery_no?: unknown }) => Math.max(next, (sequenceDeliveryNumber(bill.delivery_no) ?? 0) + 1), Math.max(1, Number(profile.next_delivery_number) || 1));
-        if (nextBill !== remote.nextBillNumber || nextDelivery !== remote.nextDeliveryNumber) throw new Error("Bill or delivery numbers differ. Sync this account before enabling offline billing.");
+        const local = counters(profileId);
+        if (local.nextBillNumber !== remote.nextBillNumber || local.nextDeliveryNumber !== remote.nextDeliveryNumber) throw new Error("Bill or delivery numbers differ. Sync this account before enabling offline billing.");
         db.prepare("INSERT INTO sync_local_issuers(profile_id,device_id,epoch,state) VALUES(?,?,?,'assigned') ON CONFLICT(profile_id) DO UPDATE SET device_id=excluded.device_id,epoch=excluded.epoch,state='assigned'").run(profileId, deviceId, epoch);
         return read(profileId)!;
       });

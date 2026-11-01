@@ -22,7 +22,17 @@ begin
   profile := (public.save_cloud_business_profile(owner,'{"businessName":"Test","address":"Test Road","phone":"1234567890","accountSlot":1}'::jsonb)->>'id')::uuid;
   perform public.register_cloud_device(owner,first_device,'First',repeat('a',64));
   perform public.register_cloud_device(owner,second_device,'Second',repeat('b',64));
-  claim := public.assign_offline_issuer_v2(owner,profile,first_device,repeat('a',64));
+  -- Different counters stop before anything is reserved, so the account stays available.
+  begin
+    perform public.assign_offline_issuer_v3(owner,profile,first_device,repeat('a',64),5,1);
+    raise exception 'Mismatched counters reserved the account';
+  exception when raise_exception then
+    if sqlerrm not like 'Bill or delivery numbers differ%' then raise; end if;
+  end;
+  if exists (select 1 from billing_sync_private.account_issuers i where i.profile_id=profile and i.mode='assigned') then
+    raise exception 'A failed counter check left the account reserved';
+  end if;
+  claim := public.assign_offline_issuer_v3(owner,profile,first_device,repeat('a',64),1,1);
   if claim->>'deviceId' <> first_device::text or (claim->>'epoch')::integer <> 1 or claim->>'mode' <> 'assigned'
     or (claim->>'nextBillNumber')::integer <> 1 or (claim->>'nextDeliveryNumber')::integer <> 1 then
     raise exception 'Incorrect offline designation';

@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use a date in YYYY-MM-DD format.").refine((value) => {
+export const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use a date in YYYY-MM-DD format.").refine((value) => {
   const date = new Date(`${value}T00:00:00.000Z`);
   return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value;
 }, "Choose a valid calendar date.");
@@ -63,7 +63,8 @@ export const billSchema = z.object({
   })).min(1).max(30),
 });
 
-const recordedMoney = z.number().finite().positive().max(100_000_000).refine((value) => precision(value, 100), "Amounts can have up to two decimal places.");
+export const recordedMoney = z.number().finite().positive().max(100_000_000).refine((value) => precision(value, 100), "Amounts can have up to two decimal places.");
+export const recordedGrams = z.number().finite().min(0).max(100_000).refine((value) => precision(value, 1000), "Grams can have up to three decimal places.");
 
 /**
  * Editing a register-imported bill with missing details. Unknown details stay
@@ -83,7 +84,7 @@ export const historicalBillEditSchema = z.object({
     metal: z.enum(["Gold", "Silver"]),
     particulars: z.string().trim().min(1).max(180),
     remarks: z.string().trim().max(180, "Remarks must be at most 180 characters.").optional(),
-    grams: z.number().finite().min(0).max(100_000).refine((value) => precision(value, 1000), "Grams can have up to three decimal places.").nullable(),
+    grams: recordedGrams.nullable(),
     assessedValue: recordedMoney.nullable(),
     loanAmount: recordedMoney,
   })).min(1).max(30),

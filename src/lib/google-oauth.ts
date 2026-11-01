@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { isAccountSlot } from "./account-url";
 import { decrypt, encrypt } from "./crypto";
 
 export const googleCookie = "google-drive_oauth";
@@ -32,7 +33,7 @@ export function readGoogleConnection(cookie: string | undefined, state: string |
   catch { throw new Error("Google connection request is invalid. Please try again."); }
   if (!payload || typeof payload.state !== "string" || payload.state !== state || typeof payload.ownerId !== "string" || !payload.ownerId || typeof payload.verifier !== "string" || !payload.verifier || typeof payload.redirectUri !== "string" || !payload.redirectUri) throw new Error("Google connection request is invalid. Please try again.");
   if (!Number.isFinite(payload.expiresAt) || payload.expiresAt <= Date.now()) throw new Error("Google connection request expired. Please try again.");
-  if (typeof payload.profileId !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(payload.profileId) || !Number.isInteger(payload.accountSlot) || payload.accountSlot < 1 || payload.accountSlot > 3) throw new Error("Google connection account is invalid. Please try again.");
+  if (typeof payload.profileId !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(payload.profileId) || !isAccountSlot(payload.accountSlot)) throw new Error("Google connection account is invalid. Please try again.");
   return payload;
 }
 

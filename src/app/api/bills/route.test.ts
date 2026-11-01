@@ -3,7 +3,7 @@ import { POST } from "./route";
 
 const mocks = vi.hoisted(() => ({ local: false, cloud: true, requireUser: vi.fn(), rpc: vi.fn() }));
 vi.mock("@/lib/storage-mode", () => ({ get localStorageEnabled() { return mocks.local; } }));
-vi.mock("@/lib/cloud-mode", () => ({ cloudMultiUserEnabled: () => mocks.cloud }));
+vi.mock("@/lib/cloud-mode", () => ({ cloudMultiUserEnabled: () => mocks.cloud, legacyIssuanceBlocked: (local: boolean) => !local && mocks.cloud }));
 vi.mock("@/lib/accounts", () => ({ accountSlot: () => 1 }));
 vi.mock("@/lib/validation", () => ({ billSchema: { parse: vi.fn() } }));
 vi.mock("@/lib/auth", () => ({ requireUser: mocks.requireUser, requireOwnerProfile: vi.fn() }));

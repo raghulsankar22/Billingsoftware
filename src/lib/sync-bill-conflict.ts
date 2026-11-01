@@ -19,6 +19,7 @@ export function decideBillChange(incoming: BillChange, current: CurrentBill, his
     || (incoming.action === "edit" && (history.deletionChangedSinceBase || current.action === "delete")))) {
     return { outcome: "review", keepDelivery: current.delivered || incoming.action === "delivery" };
   }
-  if (concurrent && compareSyncEdits(incoming, current) <= 0) return { outcome: "superseded", keepDelivery: current.delivered };
+  // Jewellery was physically returned: a delivery never loses to a later-stamped edit.
+  if (concurrent && incoming.action !== "delivery" && compareSyncEdits(incoming, current) <= 0) return { outcome: "superseded", keepDelivery: current.delivered };
   return { outcome: "apply", keepDelivery: incoming.action === "delete" ? false : current.delivered || incoming.action === "delivery" };
 }

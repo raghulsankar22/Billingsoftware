@@ -61,9 +61,13 @@ it("gives each account a distinct safe workbook name", () => {
   for (const name of names) { expect(name.endsWith(".xlsx")).toBe(true); expect(name).not.toMatch(/[<>/\\]/); }
 });
 it("rejects invalid account bindings", () => {
-  for (const slot of [0, 4, 1.5]) {
+  for (const slot of [0, -1, 1.5]) {
     const connection = beginGoogleConnection("owner", "http://localhost:3100", "00000000-0000-0000-0000-000000000002", slot);
     expect(() => readGoogleConnection(connection.cookie, new URL(connection.url).searchParams.get("state"))).toThrow(/account is invalid/);
   }
+});
+it("lets accounts above 3 finish connecting", () => {
+  const connection = beginGoogleConnection("owner", "http://localhost:3100", "00000000-0000-0000-0000-000000000002", 4);
+  expect(readGoogleConnection(connection.cookie, new URL(connection.url).searchParams.get("state")).accountSlot).toBe(4);
 });
 

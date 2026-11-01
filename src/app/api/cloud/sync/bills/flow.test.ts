@@ -12,6 +12,7 @@ import { POST } from "./route";
 
 const mocks = vi.hoisted(() => ({ device: vi.fn(), rpc: vi.fn() }));
 vi.mock("@/lib/cloud-device-auth", () => ({ requireCloudDevice: mocks.device }));
+vi.mock("@/lib/interest", async () => import("../../../../../lib/interest"));
 vi.mock("@/lib/supabase", () => ({ createAdminSupabase: () => ({ rpc: mocks.rpc }) }));
 vi.mock("@/lib/sync-bill", async () => import("../../../../../lib/sync-bill"));
 vi.mock("@/lib/sync-outbox", async () => import("../../../../../lib/sync-outbox"));

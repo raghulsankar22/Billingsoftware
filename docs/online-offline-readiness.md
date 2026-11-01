@@ -34,3 +34,25 @@ The Supabase project has been resumed. Its existing cloud billing tables contain
 Cloud account creation, profile saving and one bill-create sync path are implemented only as opt-in development building blocks. The local ledger has a separately tested atomic bill-create-and-queue operation, but the app does not call it. Edits, deletions, deliveries, inbound sync, migration, protected credential integration, user setup, Excel and PDF synchronization, and manual conflict review are not yet connected. The new cloud mode explicitly refuses normal bill creation. `BILLING_CLOUD_MULTIUSER`, `NEXT_PUBLIC_BILLING_CLOUD_MULTIUSER`, and `BILLING_SYNC_BILL_EXPERIMENTAL` must remain disabled for production.
 
 No existing local billing data has been moved, and there is no automatic offline-to-cloud sync yet.
+
+## Sync safety rules now in place
+
+- A change the server can't accept is set aside with its reason in the local review list (`held`), and other bills keep syncing. It pauses later changes to the same bill and, because numbers must arrive in order, later new bills. Permission can't be released while any remain.
+- Outages and refused sign-ins stop the batch and retry later; they never go to review.
+- Once an account joins sync, every change outside the queue is refused, including delivery, void, delete and import, until sync supports it. Accounts that haven't joined are unaffected.
+- Online bill replacement is refused alongside online bill creation, through one shared check.
+- A delivered bill's summary is recalculated on the server when it's edited, and its old delivery PDF is cleared. Corrected delivery numbers and dates reach the cloud.
+- A future-dated edit goes to review. A future-dated new bill is accepted with the server's time. A slow clock can't move a bill's history backwards.
+- Recovery removes a device from one account only; revoking it everywhere is a separate administrator action.
+- A device states its bill and delivery counters when claiming offline permission, so a mismatch stops before the account is reserved.
+
+## Still required before sync can be enabled
+
+- Connect the app to the sync path; nothing in the running app calls it yet.
+- Add delivery and deletion sync. `decideBillChange` records the delivery rules, but only the bill create and edit paths exist on the server, so those rules aren't enforced there yet.
+- Sync customers. A bill linked to a saved customer is currently refused by the server and goes to review.
+- Add inbound sync, so a device can download a newer version of a bill.
+- Build the administrator screens for the local review list, for recovery and for `needs_review` server records.
+- Add the routes for claiming and releasing offline permission and for recovery.
+- Migrate existing records, encrypt Aadhaar numbers, and apply the latest migrations to the cloud project.
+- Connect `device-identity.cjs`, which is packaged but not yet used.

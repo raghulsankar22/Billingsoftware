@@ -7,9 +7,12 @@ import { createAdminSupabase } from "@/lib/supabase";
 import { toBill, totals } from "@/lib/bills";
 import { markBillVoidInRegister, syncBillToRegister } from "@/lib/register-sync";
 import { persistBillPdf } from "@/lib/bill-pdf-storage";
+import { legacyIssuanceBlocked } from "@/lib/cloud-mode";
+import { localStorageEnabled } from "@/lib/storage-mode";
 
 async function POSTHandler(request: Request, context: { params: Promise<{ id: string }> }) {
   try {
+    if (legacyIssuanceBlocked(localStorageEnabled)) return NextResponse.json({ error: "Replacing a bill online is not available until synchronization is ready." }, { status: 503 });
     const user = await requireUser(request);
     const profile = await requireOwnerProfile(user.id, accountSlot(request));
     if (!profile) return NextResponse.json({ error: "Business profile is required." }, { status: 422 });

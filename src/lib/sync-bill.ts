@@ -1,18 +1,14 @@
 import { z } from "zod";
 import { syncOperationSchema } from "./sync-outbox";
+import { dateSchema, recordedGrams, recordedMoney } from "./validation";
 
-const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(value => {
-  const time = Date.parse(`${value}T00:00:00Z`);
-  return Number.isFinite(time) && new Date(time).toISOString().slice(0, 10) === value;
-});
-const money = z.number().finite().positive().max(100_000_000).refine(value => Math.abs(value * 100 - Math.round(value * 100)) < 0.00001);
-const grams = z.number().finite().min(0).max(100_000).refine(value => Math.abs(value * 1000 - Math.round(value * 1000)) < 0.00001);
 const item = z.object({
   id: z.string().uuid(), metal: z.enum(["Gold", "Silver"]), particulars: z.string().trim().min(2).max(180),
-  remarks: z.string().trim().max(180).optional(), grams, assessedValue: money, loanAmount: money,
+  remarks: z.string().trim().max(180).optional(), grams: recordedGrams, assessedValue: recordedMoney, loanAmount: recordedMoney,
 }).strict();
 const payload = z.object({
-  billNumber: z.number().int().min(1).max(2147483646), billDate: date,
+  billNumber: z.number().int().min(1).max(2147483646), billDate: dateSchema,
+  deliveryNo: z.string().max(60).optional(), deliveryDate: dateSchema.optional(),
   customerName: z.string().trim().min(2).max(120), fatherName: z.string().trim().min(2).max(120),
   address: z.string().trim().min(5).max(500), phone: z.string().trim().max(20).refine(value => !value || value.length >= 7),
   governmentId: z.string().max(80).optional(), customerId: z.string().uuid().optional().or(z.literal("")),

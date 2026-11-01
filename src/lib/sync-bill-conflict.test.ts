@@ -23,6 +23,11 @@ it("allows an intentional deletion after seeing delivery and refuses an unverifi
   expect(decideBillChange({ id: randomUUID(), occurredAt: "2026-11-01T11:00:00Z", action: "delete", baseOperationId: null }, current, null)).toEqual({ outcome: "review", keepDelivery: true });
 });
 
+it("keeps a delivery that arrives after a later-stamped concurrent edit", () => {
+  const current = { id: randomUUID(), occurredAt: "2026-11-01T10:00:00Z", action: "edit" as const, delivered: false };
+  expect(decideBillChange({ id: randomUUID(), occurredAt: "2026-11-01T09:00:00Z", action: "delivery", baseOperationId: randomUUID() }, current, history)).toEqual({ outcome: "apply", keepDelivery: true });
+});
+
 it("does not silently restore a deleted bill when a later delivery arrives", () => {
   const id = randomUUID();
   expect(decideBillChange({ id: randomUUID(), occurredAt: "2026-11-01T11:00:00Z", action: "delivery", baseOperationId: id }, { id, occurredAt: "2026-11-01T10:00:00Z", action: "delete", delivered: false }, history)).toEqual({ outcome: "review", keepDelivery: true });

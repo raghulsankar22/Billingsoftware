@@ -9,7 +9,7 @@ import { syncBillToRegister } from "@/lib/register-sync";
 import { persistBillPdf } from "@/lib/bill-pdf-storage";
 import { loadBillHistory } from "@/lib/bill-history";
 import { localStorageEnabled } from "@/lib/storage-mode";
-import { cloudMultiUserEnabled } from "@/lib/cloud-mode";
+import { legacyIssuanceBlocked } from "@/lib/cloud-mode";
 
 async function GETHandler(request: Request) {
   try {
@@ -23,9 +23,7 @@ async function GETHandler(request: Request) {
 
 async function POSTHandler(request: Request) {
   try {
-    // The older cloud RPC cannot safely issue the current metal-aware,
-    // offline-synchronized bills. Do not create incomplete online records.
-    if (!localStorageEnabled && cloudMultiUserEnabled()) return NextResponse.json({ error: "Online bill creation is not available until synchronization is ready." }, { status: 503 });
+    if (legacyIssuanceBlocked(localStorageEnabled)) return NextResponse.json({ error: "Online bill creation is not available until synchronization is ready." }, { status: 503 });
     const user = await requireUser(request);
     const profile = await requireOwnerProfile(user.id, accountSlot(request));
     if (!profile) return NextResponse.json({ error: "Create your business profile before issuing a bill." }, { status: 422 });

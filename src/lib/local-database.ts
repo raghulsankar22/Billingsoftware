@@ -32,6 +32,10 @@ export function createLocalDatabase(directory = localDataDirectory()) {
     db = new DatabaseSync(filename);
     db.exec("PRAGMA busy_timeout=10000; PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; CREATE TABLE IF NOT EXISTS records (table_name TEXT NOT NULL, id TEXT NOT NULL, body TEXT NOT NULL CHECK(json_valid(body)), PRIMARY KEY(table_name,id)); CREATE UNIQUE INDEX IF NOT EXISTS profile_account ON records(json_extract(body,'$.owner_id'), json_extract(body,'$.account_slot')) WHERE table_name='business_profiles'; CREATE UNIQUE INDEX IF NOT EXISTS bill_number ON records(json_extract(body,'$.profile_id'), json_extract(body,'$.bill_number')) WHERE table_name='bills'; CREATE UNIQUE INDEX IF NOT EXISTS replacement ON records(json_extract(body,'$.replacement_for_id')) WHERE table_name='bills' AND json_extract(body,'$.replacement_for_id') IS NOT NULL;");
     db.prepare("UPDATE records AS profile SET body=json_set(body,'$.next_bill_number',1,'$.next_delivery_number',1,'$.updated_at',?) WHERE table_name='business_profiles' AND (json_extract(body,'$.next_bill_number') IS NOT 1 OR json_extract(body,'$.next_delivery_number') IS NOT 1) AND NOT EXISTS (SELECT 1 FROM records AS bill WHERE bill.table_name='bills' AND json_extract(bill.body,'$.profile_id')=profile.id)").run(new Date().toISOString());
+    createLocalIssuerStore(db);
+    db.exec(`CREATE TABLE IF NOT EXISTS sync_local_bill_heads (profile_id TEXT NOT NULL, bill_id TEXT PRIMARY KEY, operation_id TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS sync_local_requests (operation_id TEXT PRIMARY KEY, profile_id TEXT NOT NULL, device_id TEXT NOT NULL, issuer_epoch INTEGER NOT NULL, request_hash TEXT NOT NULL, bill_id TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS sync_local_edit_requests (operation_id TEXT PRIMARY KEY, profile_id TEXT NOT NULL, device_id TEXT NOT NULL, request_hash TEXT NOT NULL, bill_id TEXT NOT NULL);`);
     connections.set(filename, db);
   }
   const database = db;
@@ -179,6 +183,7 @@ export function createLocalDatabase(directory = localDataDirectory()) {
     const account = slot(parameters.p_account_slot);
     const profile = rows("business_profiles").find(row => row.owner_id === ownerId && row.account_slot === account);
     if (!profile) throw new Error("Set up this business account first.");
+    refuseIfSyncManaged(profile.id);
     const input = historicalImportSchema.parse(parameters.p_bills);
     const numbers = new Set(rows("bills").filter(row => row.profile_id === profile.id).map(row => row.bill_number));
     for (const bill of input) {
@@ -188,12 +193,18 @@ export function createLocalDatabase(directory = localDataDirectory()) {
     }
     return { profile, input };
   };
-  const issue = (ownerId: string, input: Row) => {
+  // Once an account joins online sync, a change outside the queue would make the
+  // device and server disagree on bills and numbers, so only queued writes are allowed.
+  const refuseIfSyncManaged = (profileId: string) => {
+    if (database.prepare("SELECT 1 FROM sync_local_issuers WHERE profile_id=?").get(profileId)) throw new Error("This account uses online sync, and this change isn't supported through sync yet.");
+  };
+  const issue = (ownerId: string, input: Row, queued = false) => {
     const bill = billSchema.parse(input);
     if (bill.items.some(item => !item.metal)) throw new Error("Choose Gold or Silver for every item.");
     if (bill.deliveryDate && bill.deliveryDate < bill.billDate) throw new Error("Delivery date cannot be before the bill date.");
     const profile = rows("business_profiles").find(p => p.owner_id === ownerId && p.account_slot === slot(input.accountSlot));
     if (!profile) throw new Error("Business profile is required");
+    if (!queued) refuseIfSyncManaged(profile.id);
     const link = customerLink(profile.id, bill.customerId);
     const nextBillNumber = hasBills(profile.id) ? profile.next_bill_number : 1;
     if (nextBillNumber >= 2147483647) throw new Error("Bill number limit reached");
@@ -214,6 +225,7 @@ export function createLocalDatabase(directory = localDataDirectory()) {
   const recordDelivery = (ownerId: string, billId: string, account: unknown, delivery: unknown) => {
     const { bill, profile } = billOwner(ownerId, billId);
     if (slot(account) !== profile.account_slot) throw new Error("Bill not found in this account.");
+    refuseIfSyncManaged(profile.id);
     if (!["issued", "void"].includes(bill.status)) throw new Error("Delivery cannot be recorded for this bill status.");
     const input = deliverySchema.parse(delivery);
     // A register delivery really happened: never replace what it recorded or invent interest for it.
@@ -237,8 +249,9 @@ export function createLocalDatabase(directory = localDataDirectory()) {
     save("bills", updated);
     return { id: bill.id, previousPdfPath: bill.pdf_storage_path, previousDeliveryPdfPath: bill.delivery_pdf_storage_path, bill: { ...billCanonicalizer(customerIdentities())(updated), bill_items: rows("bill_items").filter(item => item.bill_id === bill.id).sort((left, right) => left.sort_order - right.sort_order) } };
   };
-  const editBill = (ownerId: string, billId: string, value: Row) => {
+  const editBill = (ownerId: string, billId: string, value: Row, queued = false) => {
     const { bill: original, profile } = billOwner(ownerId, billId);
+    if (!queued) refuseIfSyncManaged(profile.id);
     if (original.status !== "issued") throw new Error("Only issued bills can be edited.");
     if (value.accountSlot !== undefined && slot(value.accountSlot) !== profile.account_slot) throw new Error("A bill must remain in its original account.");
     // Register imports keep unknown details blank until someone actually records them.
@@ -257,10 +270,9 @@ export function createLocalDatabase(directory = localDataDirectory()) {
   };
   const syncBillPayload = (bill: Row) => {
     const items = rows("bill_items").filter(row => row.bill_id === bill.id).sort((a, b) => a.sort_order - b.sort_order);
-    return JSON.parse(JSON.stringify({ billNumber: bill.bill_number, billDate: bill.bill_date, customerName: bill.customer_name, fatherName: bill.father_name, address: bill.address, phone: bill.phone, ...(bill.government_id ? { governmentId: bill.government_id } : {}), ...(bill.customer_id ? { customerId: bill.customer_id } : {}), businessSnapshot: bill.business_snapshot,
+    return JSON.parse(JSON.stringify({ billNumber: bill.bill_number, billDate: bill.bill_date, ...(bill.delivery_no ? { deliveryNo: bill.delivery_no } : {}), ...(bill.delivery_date ? { deliveryDate: bill.delivery_date } : {}), customerName: bill.customer_name, fatherName: bill.father_name, address: bill.address, phone: bill.phone, ...(bill.government_id ? { governmentId: bill.government_id } : {}), ...(bill.customer_id ? { customerId: bill.customer_id } : {}), businessSnapshot: bill.business_snapshot,
       items: items.map(item => ({ id: item.id, metal: item.metal, particulars: item.particulars, ...(item.remarks ? { remarks: item.remarks } : {}), grams: item.grams, assessedValue: item.assessed_value, loanAmount: item.loan_amount })) }));
   };
-  const ensureSyncBillHeads = () => database.exec("CREATE TABLE IF NOT EXISTS sync_local_bill_heads (profile_id TEXT NOT NULL, bill_id TEXT PRIMARY KEY, operation_id TEXT NOT NULL)");
   class Query {
     private filters: ((row: Row) => boolean)[] = [];
     private orders: { key: string; ascending: boolean }[] = [];
@@ -296,6 +308,7 @@ export function createLocalDatabase(directory = localDataDirectory()) {
           if (patch.excel_sync_status !== undefined && !["pending", "synced", "failed"].includes(patch.excel_sync_status)) throw new Error("Invalid register status.");
           result = result.map(row => {
             if (patch.status === "void" && row.status !== "issued") throw new Error("Only issued bills can be voided.");
+            if (patch.status === "void") refuseIfSyncManaged(row.profile_id);
             for (const key of ["pdf_storage_path", "delivery_pdf_storage_path"]) if (patch[key] != null) {
               pdfPath("bill-pdfs", patch[key]);
               const prefix = `${row.profile_id}/${row.id}`;
@@ -334,8 +347,12 @@ export function createLocalDatabase(directory = localDataDirectory()) {
   }
   return {
     sync: {
+      counters: (profileId: string) => createLocalIssuerStore(database).counters(profileId),
       saveAssignment: (profileId: string, deviceId: string, epoch: number, counters: { nextBillNumber: number; nextDeliveryNumber: number }) => createLocalIssuerStore(database).saveAssignment(profileId, deviceId, epoch, counters),
       pending: (profileId: string) => createSyncOutbox(database).pending(profileId),
+      /** The administrator's list of changes waiting for review. */
+      held: (profileId: string) => createSyncOutbox(database).held(profileId),
+      resolveHeld: (profileId: string, operationId: string, decision: "retry" | "dismiss") => createSyncOutbox(database).resolve(profileId, operationId, decision),
     },
     backupBeforeImport: async () => {
       const directory = resolve(root, "backups");
@@ -456,7 +473,6 @@ export function createLocalDatabase(directory = localDataDirectory()) {
           const input = billSchema.parse(parameters.p_bill);
           const profile = rows("business_profiles").find(row => row.owner_id === ownerId && row.account_slot === account);
           if (!profile) throw new Error("Business profile is required.");
-          database.exec("CREATE TABLE IF NOT EXISTS sync_local_requests (operation_id TEXT PRIMARY KEY, profile_id TEXT NOT NULL, device_id TEXT NOT NULL, issuer_epoch INTEGER NOT NULL, request_hash TEXT NOT NULL, bill_id TEXT NOT NULL)");
           const requestHash = createHash("sha256").update(JSON.stringify({ account, input })).digest("hex");
           const previous = database.prepare("SELECT * FROM sync_local_requests WHERE operation_id=?").get(operationId);
           if (previous) {
@@ -465,12 +481,11 @@ export function createLocalDatabase(directory = localDataDirectory()) {
           }
           const issuer = createLocalIssuerStore(database);
           if (!issuer.canIssue(profile.id, deviceId, epoch)) throw new Error("This device does not have offline billing permission.");
-          const created = issue(ownerId, { ...input, accountSlot: account });
+          const created = issue(ownerId, { ...input, accountSlot: account }, true);
           const bill = rows("bills").find(row => row.id === created.id)!;
           const payload = syncBillPayload(bill);
           const operation = parseSyncBill({ id: operationId, deviceId, accountId: profile.id, entityId: bill.id, entityType: "bill", action: "create", occurredAt: new Date().toISOString(), issuerEpoch: epoch, payload });
           createSyncOutbox(database).enqueue(operation);
-          ensureSyncBillHeads();
           database.prepare("INSERT INTO sync_local_bill_heads(profile_id,bill_id,operation_id) VALUES(?,?,?)").run(profile.id, bill.id, operationId);
           database.prepare("INSERT INTO sync_local_requests(operation_id,profile_id,device_id,issuer_epoch,request_hash,bill_id) VALUES(?,?,?,?,?,?)").run(operationId, profile.id, deviceId, epoch, requestHash, bill.id);
           return created;
@@ -526,17 +541,15 @@ export function createLocalDatabase(directory = localDataDirectory()) {
           const input = billSchema.parse(parameters.p_bill);
           const account = parameters.p_bill.accountSlot === undefined ? profile.account_slot : slot(parameters.p_bill.accountSlot);
           if (account !== profile.account_slot) throw new Error("A bill must remain in its original account.");
-          database.exec("CREATE TABLE IF NOT EXISTS sync_local_edit_requests (operation_id TEXT PRIMARY KEY, profile_id TEXT NOT NULL, device_id TEXT NOT NULL, request_hash TEXT NOT NULL, bill_id TEXT NOT NULL)");
           const requestHash = createHash("sha256").update(JSON.stringify({ account, billId: original.id, input })).digest("hex");
           const previous = database.prepare("SELECT * FROM sync_local_edit_requests WHERE operation_id=?").get(operationId);
           if (previous) {
             if (previous.profile_id !== profile.id || previous.device_id !== deviceId || previous.request_hash !== requestHash || previous.bill_id !== original.id) throw new Error("A different bill edit already uses this operation ID.");
             return { id: original.id, previousPdfPath: null, previousDeliveryPdfPath: null };
           }
-          ensureSyncBillHeads();
           const head = database.prepare("SELECT operation_id FROM sync_local_bill_heads WHERE profile_id=? AND bill_id=?").get(profile.id, original.id);
           if (!head || typeof head.operation_id !== "string") throw new Error("Sync this bill before editing it on this device.");
-          const edited = editBill(ownerId, original.id, { ...input, accountSlot: account });
+          const edited = editBill(ownerId, original.id, { ...input, accountSlot: account }, true);
           const bill = rows("bills").find(row => row.id === original.id)!;
           const operation = parseSyncBill({ id: operationId, deviceId, accountId: profile.id, entityId: original.id, entityType: "bill", action: "update", baseOperationId: head.operation_id, occurredAt: new Date().toISOString(), payload: syncBillPayload(bill) });
           createSyncOutbox(database).enqueue(operation);
@@ -546,6 +559,7 @@ export function createLocalDatabase(directory = localDataDirectory()) {
         }
         if (name === "delete_bill") {
           const { bill, profile } = billOwner(ownerId, parameters.p_bill_id);
+          refuseIfSyncManaged(profile.id);
           const reuseNumber = bill.bill_number === profile.next_bill_number - 1;
           database.prepare("DELETE FROM records WHERE table_name='bill_items' AND json_extract(body,'$.bill_id')=?").run(bill.id);
           for (const replacement of rows("bills").filter(row => row.replacement_for_id === bill.id)) save("bills", { ...replacement, replacement_for_id: null });

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { parseSyncBill } from "./sync-bill";
+import { SyncReviewError } from "./sync-flush";
 import type { SyncOperation } from "./sync-outbox";
 
 type Fetch = typeof fetch;
@@ -30,7 +31,13 @@ export function createCloudSyncClient(options: { baseUrl: string; accessToken: s
         });
       } catch { clearTimeout(timeout); throw new Error("Unable to connect. Changes remain on this device."); }
       try {
-        if (response.status === 409) throw new Error("This bill needs manual review before it can sync.");
+        if (response.status === 409) throw new SyncReviewError("This bill needs manual review before it can sync.");
+        // Retrying can't fix these, so they go to review rather than blocking the queue forever.
+        if ([400, 413, 422].includes(response.status)) {
+          let reason = "The billing server refused this change.";
+          try { const body = await response.json(); if (typeof body?.error === "string" && body.error) reason = body.error.slice(0, 300); } catch { /* Keep the general reason. */ }
+          throw new SyncReviewError(reason);
+        }
         if (response.status === 401 || response.status === 403) throw new Error("Sign in again or check this device's permission. Changes remain on this device.");
         if (!response.ok) throw new Error("Unable to sync this bill. Changes remain on this device.");
         let data: unknown;

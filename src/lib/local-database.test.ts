@@ -19,25 +19,53 @@ describe("durable local ledger", () => {
   it("atomically queues edits with their previous revision and handles retries safely", async () => {
     const db = open(); const business = await profile(db);
     const device = randomUUID(), createId = randomUUID(), editId = randomUUID();
-    db.sync.saveAssignment(business.id, device, 1, { nextBillNumber: 1, nextDeliveryNumber: 1 });
+    const untracked = await issue(db);
+    expect(db.sync.counters(business.id)).toEqual({ nextBillNumber: 2, nextDeliveryNumber: 1 });
+    db.sync.saveAssignment(business.id, device, 1, { nextBillNumber: 2, nextDeliveryNumber: 1 });
     const created = await db.rpc("create_bill_with_sync", { p_owner_id: localOwnerId, p_device_id: device, p_issuer_epoch: 1, p_operation_id: createId, p_bill: { ...bill, accountSlot: 1 } });
     expect(created.error).toBeNull();
     const params = { p_owner_id: localOwnerId, p_device_id: device, p_operation_id: editId, p_bill_id: created.data.id, p_bill: { ...bill, accountSlot: 1, customerName: "Updated Customer" } };
     expect((await db.rpc("edit_bill_with_sync", params)).error).toBeNull();
     const pending = db.sync.pending(business.id);
     expect(pending).toHaveLength(2);
-    expect(pending[1]).toMatchObject({ id: editId, action: "update", baseOperationId: createId, payload: { billNumber: 1, customerName: "Updated Customer" } });
+    expect(pending[1]).toMatchObject({ id: editId, action: "update", baseOperationId: createId, payload: { billNumber: 2, customerName: "Updated Customer" } });
     expect((await db.rpc("edit_bill_with_sync", params)).error).toBeNull();
     expect((await db.rpc("edit_bill_with_sync", { ...params, p_bill: { ...params.p_bill, customerName: "Different" } })).error?.message).toContain("different bill edit");
     expect(db.sync.pending(business.id)).toHaveLength(2);
     const secondId = randomUUID();
     expect((await db.rpc("edit_bill_with_sync", { ...params, p_operation_id: secondId, p_bill: { ...params.p_bill, customerName: "Second Edit" } })).error).toBeNull();
     expect(db.sync.pending(business.id)[2]).toMatchObject({ id: secondId, baseOperationId: editId });
-    const untracked = await issue(db);
     const failed = await db.rpc("edit_bill_with_sync", { ...params, p_operation_id: randomUUID(), p_bill_id: untracked.data.id });
     expect(failed.error?.message).toContain("Sync this bill");
     expect((await db.from("bills").select().eq("id", untracked.data.id).single()).data.customer_name).toBe(bill.customerName);
     expect(db.sync.pending(business.id)).toHaveLength(3);
+  });
+  it("refuses every change outside the queue once an account joins sync, and leaves other accounts alone", async () => {
+    const db = open(); const business = await profile(db); await profile(db, 2);
+    const device = randomUUID(), params = { p_owner_id: localOwnerId };
+    const before = await issue(db);
+    db.sync.saveAssignment(business.id, device, 1, db.sync.counters(business.id));
+    const refused = "uses online sync";
+    expect((await issue(db)).error?.message).toContain(refused);
+    expect((await db.rpc("edit_bill", { ...params, p_bill_id: before.data.id, p_bill: { ...bill, customerName: "Changed" } })).error?.message).toContain(refused);
+    expect((await db.rpc("delete_bill", { ...params, p_bill_id: before.data.id })).error?.message).toContain(refused);
+    expect((await db.rpc("replace_bill", { ...params, p_original_id: before.data.id, p_bill: bill })).error?.message).toContain(refused);
+    expect((await db.rpc("record_bill_delivery", { ...params, p_bill_id: before.data.id, p_account_slot: 1, p_delivery: { deliveryDate: "2026-10-30", billReceiptStatus: "has_bill" } })).error?.message).toContain(refused);
+    expect((await db.rpc("record_bill_deliveries", { ...params, p_account_slot: 1, p_delivery: { deliveryDate: "2026-10-30", deliveries: [{ billId: before.data.id, billReceiptStatus: "has_bill" }] } })).error?.message).toContain(refused);
+    expect((await db.rpc("import_historical_bills", { ...params, p_account_slot: 1, p_bills: [{ billNo: 90, billDate: "2022-04-01", deliveryNo: "", deliveryDate: null, name: "Customer", address: "Street", particulars: "Ring", phone: "", amount: 100, metal: "Gold" }] })).error?.message).toContain(refused);
+    expect((await db.from("bills").update({ status: "void" }).eq("id", before.data.id).select().maybeSingle()).error?.message).toContain(refused);
+    const kept = (await db.from("bills").select().eq("id", before.data.id).single()).data;
+    expect(kept).toMatchObject({ status: "issued", customer_name: bill.customerName, delivery_no: null });
+    expect((await db.from("bills").select().eq("profile_id", business.id)).data).toHaveLength(1);
+    expect((await issue(db, { ...bill, accountSlot: 2 })).error).toBeNull();
+  });
+  it("queues corrected delivery details with a synced edit", async () => {
+    const db = open(); const business = await profile(db); const device = randomUUID(), createId = randomUUID();
+    db.sync.saveAssignment(business.id, device, 1, { nextBillNumber: 1, nextDeliveryNumber: 1 });
+    const created = await db.rpc("create_bill_with_sync", { p_owner_id: localOwnerId, p_device_id: device, p_issuer_epoch: 1, p_operation_id: createId, p_bill: { ...bill, accountSlot: 1 } });
+    const edited = await db.rpc("edit_bill_with_sync", { p_owner_id: localOwnerId, p_device_id: device, p_operation_id: randomUUID(), p_bill_id: created.data.id, p_bill: { ...bill, deliveryNo: "7", deliveryDate: "2026-10-20" } });
+    expect(edited.error).toBeNull();
+    expect(db.sync.pending(business.id)[1].payload).toMatchObject({ deliveryNo: "7", deliveryDate: "2026-10-20" });
   });
   it("atomically issues and queues an offline bill only for the designated device", async () => {
     const db = open(); const business = await profile(db);
