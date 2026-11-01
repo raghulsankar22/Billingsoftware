@@ -5,6 +5,7 @@ import type { AccountSlot } from "@/lib/account-url";
 import type { Customer, CustomerInput } from "@/lib/customers";
 import { api } from "./api";
 
+type SharedCustomer = Pick<Customer, "name" | "customerCode">;
 const emptyCustomer = (): CustomerInput => ({ name: "", fatherName: "", address: "", phone: "", aadhaar: "" });
 
 export function Customers({ accountSlot }: { accountSlot: AccountSlot }) {
@@ -19,6 +20,7 @@ export function Customers({ accountSlot }: { accountSlot: AccountSlot }) {
   const [error, setError] = useState("");
   const [loadError, setLoadError] = useState("");
   const [notice, setNotice] = useState("");
+  const [sharedPhone, setSharedPhone] = useState<SharedCustomer | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -38,18 +40,22 @@ export function Customers({ accountSlot }: { accountSlot: AccountSlot }) {
     setEditingId(customer.id); setCustomerCode(customer.customerCode); setError(""); setNotice("");
     document.getElementById("customer-name")?.focus();
   }
-  async function save(event: React.FormEvent) {
-    event.preventDefault();
+  async function save(event?: React.FormEvent, allowSharedPhone = false) {
+    event?.preventDefault();
     if (busy) return;
-    setBusy(true); setError(""); setNotice("");
+    setBusy(true); setError(""); setNotice(""); setSharedPhone(null);
     try {
       const result = await api("/api/customers", accountSlot, {
         method: editingId ? "PATCH" : "POST",
-        body: JSON.stringify({ ...form, ...(editingId ? { id: editingId } : {}) }),
+        body: JSON.stringify({ ...form, ...(editingId ? { id: editingId } : {}), ...(allowSharedPhone ? { allowSharedPhone: true } : {}) }),
       });
       reset(); setQuery(""); setRefresh(value => value + 1);
-      setNotice(`${result.customer.name} ${editingId ? "updated" : "saved"}. Customer ID: ${result.customer.customerCode}. Enter their phone number or Aadhaar in New bill to fill their details automatically.`);
-    } catch (failure) { setError(failure instanceof Error ? failure.message : "Unable to save customer."); }
+      setNotice(`${result.customer.name} ${editingId ? "updated" : "saved"}. Customer ID: ${result.customer.customerCode}. Enter their phone number or Aadhaar in New bill to find them.`);
+    } catch (failure) {
+      const shared = (failure as { payload?: { sharedPhone?: SharedCustomer } }).payload?.sharedPhone;
+      if (shared) setSharedPhone(shared);
+      else setError(failure instanceof Error ? failure.message : "Unable to save customer.");
+    }
     finally { setBusy(false); }
   }
 
@@ -69,6 +75,7 @@ export function Customers({ accountSlot }: { accountSlot: AccountSlot }) {
         <div className="customer-actions"><button>{busy ? "Saving…" : editingId ? "Save customer changes" : "Save customer"}</button>{editingId && <button type="button" className="secondary" onClick={reset}>Cancel edit</button>}</div>
       </fieldset>
       {error && <p className="error" role="alert">{error}</p>}
+      {sharedPhone && <div className="overview-warning" role="alert"><p>This phone is already saved for <b>{sharedPhone.name}</b> ({sharedPhone.customerCode}). Is this a different person, such as a family member?</p><div className="customer-actions"><button type="button" disabled={busy} onClick={() => void save(undefined, true)}>Yes, save as a new customer</button><button type="button" className="secondary" disabled={busy} onClick={() => setSharedPhone(null)}>No, go back</button></div></div>}
       {notice && <p className="notice" role="status">{notice}</p>}
     </form>
     <div className="section-heading customer-list-heading"><h3>Saved customers</h3><label className="customer-search">Search customers<input type="search" placeholder="Customer ID, name, phone or Aadhaar" value={query} onChange={e => setQuery(e.target.value)} /></label></div>

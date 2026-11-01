@@ -75,6 +75,15 @@ describe("durable local ledger", () => {
     const next = await issue(db);
     expect((await db.from("bills").select().eq("id", next.data.id).single()).data.bill_number).toBe(7004);
   });
+  it("won't save a delivery date before the bill date when creating or editing", async () => {
+    const db = open(); await profile(db);
+    const early = { ...bill, deliveryNo: "1", deliveryDate: "2026-10-02" };
+    expect((await issue(db, early)).error?.message).toContain("before the bill date");
+    const created = await issue(db);
+    const edited = await db.rpc("edit_bill", { p_owner_id: localOwnerId, p_bill_id: created.data.id, p_bill: early });
+    expect(edited.error?.message).toContain("before the bill date");
+    expect((await db.from("bills").select().eq("id", created.data.id).single()).data.delivery_no).toBeNull();
+  });
   describe("register imports", () => {
     const row = { billNo: 1, billDate: "2022-04-01", deliveryNo: "", deliveryDate: null, name: "Customer", address: "Street", particulars: "Minor Chain", phone: "", amount: 11000, metal: "Gold" };
     const importBills = (db: ReturnType<typeof open>, bills: Record<string, unknown>[]) => db.rpc("import_historical_bills", { p_owner_id: localOwnerId, p_account_slot: 1, p_bills: bills });

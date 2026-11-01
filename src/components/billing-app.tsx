@@ -7,7 +7,7 @@ import type { Bill } from "@/lib/types";
 import { formatINR } from "@/lib/money";
 import { createBrowserSupabase } from "@/lib/supabase-browser";
 import { api, requestHeaders } from "./api";
-import { localStorageEnabled } from "@/lib/storage-mode";
+import { extendedAccounts, localStorageEnabled } from "@/lib/storage-mode";
 import { BillDocument } from "./bill-document";
 import { BillOverview } from "./bill-overview";
 import { BillForm } from "./bill-form";
@@ -23,7 +23,7 @@ import { LocalSignIn, localAuth } from "./local-sign-in";
 import { LocalUserManagement } from "./local-user-management";
 import { LocalMyAccount } from "./local-my-account";
 import { ImportPreview } from "./import-preview";
-import { isDelivered } from "@/lib/delivery-status";
+import { deliveryLabel, isDelivered } from "@/lib/delivery-status";
 import type { LocalUser } from "@/lib/local-users";
 
 type Profile = {
@@ -39,8 +39,6 @@ type Profile = {
 
 const addAccountOption = "add-new-account";
 const ACCOUNT_STORAGE_KEY = "finance-billing-selected-account";
-// The online version remains opt-in until its security and sync work is complete.
-const extendedAccounts = localStorageEnabled || process.env.NEXT_PUBLIC_BILLING_CLOUD_MULTIUSER === "1";
 
 function accountLabel(slot: AccountSlot, profiles: Profile[]) {
   const profile = profiles.find((candidate) => Number(candidate.account_slot) === slot);
@@ -343,7 +341,7 @@ export function BillingApp() {
         <div className="item-table-wrap"><table className="history-table">
           <thead><tr><th>Bill</th><th>Date</th><th>Customer</th><th>Particulars</th><th>Amount</th><th>Excel</th><th /></tr></thead>
           <tbody>{bills.length ? bills.map((bill) => <tr key={bill.id} className={bill.status === "void" ? "void-row" : ""}>
-            <td>#{bill.billNumber}<small>{bill.status === "void" ? isDelivered(bill) ? "Voided · Delivered" : "Voided" : isDelivered(bill) ? "Delivered" : "Issued"}</small>{isDelivered(bill) && <small className="delivery-recorded">Delivery {bill.deliveryNo ? `#${bill.deliveryNo}` : "number not recorded"} · {bill.deliveryDate || "date not recorded"}</small>}</td>
+            <td>#{bill.billNumber}<small>{bill.status === "void" ? isDelivered(bill) ? "Voided · Delivered" : "Voided" : isDelivered(bill) ? "Delivered" : "Issued"}</small>{isDelivered(bill) && <small className="delivery-recorded">{deliveryLabel(bill)}</small>}</td>
             <td>{bill.billDate}</td>
             <td><b>{bill.customerName}</b>{bill.phone && <small>{bill.phone}</small>}</td>
             <td>{bill.items.map((item) => `${item.metal ? `${item.metal}: ` : ""}${item.particulars}`).join(", ")}</td>

@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { randomUUID } from "node:crypto";
 import { Worker } from "node:worker_threads";
-import { customerSchema, normalizeAadhaar, normalizePhone } from "./customers";
+import { customerSchema, normalizeAadhaar, normalizePhone, SharedPhoneError } from "./customers";
 import { createLocalDatabase, localOwnerId } from "./local-database";
 
 const details = { name: "Test Customer", fatherName: "Test Parent", address: "123 Test Street", phone: "9876543210", aadhaar: "123456789012" };
@@ -118,6 +118,58 @@ describe("durable account customer records", () => {
     db.customers.save(1, { ...details, phone: "", aadhaar: "" });
     db.customers.save(2, { ...details, phone: "", aadhaar: "" });
     expect(db.customers.list(1)).toHaveLength(5);
+  });
+  describe("a phone shared by family members", () => {
+    const father = { ...details, name: "Father Person", fatherName: "Grandfather", aadhaar: "" };
+    const son = { ...details, name: "Son Person", fatherName: "Father Person", aadhaar: "" };
+
+    it("asks before saving different details under a saved phone", async () => {
+      const { db } = open(); await profile(db);
+      const first = db.customers.save(1, father);
+      expect(() => db.customers.save(1, son)).toThrow(SharedPhoneError);
+      expect(db.customers.list(1)).toHaveLength(1);
+      expect(db.customers.save(1, father).id).toBe(first.id);
+      expect(db.customers.save(1, { ...father, name: " father person " }).id).toBe(first.id);
+    });
+    it("keeps both people separate once confirmed, in the same account", async () => {
+      const { db } = open(); await profile(db);
+      const first = db.customers.save(1, father);
+      const second = db.customers.save(1, son, undefined, { allowSharedPhone: true });
+      expect(second.id).not.toBe(first.id);
+      expect(second).toMatchObject({ name: "Son Person", phone: details.phone });
+      expect(db.customers.list(1)).toHaveLength(2);
+      expect(db.customers.resolve(first.id)?.name).toBe("Father Person");
+      expect(db.customers.phoneMatches(1, details.phone).map(customer => customer.name).sort()).toEqual(["Father Person", "Son Person"]);
+    });
+    it("still links an exact repeat and stays separate after reopening", async () => {
+      const entry = open(); await profile(entry.db);
+      const first = entry.db.customers.save(1, father);
+      const second = entry.db.customers.save(1, son, undefined, { allowSharedPhone: true });
+      entry.db.close(); entry.db = createLocalDatabase(entry.directory);
+      expect(entry.db.customers.resolve(second.id)?.id).toBe(second.id);
+      expect(entry.db.customers.resolve(first.id)?.id).toBe(first.id);
+      expect(entry.db.customers.save(1, son).id).toBe(second.id);
+    });
+    it("doesn't ask when Aadhaar already proves a different person", async () => {
+      const { db } = open(); await profile(db);
+      const first = db.customers.save(1, { ...father, aadhaar: details.aadhaar });
+      const second = db.customers.save(1, { ...son, aadhaar: "999999999999" });
+      expect(second.id).not.toBe(first.id);
+    });
+    it("asks when editing a customer onto someone else's phone", async () => {
+      const { db } = open(); await profile(db);
+      db.customers.save(1, father);
+      const other = db.customers.save(1, { ...son, phone: "8888888888" });
+      expect(() => db.customers.save(1, son, other.id)).toThrow(SharedPhoneError);
+      expect(db.customers.save(1, son, other.id, { allowSharedPhone: true }).phone).toBe(details.phone);
+      expect(db.customers.list(1)).toHaveLength(2);
+    });
+    it("finds nothing for a blank or unknown phone", async () => {
+      const { db } = open(); await profile(db);
+      db.customers.save(1, father);
+      expect(db.customers.phoneMatches(1, "")).toEqual([]);
+      expect(db.customers.phoneMatches(1, "8888888888")).toEqual([]);
+    });
   });
   it("allows a shared customer from an unset original slot and links it in any owned configured ledger", async () => {
     const { db } = open(); await profile(db, 4);
@@ -283,7 +335,7 @@ describe("durable account customer records", () => {
     expect(() => db.customers.save(1, { ...second, aadhaar: first.aadhaar }, second.id)).toThrow("already exists");
     expect(db.customers.lookup(1, { phone: second.phone })).toEqual(second);
     const external = new DatabaseSync(join(directory, "billing.sqlite"));
-    expect(() => external.prepare("UPDATE customers SET phone=? WHERE id=?").run(first.phone, second.id)).toThrow();
+    expect(() => external.prepare("UPDATE customers SET aadhaar=? WHERE id=?").run(first.aadhaar, second.id)).toThrow();
     external.close();
     const changed = db.customers.save(1, { ...first, name: "Updated Customer", phone: "", aadhaar: "" }, first.id);
     expect(changed).toMatchObject({ id: first.id, createdAt: first.createdAt, name: "Updated Customer", phone: "", aadhaar: "" });

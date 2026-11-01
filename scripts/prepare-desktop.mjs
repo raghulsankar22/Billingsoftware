@@ -6,6 +6,8 @@ import { fileURLToPath } from 'node:url';
 import { spawn } from 'node:child_process';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const [nodeMajor, nodeMinor] = process.versions.node.split('.').map(Number);
+if (nodeMajor < 22 || (nodeMajor === 22 && nodeMinor < 18)) throw new Error(`Node 22.18 or newer is required because this Node is copied into the installer; found ${process.versions.node}.`);
 const runtime = path.join(root, '.desktop-runtime');
 if (path.dirname(runtime) !== root || path.basename(runtime) !== '.desktop-runtime') throw new Error('Invalid desktop staging directory.');
 if (!process.argv.includes('--stage-only')) await new Promise((resolve, reject) => {

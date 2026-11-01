@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from "vitest";
-import { POST } from "./route";
+import { GET, POST } from "./route";
 
 const mocks = vi.hoisted(() => ({ local: true, cloud: false, rpc: vi.fn(), requireUser: vi.fn(), accountSlot: vi.fn() }));
 vi.mock("@/lib/storage-mode", () => ({ get localStorageEnabled() { return mocks.local; } }));
@@ -17,6 +17,16 @@ it("saves a cloud profile for the authenticated owner and selected account", asy
   const request = new Request("http://localhost/api/profile?account=4", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ businessName: "Test Finance", address: "123 Main Street", phone: "1234567890", licenseNumber: "LIC-4", ownerId: "other-owner" }) });
   expect((await POST(request)).status).toBe(200);
   expect(mocks.rpc).toHaveBeenCalledWith("save_cloud_business_profile", { p_owner_id: "approved-owner", p_profile: { businessName: "Test Finance", address: "123 Main Street", phone: "1234567890", licenseNumber: "LIC-4", accountSlot: 4 } });
+});
+
+it("reports signed out only when the sign-in check fails, not on other errors", async () => {
+  mocks.requireUser.mockRejectedValue(new Error("Sign in is required."));
+  expect((await GET(new Request("http://localhost/api/profile"))).status).toBe(401);
+  mocks.requireUser.mockResolvedValue({ id: "owner" });
+  mocks.accountSlot.mockImplementation(() => { throw new Error("database is locked"); });
+  const response = await GET(new Request("http://localhost/api/profile"));
+  expect(response.status).toBe(400);
+  expect((await response.json()).error).toBe("database is locked");
 });
 
 it("does not save any profile when authentication fails", async () => {

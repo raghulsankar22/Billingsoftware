@@ -12,6 +12,10 @@ export function sequenceDeliveryNumber(value: unknown): number | null {
   return Number.isSafeInteger(number) && number <= maxSequenceDeliveryNumber ? number : null;
 }
 
+/** Register deliveries can lack a number or date, so never print a bare "#". */
+export const deliveryNumberLabel = (bill: Pick<Bill, "deliveryNo">) => bill.deliveryNo?.trim() ? `#${bill.deliveryNo}` : "Not recorded";
+export const deliveryLabel = (bill: Pick<Bill, "deliveryNo" | "deliveryDate">) => `Delivery ${bill.deliveryNo?.trim() ? `#${bill.deliveryNo}` : "number not recorded"} · ${bill.deliveryDate?.trim() || "date not recorded"}`;
+
 export function isDelivered(bill: Pick<Bill, "deliveryNo" | "deliveryDate" | "historicalDelivery">) {
   return bill.historicalDelivery === true || Boolean(bill.deliveryNo?.trim() && bill.deliveryDate?.trim());
 }

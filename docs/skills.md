@@ -5,7 +5,7 @@ Billing; they add no dependencies or internet requirement to the installed app.
 
 There are 42 user-installed skills in each location:
 
-- Global: `C:\Users\raghu_1aexzck\.codex\skills`, available across projects.
+- Global: `%USERPROFILE%\.codex\skills`, available across projects.
 - Project: `D:\app\.codex\skills`, versioned with this project.
 
 All 37 previously installed Matt Pocock skills were checked against upstream:

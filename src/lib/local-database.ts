@@ -9,7 +9,7 @@ import { calculateRepayment } from "./interest";
 import { jewelleryChoices, jewelleryKey, jewelleryNameSchema } from "./jewellery";
 import { isAccountSlot } from "./account-url";
 import { profileSchema } from "./profile-validation";
-import { customerCode, customerSchema, type Customer } from "./customers";
+import { customerCode, customerSchema, SharedPhoneError, type Customer } from "./customers";
 import { scopedDataDirectory } from "./local-session-context";
 import { createLocalIssuerStore } from "./sync-local-issuer";
 import { createSyncOutbox } from "./sync-outbox";
@@ -48,7 +48,6 @@ export function createLocalDatabase(directory = localDataDirectory()) {
     created_at TEXT NOT NULL, updated_at TEXT NOT NULL
   );
   CREATE INDEX IF NOT EXISTS customers_profile ON customers(profile_id);
-  CREATE UNIQUE INDEX IF NOT EXISTS customer_phone ON customers(profile_id,phone) WHERE phone<>'';
   CREATE UNIQUE INDEX IF NOT EXISTS customer_aadhaar ON customers(profile_id,aadhaar) WHERE aadhaar<>'';`);
     if (!database.prepare("PRAGMA table_info(customers)").all().some(column => column.name === "customer_number")) {
       database.exec("ALTER TABLE customers ADD COLUMN customer_number INTEGER CHECK(customer_number IS NULL OR (typeof(customer_number)='integer' AND customer_number>0))");
@@ -56,6 +55,11 @@ export function createLocalDatabase(directory = localDataDirectory()) {
     if (!database.prepare("PRAGMA table_info(customers)").all().some(column => column.name === "canonical_id")) {
       database.exec("ALTER TABLE customers ADD COLUMN canonical_id TEXT");
     }
+    if (!database.prepare("PRAGMA table_info(customers)").all().some(column => column.name === "phone_shared")) {
+      // Set when staff confirm this person shares a phone with someone else, e.g. family.
+      database.exec("ALTER TABLE customers ADD COLUMN phone_shared INTEGER NOT NULL DEFAULT 0");
+    }
+    database.exec("DROP INDEX IF EXISTS customer_phone");
     database.exec(`CREATE TABLE IF NOT EXISTS customer_number_sequence (
       singleton INTEGER PRIMARY KEY CHECK(singleton=1), last_number INTEGER NOT NULL CHECK(last_number>=0)
     );
@@ -129,8 +133,10 @@ export function createLocalDatabase(directory = localDataDirectory()) {
     for (const indexes of byPhone.values()) {
       // A phone shared by different Aadhaar holders cannot identify its blank-ID
       // records either. Never let a blank Aadhaar bridge two different people.
-      const keys = new Set(indexes.flatMap(index => [...aadhaars[rootOf(index)]]));
-      if (keys.size <= 1) indexes.slice(1).forEach(index => join(indexes[0], index));
+      // Someone confirmed as sharing this phone is never merged because of it.
+      const joinable = indexes.filter(index => !customers[index].phone_shared);
+      const keys = new Set(joinable.flatMap(index => [...aadhaars[rootOf(index)]]));
+      if (keys.size <= 1) joinable.slice(1).forEach(index => join(joinable[0], index));
     }
     const groups = new Map<number, Row[]>();
     customers.forEach((row, index) => { const root = rootOf(index); groups.set(root, [...(groups.get(root) ?? []), row]); });
@@ -185,6 +191,7 @@ export function createLocalDatabase(directory = localDataDirectory()) {
   const issue = (ownerId: string, input: Row) => {
     const bill = billSchema.parse(input);
     if (bill.items.some(item => !item.metal)) throw new Error("Choose Gold or Silver for every item.");
+    if (bill.deliveryDate && bill.deliveryDate < bill.billDate) throw new Error("Delivery date cannot be before the bill date.");
     const profile = rows("business_profiles").find(p => p.owner_id === ownerId && p.account_slot === slot(input.accountSlot));
     if (!profile) throw new Error("Business profile is required");
     const link = customerLink(profile.id, bill.customerId);
@@ -239,9 +246,10 @@ export function createLocalDatabase(directory = localDataDirectory()) {
     const input = keepsBlanks ? historicalBillEditSchema.parse(value) : billSchema.parse(value);
     const link = input.customerId === undefined ? {} : customerLink(profile.id, input.customerId);
     if (input.items.some(item => !item.metal)) throw new Error("Choose Gold or Silver for every item.");
+    if (input.deliveryDate && input.deliveryDate < input.billDate) throw new Error("Delivery date cannot be before the bill date.");
     const total = (key: "assessedValue" | "loanAmount") => input.items.some(item => item[key] === null) ? null : input.items.reduce((sum, item) => sum + Math.round(Number(item[key]) * 100), 0) / 100;
     const stillMissing = keepsBlanks && (!input.fatherName || input.items.some(item => item.grams === null || item.assessedValue === null));
-    const deliverySummary = input.deliveryNo && input.deliveryDate && input.deliveryDate >= input.billDate ? calculateRepayment(input.items, input.billDate, input.deliveryDate) : null;
+    const deliverySummary = input.deliveryNo && input.deliveryDate ? calculateRepayment(input.items, input.billDate, input.deliveryDate) : null;
     save("bills", { ...original, ...link, historical_missing_details: stillMissing, bill_date: input.billDate, delivery_no: input.deliveryNo || null, delivery_date: input.deliveryDate || null, delivery_summary: original.historical_delivery ? original.delivery_summary ?? null : deliverySummary, customer_name: input.customerName, father_name: input.fatherName || null, address: input.address, phone: input.phone, government_id: input.governmentId === undefined ? original.government_id ?? null : input.governmentId || null, total_assessed_value: total("assessedValue"), total_loan_amount: total("loanAmount"), excel_sync_status: "pending", excel_sync_error: null, pdf_storage_path: null, pdf_error: null, delivery_pdf_storage_path: null, delivery_pdf_error: null, updated_at: new Date().toISOString() });
     database.prepare("DELETE FROM records WHERE table_name='bill_items' AND json_extract(body,'$.bill_id')=?").run(original.id);
     input.items.forEach((item, index) => save("bill_items", { id: randomUUID(), bill_id: original.id, metal: item.metal, particulars: item.particulars, remarks: item.remarks, grams: item.grams, assessed_value: item.assessedValue, loan_amount: item.loanAmount, sort_order: index }));
@@ -366,7 +374,13 @@ export function createLocalDatabase(directory = localDataDirectory()) {
         if (matches.length > 1) throw new Error("This phone belongs to multiple customers. Enter Aadhaar to choose the same customer.");
         return matches[0]?.customer ?? null;
       }),
-      save: (account: number, value: unknown, id?: string): Customer => {
+      phoneMatches: (account: number, value: string): Customer[] => transaction(() => {
+        customerProfile(account);
+        const { phone } = customerSchema.pick({ phone: true }).parse({ phone: value });
+        if (!phone) return [];
+        return customerIdentities().filter(identity => identity.aliases.some(alias => alias.phone === phone)).map(identity => identity.customer);
+      }),
+      save: (account: number, value: unknown, id?: string, options: { allowSharedPhone?: boolean } = {}): Customer => {
         const input = customerSchema.parse(value);
         return transaction(() => {
           const profileId = customerProfile(account);
@@ -376,8 +390,17 @@ export function createLocalDatabase(directory = localDataDirectory()) {
           const aadhaarMatches = input.aadhaar ? identities.filter(identity => identity.aadhaars.includes(input.aadhaar)) : [];
           const phoneMatches = input.phone ? identities.filter(identity => identity.aliases.some(alias => alias.phone === input.phone)) : [];
           const phoneAadhaars = new Set([...phoneMatches.flatMap(identity => identity.aadhaars), ...(input.aadhaar ? [input.aadhaar] : [])]);
-          if (!input.aadhaar && phoneMatches.length > 1) throw new Error("This phone belongs to multiple customers. Enter Aadhaar to choose the same customer.");
-          const matches = aadhaarMatches.length ? aadhaarMatches : phoneAadhaars.size <= 1 ? phoneMatches : [];
+          // Same phone but different details: never quietly treat this person as the saved one.
+          const nameKey = (text: unknown) => String(text ?? "").trim().toLocaleLowerCase();
+          const others = phoneMatches.filter(identity => identity !== previous);
+          const sameDetails = (identity: (typeof others)[number]) => identity.aliases.some(alias => nameKey(alias.name) === nameKey(input.name) && nameKey(alias.father_name) === nameKey(input.fatherName));
+          const provenDifferent = Boolean(input.aadhaar) && others.every(identity => identity.aadhaars.length > 0);
+          const sharesPhone = !aadhaarMatches.length && others.length > 0 && !others.some(sameDetails) && !provenDifferent;
+          if (sharesPhone && !options.allowSharedPhone) throw new SharedPhoneError(others[0].customer);
+          const exactRepeat = !previous && !aadhaarMatches.length && !input.aadhaar ? others.filter(sameDetails) : [];
+          if (exactRepeat.length === 1) return exactRepeat[0].customer;
+          if (!sharesPhone && !input.aadhaar && phoneMatches.length > 1) throw new Error("This phone belongs to multiple customers. Enter Aadhaar to choose the same customer.");
+          const matches = aadhaarMatches.length ? aadhaarMatches : sharesPhone ? [] : phoneAadhaars.size <= 1 ? phoneMatches : [];
           if (matches.some(identity => identity !== previous) && previous) throw new Error("A customer with this phone or Aadhaar already exists. Choose that customer instead.");
           if (!previous && matches.length > 1) throw new Error("This phone belongs to multiple customers. Enter Aadhaar to choose the same customer.");
           if (!previous && matches.length === 1) {
@@ -389,8 +412,8 @@ export function createLocalDatabase(directory = localDataDirectory()) {
           const customerId = previous?.detailId ?? randomUUID();
           const previousTime = previous ? Date.parse(previous.customer.updatedAt) : NaN;
           const now = new Date(Math.max(Date.now(), Number.isFinite(previousTime) ? previousTime + 1 : 0)).toISOString();
-          database.prepare("INSERT INTO customers(id,profile_id,name,father_name,address,phone,aadhaar,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,father_name=excluded.father_name,address=excluded.address,phone=excluded.phone,aadhaar=excluded.aadhaar,updated_at=excluded.updated_at")
-            .run(customerId, profileId, input.name, input.fatherName, input.address, input.phone, input.aadhaar, previous?.customer.createdAt ?? now, now);
+          database.prepare("INSERT INTO customers(id,profile_id,name,father_name,address,phone,aadhaar,created_at,updated_at,phone_shared) VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,father_name=excluded.father_name,address=excluded.address,phone=excluded.phone,aadhaar=excluded.aadhaar,updated_at=excluded.updated_at,phone_shared=MAX(phone_shared,excluded.phone_shared)")
+            .run(customerId, profileId, input.name, input.fatherName, input.address, input.phone, input.aadhaar, previous?.customer.createdAt ?? now, now, sharesPhone ? 1 : 0);
           return findIdentity(customerId)!.customer;
         });
       },

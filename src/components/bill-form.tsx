@@ -32,8 +32,16 @@ export function BillForm({ onCreated, editingSource, accountSlot }: { onCreated:
   const [customerNotice, setCustomerNotice] = useState("");
   const [customerCode, setCustomerCode] = useState(editingSource?.customerCode ?? "");
   const [lookingUpCustomer, setLookingUpCustomer] = useState(false);
+  const [phoneChoices, setPhoneChoices] = useState<Customer[]>([]);
   const customerLookupGeneration = useRef(0);
   const filledCustomer = useRef<Customer | null>(null);
+  function fillCustomer(customer: Customer) {
+    setForm(current => ({ ...current, customerName: customer.name, fatherName: customer.fatherName, address: customer.address, phone: customer.phone, governmentId: customer.aadhaar, customerId: customer.id }));
+    setCustomerCode(customer.customerCode);
+    filledCustomer.current = customer;
+    setPhoneChoices([]);
+    setCustomerNotice(`Details filled from saved customer: ${customer.name}.`);
+  }
   const [jewellery, setJewellery] = useState<string[]>([...starterJewellery]);
   const [catalogueError, setCatalogueError] = useState("");
   const [catalogueRefresh, setCatalogueRefresh] = useState(0);
@@ -56,12 +64,12 @@ export function BillForm({ onCreated, editingSource, accountSlot }: { onCreated:
       api(`/api/customers?${customerLookup.field}=${encodeURIComponent(customerLookup.value)}`, accountSlot)
         .then(result => {
           if (!active || generation !== customerLookupGeneration.current) return;
+          // A phone can belong to several family members, so staff pick the person.
+          const matches: Customer[] = result.matches ?? [];
+          if (matches.length) { setPhoneChoices(matches); setCustomerNotice("This phone is saved for the customer below. Is it the same person?"); return; }
           const customer: Customer | null = result.customer;
           if (!customer) { setCustomerNotice("No saved customer found. Enter the details below, or add the customer in the Customer tab."); return; }
-          setForm(current => ({ ...current, customerName: customer.name, fatherName: customer.fatherName, address: customer.address, phone: customer.phone, governmentId: customer.aadhaar, customerId: customer.id }));
-          setCustomerCode(customer.customerCode);
-          filledCustomer.current = customer;
-          setCustomerNotice(`Details filled from saved customer: ${customer.name}.`);
+          fillCustomer(customer);
         })
         .catch(failure => { if (active && generation === customerLookupGeneration.current) setCustomerNotice(failure instanceof Error ? failure.message : "Unable to find customer. You can enter the details manually."); })
         .finally(() => { if (active && generation === customerLookupGeneration.current) setLookingUpCustomer(false); });
@@ -92,7 +100,7 @@ export function BillForm({ onCreated, editingSource, accountSlot }: { onCreated:
     customerLookupGeneration.current++;
     const previous = filledCustomer.current;
     filledCustomer.current = null;
-    setCustomerCode("");
+    setCustomerCode(""); setPhoneChoices([]);
     setForm(current => ({ ...current, ...(previous ? { customerName: "", fatherName: "", address: "", phone: "", governmentId: "" } : {}), customerId: "", [field === "phone" ? "phone" : "governmentId"]: value }));
     setCustomerLookup({ field, value });
   }
@@ -159,7 +167,7 @@ export function BillForm({ onCreated, editingSource, accountSlot }: { onCreated:
   return <section className="panel">
     <form onSubmit={submit}>
       <div className="section-heading bill-form-heading"><div><p className="eyebrow">{editingSource ? `ACCOUNT ${accountSlot} · ${localStorageEnabled ? "EDIT" : "REPLACE"} BILL #${editingSource.billNumber}` : `ACCOUNT ${accountSlot} · NEW BILL`}</p><h2>Customer and pledge details</h2>{editingSource && <p>{localStorageEnabled ? "Saving updates this bill without changing its number." : "Saving voids the original and issues a new bill number."}</p>}{keepsBlanks && <p className="muted">Imported from your old register. Details you leave blank stay &quot;Not recorded&quot;.</p>}</div><label className="bill-date-field">Bill date<input type="date" value={form.billDate} onChange={(e) => set("billDate", e.target.value)} required /></label></div>
-      {localStorageEnabled && <p className="muted customer-lookup-help">Enter a saved customer&apos;s mobile number or Aadhaar to fill their details automatically.</p>}
+      {localStorageEnabled && <p className="muted customer-lookup-help">Enter a saved customer&apos;s Aadhaar to fill their details automatically, or their mobile number to choose them.</p>}
       <div className="form-grid customer-details-grid">
         <label>Customer name<input aria-label="Customer name" value={form.customerName} onChange={(e) => set("customerName", e.target.value)} required /></label>
         <label>Father&apos;s name<input aria-label="Customer father's name" value={form.fatherName} onChange={(e) => set("fatherName", e.target.value)} required={!keepsBlanks} /></label>
@@ -169,6 +177,7 @@ export function BillForm({ onCreated, editingSource, accountSlot }: { onCreated:
         <label className="wide">Address<textarea aria-label="Customer address" value={form.address} onChange={(e) => set("address", e.target.value)} required={!keepsBlanks} /></label>
       </div>
       {customerNotice && <p className="notice customer-lookup-notice" role="status">{customerNotice}</p>}
+      {phoneChoices.length > 0 && <div className="form-actions" role="group" aria-label="Choose saved customer">{phoneChoices.map(customer => <button type="button" className="secondary" key={customer.id} disabled={busy} onClick={() => fillCustomer(customer)}>Use {customer.name}, father {customer.fatherName} ({customer.customerCode})</button>)}<button type="button" className="secondary" disabled={busy} onClick={() => { setPhoneChoices([]); setCustomerNotice("Enter this customer's details below."); }}>A different person</button></div>}
       {catalogueError && <p className="error" role="alert">{catalogueError} <button type="button" className="text-button" onClick={() => setCatalogueRefresh(value => value + 1)}>Retry jewellery list</button></p>}
       <div className="item-table-wrap"><table className="item-table"><thead><tr>{localStorageEnabled && <th>Metal</th>}<th>Particulars</th>{localStorageEnabled && <th>Remarks <span className="muted">(optional)</span></th>}<th>Gram</th><th>Loan amount (₹)</th><th>Assessed value (₹)</th><th /></tr></thead><tbody>{form.items.map((row, index) => <tr key={index}>
         {localStorageEnabled && <td><div className="metal-choice" role="group" aria-label={`Metal for item ${index + 1}`}>{(["Gold", "Silver"] as const).map((metal) => <label key={metal} className={row.metal === metal ? "selected" : ""}><input type="radio" name={`metal-${index}`} value={metal} checked={row.metal === metal} onChange={() => setMetal(index, metal)} required />{metal}</label>)}</div></td>}

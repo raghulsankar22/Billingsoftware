@@ -7,8 +7,9 @@ function id(value: unknown): value is string {
   return typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }
 function positiveInteger(value: unknown): value is number { return typeof value === "number" && Number.isSafeInteger(value) && value > 0 && value <= 2147483646; }
-function moneyPaise(value: unknown): number | null {
-  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0 || value > 100_000_000) return null;
+/** The ₹10 crore limit applies to each item; a bill's total may legitimately exceed it. */
+function moneyPaise(value: unknown, maximum = 100_000_000): number | null {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0 || value > maximum) return null;
   const paise = Math.round(value * 100);
   return Math.abs(paise / 100 - value) <= 0.0000001 ? paise : null;
 }
@@ -43,7 +44,7 @@ export function checkMigrationSnapshot(snapshot: MigrationSnapshot): MigrationCh
     if (!positiveInteger(bill.bill_number) || numbers.has(numberKey)) issues.push(`Bill ${index + 1}: invalid or duplicate bill number`);
     else numbers.add(numberKey);
     if (bill.customer_id != null && (!id(bill.customer_id) || !customers.has(bill.customer_id))) issues.push(`Bill ${index + 1}: linked customer not found`);
-    const value = moneyPaise(bill.total_loan_amount);
+    const value = moneyPaise(bill.total_loan_amount, Number.MAX_SAFE_INTEGER / 100);
     if (value === null || !Number.isSafeInteger(loanPaise + value)) issues.push(`Bill ${index + 1}: invalid loan amount`);
     else loanPaise += value;
   });
@@ -60,7 +61,7 @@ export function checkMigrationSnapshot(snapshot: MigrationSnapshot): MigrationCh
     const items = itemsByBill.get(bill.id) ?? [];
     if (!items.length) { issues.push(`Bill ${index + 1}: no item records`); return; }
     const amounts = items.map(item => moneyPaise(item.loan_amount));
-    if (amounts.every(value => value !== null) && amounts.reduce<number>((sum, value) => sum + (value ?? 0), 0) !== moneyPaise(bill.total_loan_amount)) issues.push(`Bill ${index + 1}: item amounts do not match the bill total`);
+    if (amounts.every(value => value !== null) && amounts.reduce<number>((sum, value) => sum + (value ?? 0), 0) !== moneyPaise(bill.total_loan_amount, Number.MAX_SAFE_INTEGER / 100)) issues.push(`Bill ${index + 1}: item amounts do not match the bill total`);
     if (bill.replacement_for_id != null) {
       const original = typeof bill.replacement_for_id === "string" ? bills.get(bill.replacement_for_id) : undefined;
       if (!original || original.profile_id !== bill.profile_id) issues.push(`Bill ${index + 1}: replacement bill link is invalid`);

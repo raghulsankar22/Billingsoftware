@@ -46,16 +46,20 @@ describe("customer API", () => {
     const { customer } = await created.json();
     expect(customer).toMatchObject({ ...details, customerCode: "C000001" });
     expect(await (await GET(request("GET", "account=1&q=TEST%20CUSTOMER"))).json()).toEqual({ customers: [customer] });
-    for (const query of ["phone=%2B91%2098765%2043210", "aadhaar=1234-5678-9012", "phone=9876543210&aadhaar=123456789012"]) {
+    for (const query of ["aadhaar=1234-5678-9012", "phone=9876543210&aadhaar=123456789012"]) {
       const response = await GET(request("GET", `account=1&${query}`));
       expect(response.headers.get("cache-control")).toBe("no-store");
       expect(await response.json()).toEqual({ customer });
     }
+    // A phone alone lists the saved people for staff to choose from; it never links automatically.
+    const byPhone = await GET(request("GET", "account=1&phone=%2B91%2098765%2043210"));
+    expect(byPhone.headers.get("cache-control")).toBe("no-store");
+    expect(await byPhone.json()).toEqual({ customer: null, matches: [customer] });
     const updated = await PATCH(request("PATCH", "account=1", { ...customer, name: "Changed Customer", phone: "", aadhaar: "" }));
     expect(updated.status).toBe(200);
     expect(updated.headers.get("cache-control")).toBe("no-store");
     expect((await updated.json()).customer).toMatchObject({ id: customer.id, customerCode: customer.customerCode, name: "Changed Customer", phone: "", aadhaar: "" });
-    expect(await (await GET(request("GET", "account=1&phone=9876543210"))).json()).toEqual({ customer: null });
+    expect(await (await GET(request("GET", "account=1&phone=9876543210"))).json()).toEqual({ customer: null, matches: [] });
     expect(mocks.requireUser).toHaveBeenCalledTimes(7);
   });
   it("rejects origin/authentication failures, foreign owners and cloud access before opening customer records", async () => {
@@ -77,12 +81,23 @@ describe("customer API", () => {
   it("shares customers and edits while rejecting missing profiles and invalid accounts", async () => {
     const saved = db.customers.save(1, details);
     expect(await (await GET(request("GET", "account=2"))).json()).toEqual({ customers: [saved] });
-    expect(await (await GET(request("GET", "account=2&phone=9876543210"))).json()).toEqual({ customer: saved });
+    expect(await (await GET(request("GET", "account=2&phone=9876543210"))).json()).toEqual({ customer: null, matches: [saved] });
     expect((await PATCH(request("PATCH", "account=2", { ...details, id: saved.id }))).status).toBe(200);
     for (const account of ["0", "-1", "1.2", "01", "2147483647", "invalid", "4"]) {
       expect((await POST(request("POST", `account=${account}`, details))).status).toBe(400);
     }
     expect(db.customers.list(1)).toMatchObject([{ id: saved.id }]);
+  });
+  it("asks before saving a different person under a saved phone, then saves once confirmed", async () => {
+    const saved = db.customers.save(1, { ...details, aadhaar: "" });
+    const relative = { ...details, name: "Family Member", aadhaar: "" };
+    const asked = await POST(request("POST", "account=1", relative));
+    expect(asked.status).toBe(409);
+    expect((await asked.json()).sharedPhone).toMatchObject({ name: saved.name, customerCode: saved.customerCode });
+    expect(db.customers.list(1)).toHaveLength(1);
+    const confirmed = await POST(request("POST", "account=1", { ...relative, allowSharedPhone: true }));
+    expect(confirmed.status).toBe(201);
+    expect(db.customers.list(1)).toHaveLength(2);
   });
   it("reuses duplicate or incomplete writes, invalid lookup and conflicting identifiers", async () => {
     const saved = db.customers.save(1, details);

@@ -2,12 +2,15 @@
   "name": "finance-billing",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": ">=22.18"
+  },
   "scripts": {
     "dev": "next dev --hostname 127.0.0.1 --port 3100",
     "preview:website": "node scripts/preview-website.mjs",
     "build": "next build",
     "start": "next start --hostname 127.0.0.1 --port 3100",
-    "lint": "next lint",
+    "lint": "eslint .",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "check:configuration": "node scripts/check-configuration.mjs",
@@ -29,12 +32,15 @@
     "zod": "^3.24.4"
   },
   "devDependencies": {
+    "@eslint/eslintrc": "^3.3.7",
     "@types/node": "^22.15.3",
     "@types/pdfkit": "0.17.3",
     "@types/react": "^19.1.2",
     "@types/react-dom": "^19.1.2",
     "electron": "45.1.0",
     "electron-builder": "26.18.0",
+    "eslint": "^9.39.5",
+    "eslint-config-next": "15.5.27",
     "js-yaml": "4.1.1",
     "npm": "11.6.2",
     "typescript": "^5.8.3",

@@ -8,7 +8,8 @@ export function deliveryBillHistory(bills: Bill[], search = ""): Bill[] {
     if (!isDelivered(bill)) return false;
     if (!query) return true;
     const [year, month, day] = (bill.deliveryDate ?? "").split("-");
-    return [bill.deliveryNo, String(bill.billNumber), bill.deliveryDate, `${day}/${month}/${year}`, `${day}-${month}-${year}`, bill.customerName, bill.phone, ...bill.items.map(item => item.particulars)]
+    const dates = bill.deliveryDate ? [bill.deliveryDate, `${day}/${month}/${year}`, `${day}-${month}-${year}`] : [];
+    return [bill.deliveryNo, String(bill.billNumber), ...dates, bill.customerName, bill.phone, ...bill.items.map(item => item.particulars)]
       .some(value => value?.toLocaleLowerCase().includes(query));
   }).sort((first, second) => (second.deliveryNo ?? "").localeCompare(first.deliveryNo ?? "", "en", { numeric: true }) || (second.deliveryDate ?? "").localeCompare(first.deliveryDate ?? "") || second.billNumber - first.billNumber);
 }

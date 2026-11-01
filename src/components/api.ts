@@ -14,6 +14,6 @@ export async function api(path: string, accountSlot: AccountSlot, init?: Request
   const response = await fetch(withAccountSlot(path, accountSlot), { ...init, headers: { "content-type": "application/json", ...await requestHeaders(), ...init?.headers } });
   const payload = await response.json();
   if (response.status === 401 && localStorageEnabled && typeof window !== "undefined") window.dispatchEvent(new Event("billing-session-expired"));
-  if (!response.ok) throw new Error(payload.error || "Request failed");
+  if (!response.ok) throw Object.assign(new Error(payload.error || "Request failed"), { status: response.status, payload });
   return payload;
 }

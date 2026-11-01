@@ -3,8 +3,7 @@
 import { useState } from "react";
 import type { AccountSlot } from "@/lib/account-url";
 import { api } from "./api";
-import { localStorageEnabled } from "@/lib/storage-mode";
-const extendedAccounts = localStorageEnabled || process.env.NEXT_PUBLIC_BILLING_CLOUD_MULTIUSER === "1";
+import { extendedAccounts } from "@/lib/storage-mode";
 
 type Profile = { business_name: string; address: string; phone: string; logo_url?: string | null; license_number?: string | null; next_bill_number: number };
 export function ProfileForm({ profile, accountSlot, onSaved, creatingAccount = false, onCancel }: { profile: Profile | null; accountSlot: AccountSlot; onSaved: (savedSlot?: AccountSlot) => void; creatingAccount?: boolean; onCancel?: () => void }) {

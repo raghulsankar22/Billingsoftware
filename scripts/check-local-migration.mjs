@@ -15,8 +15,9 @@ const checks = [], ids = new Map(), collisions = [];
 for (const directory of directories) {
   const filename = join(directory, 'billing.sqlite');
   if (!existsSync(filename)) continue;
-  const db = new DatabaseSync(filename, { readOnly: true });
+  let db;
   try {
+    db = new DatabaseSync(filename, { readOnly: true });
     db.exec('BEGIN');
     const read = table => db.prepare('SELECT body FROM records WHERE table_name=? ORDER BY id').all(table).map(row => JSON.parse(row.body));
     const snapshot = {
@@ -32,9 +33,9 @@ for (const directory of directories) {
     checks.push(result);
     db.exec('COMMIT');
   } catch {
-    try { db.exec('ROLLBACK'); } catch { /* No transaction to roll back. */ }
+    try { db?.exec('ROLLBACK'); } catch { /* No transaction to roll back. */ }
     checks.push({ ok: false, counts: null, loanPaise: null, issues: ['Unable to inspect one local data store.'] });
-  } finally { db.close(); }
+  } finally { db?.close(); }
 }
 const result = { ok: checks.length > 0 && checks.every(check => check.ok) && !collisions.length, stores: checks, issues: [...new Set(collisions)] };
 console.log(JSON.stringify(result, null, 2));

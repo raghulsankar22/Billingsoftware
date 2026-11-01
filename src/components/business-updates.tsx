@@ -7,7 +7,7 @@ import { billingPeriod, billingToday, businessUpdates, type UpdatePeriod } from 
 import { formatINR } from "@/lib/money";
 import { api } from "./api";
 import { JewelInventory } from "./jewel-inventory";
-import { isDelivered } from "@/lib/delivery-status";
+import { deliveryNumberLabel, isDelivered } from "@/lib/delivery-status";
 
 const labels: Record<UpdatePeriod, string> = { yesterday: "Yesterday", daily: "Today", weekly: "Weekly", monthly: "Monthly", yearly: "Yearly" };
 const periods = ["yesterday", "daily", "weekly", "monthly", "yearly"] as const;
@@ -98,7 +98,7 @@ export function BusinessUpdates({ accountSlot, onBill, onDelivery, onExportExcel
           <td><button className="text-button" onClick={() => onBill(bill)}>Open</button></td>
         </tr>)}{!report.loans.length && <tr><td colSpan={9} className="empty">{busy ? "Loading…" : "No loan bills recorded in this period."}</td></tr>}</tbody>
       </table></div>
-      <h3>Delivery bills</h3><div className="item-table-wrap"><table className="history-table"><thead><tr><th>Delivery Date</th><th>Delivery No.</th><th>Bill No.</th><th>Customer</th><th>Principal</th><th>Interest</th><th>Total to collect</th><th /></tr></thead><tbody>{report.deliveries.map(({ bill, collection }) => <tr key={bill.id}><td>{displayDate(bill.deliveryDate!)}</td><td>#{bill.deliveryNo}</td><td>#{bill.billNumber}{bill.status === "void" && <small>Original bill voided</small>}</td><td>{bill.customerName}</td><td>{formatINR(collection?.principal ?? bill.totalLoanAmount)}</td><td>{collection?.interest == null ? "—" : formatINR(collection.interest)}</td><td>{collection?.total == null ? "—" : formatINR(collection.total)}</td><td><button className="text-button" onClick={() => onDelivery(bill)}>Open</button></td></tr>)}{!report.deliveries.length && <tr><td colSpan={8} className="empty">{busy ? "Loading…" : "No delivery bills in this period."}</td></tr>}</tbody></table></div>
+      <h3>Delivery bills</h3><div className="item-table-wrap"><table className="history-table"><thead><tr><th>Delivery Date</th><th>Delivery No.</th><th>Bill No.</th><th>Customer</th><th>Principal</th><th>Interest</th><th>Total to collect</th><th /></tr></thead><tbody>{report.deliveries.map(({ bill, collection }) => <tr key={bill.id}><td>{displayDate(bill.deliveryDate!)}</td><td>{deliveryNumberLabel(bill)}</td><td>#{bill.billNumber}{bill.status === "void" && <small>Original bill voided</small>}</td><td>{bill.customerName}</td><td>{formatINR(collection?.principal ?? bill.totalLoanAmount)}</td><td>{collection?.interest == null ? "—" : formatINR(collection.interest)}</td><td>{collection?.total == null ? "—" : formatINR(collection.total)}</td><td>{bill.deliveryNo && bill.deliveryDate ? <button className="text-button" onClick={() => onDelivery(bill)}>Open</button> : <button className="text-button" onClick={() => onBill(bill)}>Original bill</button>}</td></tr>)}{!report.deliveries.length && <tr><td colSpan={8} className="empty">{busy ? "Loading…" : "No delivery bills in this period."}</td></tr>}</tbody></table></div>
     </>}
     </> : <JewelInventory bills={bills} metal={section === "gold" ? "Gold" : section === "silver" ? "Silver" : undefined} busy={busy} error={error} onBill={onBill} />}
   </section>;

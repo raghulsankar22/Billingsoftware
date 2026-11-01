@@ -17,6 +17,7 @@ for (const key of ['NEXT_PUBLIC_SUPABASE_URL', 'NEXT_PUBLIC_SUPABASE_ANON_KEY', 
   if (!settings[key]) missing.push(key);
 }
 if (!settings.GOOGLE_CLIENT_ID) missing.push('GOOGLE_CLIENT_ID');
+if ((settings.BILLING_CLOUD_MULTIUSER === '1') !== (settings.NEXT_PUBLIC_BILLING_CLOUD_MULTIUSER === '1')) missing.push('BILLING_CLOUD_MULTIUSER and NEXT_PUBLIC_BILLING_CLOUD_MULTIUSER (must have the same value)');
 if ((settings.TOKEN_ENCRYPTION_KEY?.length ?? 0) < 32) missing.push('TOKEN_ENCRYPTION_KEY (at least 32 characters)');
 for (const key of ['NEXT_PUBLIC_SUPABASE_URL', 'NEXT_PUBLIC_APP_URL']) {
   if (settings[key]) {

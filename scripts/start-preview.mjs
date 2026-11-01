@@ -18,8 +18,12 @@ async function status() {
   } catch (error) { return error.cause?.code === 'ECONNREFUSED' ? 'stopped' : 'unavailable'; }
 }
 
+const wait = () => new Promise(resolve => setTimeout(resolve, 500));
+
 async function start() {
-  const initial = await status();
+  // A preview that is still compiling answers slowly: that isn't another program.
+  let initial = await status();
+  for (let attempt = 0; initial === 'unavailable' && attempt < 240; attempt++) { await wait(); initial = await status(); }
   if (initial === 'ready') return;
   if (initial !== 'stopped') throw new Error('Port 3101 is being used by another program. Close it before starting the website.');
   mkdirSync(dataDirectory, { recursive: true });
@@ -31,11 +35,11 @@ async function start() {
     });
     server.unref();
   } finally { closeSync(log); }
-  for (let attempt = 0; attempt < 60; attempt++) {
+  for (let attempt = 0; attempt < 240; attempt++) {
     const current = await status();
     if (current === 'ready') return;
     if (current === 'occupied') throw new Error('A different program is using port 3101.');
-    await new Promise(resolve => setTimeout(resolve, 500));
+    await wait();
   }
   throw new Error(`The website did not start. Check ${path.join(dataDirectory, 'preview-server.log')}.`);
 }

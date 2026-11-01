@@ -1,6 +1,6 @@
 const { app, BrowserWindow, Menu, dialog, shell } = require('electron');
-const { existsSync } = require('node:fs');
 const path = require('node:path');
+const { resolveDataDirectory } = require('./data-location.cjs');
 const { ensureBillingServer } = require('./server.cjs');
 const { isAppUrl } = require('./security.cjs');
 const { createUpdateAction } = require('./updates.cjs');
@@ -9,9 +9,18 @@ let window;
 let server;
 let quitting = false;
 const testing = !app.isPackaged && process.env.BILLING_DESKTOP_TEST === '1';
-const dataDirectory = testing && process.env.BILLING_DESKTOP_TEST_DATA
-  ? path.resolve(process.env.BILLING_DESKTOP_TEST_DATA)
-  : existsSync('D:\\') ? 'D:\\app\\data' : path.join(app.getPath('userData'), 'data');
+let dataDirectory;
+let dataLocationError;
+if (testing && process.env.BILLING_DESKTOP_TEST_DATA) dataDirectory = path.resolve(process.env.BILLING_DESKTOP_TEST_DATA);
+else {
+  try {
+    dataDirectory = resolveDataDirectory({
+      settingsFile: path.join(app.getPath('userData'), 'data-location.json'),
+      legacyDirectory: 'D:\\app\\data',
+      defaultDirectory: path.join(app.getPath('userData'), 'data'),
+    });
+  } catch (error) { dataLocationError = error; }
+}
 const port = testing ? Number(process.env.BILLING_DESKTOP_TEST_PORT || 3111) : 3100;
 if (testing) app.setPath('userData', path.join(dataDirectory, 'desktop-profile'));
 
@@ -19,6 +28,7 @@ if (!app.requestSingleInstanceLock()) app.quit();
 else {
   app.on('second-instance', () => { if (window) { if (window.isMinimized()) window.restore(); window.show(); window.focus(); } });
   app.whenReady().then(async () => {
+    if (dataLocationError) throw dataLocationError;
     server = await ensureBillingServer({
       runtimeDirectory: app.isPackaged ? path.join(process.resourcesPath, 'billing-runtime') : path.resolve(__dirname, '..', '.desktop-runtime'),
       dataDirectory, port,
@@ -58,7 +68,7 @@ else {
     await window.loadURL(server.origin);
     window.show();
     window.on('closed', () => { window = null; });
-  }).catch(error => { dialog.showErrorBox('Unable to open Finance Billing', `${error.message}\n\nYour data remains in ${dataDirectory}.`); app.quit(); });
+  }).catch(error => { dialog.showErrorBox('Unable to open Finance Billing', dataDirectory ? `${error.message}\n\nYour data remains in ${dataDirectory}.` : error.message); app.quit(); });
   app.on('window-all-closed', () => app.quit());
   app.on('before-quit', () => { quitting = true; server?.stop(); });
 }

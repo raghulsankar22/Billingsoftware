@@ -1,6 +1,6 @@
 # Windows desktop app
 
-Run the Finance Billing shortcut or install `release/1.0.13/Finance-Billing-Setup-1.0.13.exe`.
+Run the Finance Billing shortcut or install `release/1.0.14/Finance-Billing-Setup-1.0.14.exe`.
 The app opens its own window and starts its loopback-only billing server automatically.
 No internet, separate Node installation, Microsoft 365 login or web hosting is needed for daily use.
 
@@ -23,8 +23,16 @@ server that does not enforce the new sign-in.
 
 On this computer all business accounts continue to use `D:\app\data`. Customer records are
 not copied into the installer. Updates and uninstalling the desktop program do not delete
-this data directory. On computers without a D: drive, the app uses a data directory inside
-the Windows user's Finance Billing application-data directory; see File > Open billing data folder.
+this data directory. A new installation uses a data directory inside the Windows user's
+Finance Billing application-data directory; see File > Open billing data folder.
+
+The first time this version runs, it saves the folder holding the existing bills in
+`data-location.json` in the app's user-data folder and uses only that folder afterwards.
+If the folder is missing, for example on a disconnected drive, the app shows a message
+and closes instead of opening an empty ledger.
+
+`D:\app\data` is inside the code folder but ignored by Git, so Git cannot restore it.
+Never run `git clean -x` (or `-X`) in `D:\app`: it permanently deletes bills, PDFs and backups.
 
 Close billing before backing up the entire data directory to another drive. Keep both the
 database and its PDF/Excel subfolders. An offline app does not provide a cloud backup.
@@ -141,6 +149,11 @@ Looking up an already-delivered bill opens a notice showing its delivery number 
 Multiple Delivery lists all delivered bills found in the requested selection in one notice,
 including bills whose original loan was voided. Looking up or dismissing a notice does not
 record another delivery; saving remains a separate action.
+
+Family members can share a mobile number. New bill lists the saved customers for a mobile
+number so staff can choose one or enter a different person. The Customer tab asks before
+saving someone with different details under a number that is already saved. Aadhaar still
+identifies one person.
 
 For another computer or USB drive, copy a whole version folder containing its installer
 and `update.json`; use **Choose update file** in the update dialog. Older or equal versions

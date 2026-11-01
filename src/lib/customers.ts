@@ -15,6 +15,14 @@ export interface Customer extends CustomerInput {
   updatedAt: string;
 }
 
+/** The phone is saved for someone with different details: staff must decide who this is. */
+export class SharedPhoneError extends Error {
+  constructor(public readonly customer: Pick<Customer, "name" | "customerCode">) {
+    super(`This phone is already saved for ${customer.name} (${customer.customerCode}). Is this a different person?`);
+    this.name = "SharedPhoneError";
+  }
+}
+
 export function customerCode(number: number): string {
   return `C${String(number).padStart(6, "0")}`;
 }

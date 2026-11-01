@@ -18,6 +18,17 @@ it("checks totals in paise without exposing private names", () => {
   expect(JSON.stringify(result)).not.toContain("PRIVATE NAME");
 });
 
+it("accepts a bill total above ₹10 crore when each item is within the limit", () => {
+  const data = snapshot();
+  data.bills[0].total_loan_amount = 120_000_000;
+  data.items[0].loan_amount = 60_000_000;
+  data.items[1].loan_amount = 60_000_000;
+  expect(checkMigrationSnapshot(data).ok).toBe(true);
+  data.items[0].loan_amount = 100_000_001;
+  data.items[1].loan_amount = 19_999_999;
+  expect(checkMigrationSnapshot(data).issues.join()).toContain("invalid loan amount");
+});
+
 it("flags duplicate bill numbers, missing account links and mismatched totals before migration", () => {
   const data = snapshot();
   data.bills.push({ ...data.bills[0], id: randomUUID() });

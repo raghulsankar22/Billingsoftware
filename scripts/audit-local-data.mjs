@@ -17,10 +17,10 @@ function countFiles(directory, suffix) {
 }
 const usersFile = join(root, 'users.sqlite');
 if (existsSync(usersFile)) {
-  const users = openReadonly(usersFile);
-  try { result.userCount = Number(users.prepare('SELECT count(*) AS count FROM users').get().count); }
+  let users;
+  try { users = openReadonly(usersFile); result.userCount = Number(users.prepare('SELECT count(*) AS count FROM users').get().count); }
   catch { result.warnings.push('Could not count the local users database.'); }
-  finally { users.close(); }
+  finally { users?.close(); }
 }
 const stores = [root];
 const usersRoot = join(root, 'users');
@@ -30,8 +30,9 @@ if (existsSync(usersRoot)) for (const entry of readdirSync(usersRoot, { withFile
 for (const directory of stores) {
   const path = join(directory, 'billing.sqlite');
   if (!existsSync(path)) continue;
-  const db = openReadonly(path);
+  let db;
   try {
+    db = openReadonly(path);
     for (const row of db.prepare("SELECT table_name, count(*) AS count FROM records WHERE table_name IN ('business_profiles', 'bills', 'bill_items') GROUP BY table_name").all()) {
       const key = { business_profiles: 'businessProfiles', bills: 'bills', bill_items: 'billItems' }[row.table_name];
       result[key] += Number(row.count);
@@ -41,6 +42,6 @@ for (const directory of stores) {
     result.excelRegisters += countFiles(join(directory, 'registers'), '.xlsx');
     result.dataStores++;
   } catch { result.warnings.push('Could not fully inspect one local data store.'); }
-  finally { db.close(); }
+  finally { db?.close(); }
 }
 console.log(JSON.stringify(result, null, 2));

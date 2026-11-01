@@ -34,6 +34,7 @@ describe("delivery bill history", () => {
   it("includes historical deliveries with missing details without inventing collected interest", () => {
     const noNumber = { ...delivered, id: "no-number", historicalDelivery: true, deliveryNo: "" };
     const noDate = { ...delivered, id: "no-date", historicalDelivery: true, deliveryDate: "" };
+    for (const text of ["un", "de", "fi", "/"]) expect(deliveryBillHistory([{ ...noDate, customerName: "Zzz", phone: "", items: [] }], text)).toEqual([]);
     expect(deliveryBillHistory([noNumber, noDate])).toHaveLength(2);
     expect(deliveryCollection(noNumber)).toBeNull();
     expect(deliveryCollection(noDate)).toBeNull();

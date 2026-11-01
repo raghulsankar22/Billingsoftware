@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { deliveryLabel } from "@/lib/delivery-status";
 import type { Bill } from "@/lib/types";
 
 export function DeliveredBillNotice({ bills, onClose }: { bills: Bill[]; onClose: () => void }) {
@@ -15,7 +16,7 @@ export function DeliveredBillNotice({ bills, onClose }: { bills: Bill[]; onClose
     if (event.key === "Tab") { event.preventDefault(); closeButton.current?.focus(); }
   }}>
     <h2 id="delivered-notice-title">{bills.length === 1 ? "This bill has been delivered" : "These bills have been delivered"}</h2>
-    <div id="delivered-notice-details">{bills.map(bill => <p key={bill.id}><b>Bill #{bill.billNumber} · {bill.customerName}</b><br />Delivery {bill.deliveryNo ? `#${bill.deliveryNo}` : "number not recorded"} · {bill.deliveryDate || "date not recorded"}</p>)}</div>
+    <div id="delivered-notice-details">{bills.map(bill => <p key={bill.id}><b>Bill #{bill.billNumber} · {bill.customerName}</b><br />{deliveryLabel(bill)}</p>)}</div>
     <button type="button" ref={closeButton} onClick={onClose}>OK</button>
   </section></div>;
 }
