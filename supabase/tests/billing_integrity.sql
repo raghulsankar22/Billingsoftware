@@ -12,6 +12,7 @@ declare
   payload jsonb := '{"billDate":"2026-10-03","customerName":"Customer","fatherName":"Father","address":"123 Road","phone":"9876543210","totalAssessedValue":999,"totalLoanAmount":999,"items":[{"particulars":"Ring","grams":1.234,"assessedValue":100,"loanAmount":80,"sortOrder":99}]}'::jsonb;
 begin
   insert into auth.users(id) values (owner_id), (other_owner_id);
+  insert into public.billing_user_access(user_id, enabled) values (owner_id, true), (other_owner_id, true);
   perform set_config('billing_test.owner', owner_id::text, true);
   perform set_config('billing_test.other_owner', other_owner_id::text, true);
   profile_id := (public.save_business_profile(owner_id, '{"businessName":"Original business","address":"123 Road","phone":"9876543210","nextBillNumber":18}'::jsonb)->>'id')::uuid;

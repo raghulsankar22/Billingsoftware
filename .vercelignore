@@ -1,0 +1,15 @@
+.git/
+.codex/
+.env*
+data/
+backups/
+tmp/
+release/
+.desktop-runtime/
+.next/
+.next-website-*/
+.next-cloud-check/
+node_modules/
+supabase/.temp/
+mattpocock-skills-source/
+*.tsbuildinfo

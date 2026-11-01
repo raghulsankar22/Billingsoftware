@@ -17,6 +17,7 @@ export function BillOverview({ bill, onClose }: { bill: Bill; onClose: () => voi
     return current < bill.billDate ? bill.billDate : current;
   });
   const result = useMemo(() => {
+    if (bill.historicalDelivery && !bill.deliverySummary) return { repayment: null, error: "This historical bill was delivered. The interest actually collected was not recorded in the Excel file." };
     try { return { repayment: calculateRepayment(bill.items, bill.billDate, returnDate), error: "" }; }
     catch (error) { return { repayment: null, error: error instanceof Error ? error.message : "Unable to calculate interest." }; }
   }, [bill, returnDate]);

@@ -30,9 +30,9 @@ export function DeliveryBills({ accountSlot, onOpen, onOriginal }: { accountSlot
     {error && <p className="error" role="alert">{error}</p>}
     <div className="item-table-wrap"><table className="history-table"><thead><tr><th>Delivery No.</th><th>Delivery Date</th><th>Bill No.</th><th>Customer</th><th>Delivery remarks</th><th>Principal</th><th>Interest</th><th>Total to collect</th><th /></tr></thead>
       <tbody>{deliveries.map(bill => { const collection = deliveryCollection(bill); return <tr key={bill.id}>
-        <td>#{bill.deliveryNo}</td><td>{bill.deliveryDate}</td><td>#{bill.billNumber}{bill.status === "void" && <small>Original bill voided</small>}</td>
+        <td>{bill.deliveryNo ? `#${bill.deliveryNo}` : "Not recorded"}</td><td>{bill.deliveryDate || "Not recorded"}</td><td>#{bill.billNumber}{bill.status === "void" && <small>Original bill voided</small>}</td>
         <td><b>{bill.customerName}</b>{bill.phone && <small>{bill.phone}</small>}</td><td>{bill.deliveryBillReceiptStatus ? billReceiptLabels[bill.deliveryBillReceiptStatus] : "Not recorded"}</td><td>{formatINR(collection?.principal ?? bill.totalLoanAmount)}</td><td>{collection?.interest == null ? "—" : formatINR(collection.interest)}</td><td>{collection?.total == null ? "—" : formatINR(collection.total)}</td>
-        <td className="row-actions"><button className="text-button" onClick={() => onOpen(bill)}>Open</button><button className="text-button" onClick={() => onOriginal(bill)}>Original bill</button></td>
+        <td className="row-actions">{bill.deliveryNo && bill.deliveryDate && <button className="text-button" onClick={() => onOpen(bill)}>Open</button>}<button className="text-button" onClick={() => onOriginal(bill)}>Original bill</button></td>
       </tr>; })}{!deliveries.length && <tr><td colSpan={9} className="empty">{busy ? "Loading delivery bills…" : query ? "No delivery bills match your search." : "No delivery bills recorded yet."}</td></tr>}</tbody>
     </table></div>
     <p className="muted collection-note">Amounts are for the saved delivery date.</p>

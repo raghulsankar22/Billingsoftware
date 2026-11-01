@@ -53,6 +53,10 @@ export type Bill = BillInput & {
   businessSnapshot?: BusinessSnapshot;
   deliverySummary?: RepaymentSummary;
   deliveryBillReceiptStatus?: BillReceiptStatus;
+  /** An old delivery recorded from a register, even if its number or date was absent. */
+  historicalDelivery?: boolean;
+  historicalMissingDetails?: boolean;
+  historicalImport?: boolean;
 };
 
 export const registerHeaders = [

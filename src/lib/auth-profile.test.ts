@@ -5,7 +5,7 @@ import { createAdminSupabase } from "./supabase";
 const mode = vi.hoisted(() => ({ local: true }));
 vi.mock("./storage-mode", () => ({ get localStorageEnabled() { return mode.local; } }));
 vi.mock("./supabase", () => ({ createAdminSupabase: vi.fn() }));
-afterEach(() => { mode.local = true; vi.clearAllMocks(); });
+afterEach(() => { mode.local = true; vi.clearAllMocks(); vi.unstubAllEnvs(); });
 
 describe("business profile account access", () => {
   it("looks up added local accounts with both owner and slot filters", async () => {
@@ -25,5 +25,13 @@ describe("business profile account access", () => {
     mode.local = false;
     await expect(requireOwnerProfile("owner", 4)).rejects.toThrow("Choose a valid business account");
     expect(createAdminSupabase).not.toHaveBeenCalled();
+  });
+  it("looks up added cloud accounts under their signed-in owner when enabled", async () => {
+    mode.local = false; vi.stubEnv("BILLING_CLOUD_MULTIUSER", "1");
+    const result = { data: { id: "cloud-profile", account_slot: 4 }, error: null };
+    const query = { select: vi.fn().mockReturnThis(), eq: vi.fn().mockReturnThis(), maybeSingle: vi.fn().mockResolvedValue(result) };
+    vi.mocked(createAdminSupabase).mockReturnValue({ from: vi.fn().mockReturnValue(query) } as unknown as ReturnType<typeof createAdminSupabase>);
+    await expect(requireOwnerProfile("owner-a", 4)).resolves.toEqual(result.data);
+    expect(query.eq.mock.calls).toEqual([["owner_id", "owner-a"], ["account_slot", 4]]);
   });
 });

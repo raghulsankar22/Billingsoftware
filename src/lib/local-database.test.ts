@@ -16,6 +16,65 @@ async function issue(db: ReturnType<typeof open>, input: Record<string, unknown>
 afterEach(() => { for (const { directory, db } of opened.splice(0)) { db.close(); rmSync(directory, { recursive: true, force: true }); } });
 
 describe("durable local ledger", () => {
+  it("atomically queues edits with their previous revision and handles retries safely", async () => {
+    const db = open(); const business = await profile(db);
+    const device = randomUUID(), createId = randomUUID(), editId = randomUUID();
+    db.sync.saveAssignment(business.id, device, 1, { nextBillNumber: 1, nextDeliveryNumber: 1 });
+    const created = await db.rpc("create_bill_with_sync", { p_owner_id: localOwnerId, p_device_id: device, p_issuer_epoch: 1, p_operation_id: createId, p_bill: { ...bill, accountSlot: 1 } });
+    expect(created.error).toBeNull();
+    const params = { p_owner_id: localOwnerId, p_device_id: device, p_operation_id: editId, p_bill_id: created.data.id, p_bill: { ...bill, accountSlot: 1, customerName: "Updated Customer" } };
+    expect((await db.rpc("edit_bill_with_sync", params)).error).toBeNull();
+    const pending = db.sync.pending(business.id);
+    expect(pending).toHaveLength(2);
+    expect(pending[1]).toMatchObject({ id: editId, action: "update", baseOperationId: createId, payload: { billNumber: 1, customerName: "Updated Customer" } });
+    expect((await db.rpc("edit_bill_with_sync", params)).error).toBeNull();
+    expect((await db.rpc("edit_bill_with_sync", { ...params, p_bill: { ...params.p_bill, customerName: "Different" } })).error?.message).toContain("different bill edit");
+    expect(db.sync.pending(business.id)).toHaveLength(2);
+    const secondId = randomUUID();
+    expect((await db.rpc("edit_bill_with_sync", { ...params, p_operation_id: secondId, p_bill: { ...params.p_bill, customerName: "Second Edit" } })).error).toBeNull();
+    expect(db.sync.pending(business.id)[2]).toMatchObject({ id: secondId, baseOperationId: editId });
+    const untracked = await issue(db);
+    const failed = await db.rpc("edit_bill_with_sync", { ...params, p_operation_id: randomUUID(), p_bill_id: untracked.data.id });
+    expect(failed.error?.message).toContain("Sync this bill");
+    expect((await db.from("bills").select().eq("id", untracked.data.id).single()).data.customer_name).toBe(bill.customerName);
+    expect(db.sync.pending(business.id)).toHaveLength(3);
+  });
+  it("atomically issues and queues an offline bill only for the designated device", async () => {
+    const db = open(); const business = await profile(db);
+    const device = randomUUID(), otherDevice = randomUUID(), operationId = randomUUID();
+    db.sync.saveAssignment(business.id, device, 1, { nextBillNumber: 1, nextDeliveryNumber: 1 });
+    const params = { p_owner_id: localOwnerId, p_device_id: device, p_issuer_epoch: 1, p_operation_id: operationId, p_bill: { ...bill, accountSlot: 1 } };
+    const first = await db.rpc("create_bill_with_sync", params);
+    expect(first.error).toBeNull();
+    const pending = db.sync.pending(business.id);
+    expect(pending).toHaveLength(1);
+    expect(pending[0]).toMatchObject({ id: operationId, deviceId: device, accountId: business.id, entityId: first.data.id, entityType: "bill", action: "create", issuerEpoch: 1, payload: { billNumber: 1, customerName: bill.customerName, items: [{ metal: "Gold", loanAmount: 8.01 }, { metal: "Silver", loanAmount: 9.02 }] } });
+    const retry = await db.rpc("create_bill_with_sync", params);
+    expect(retry.error).toBeNull(); expect(retry.data.id).toBe(first.data.id);
+    expect(db.sync.pending(business.id)).toHaveLength(1);
+    const altered = await db.rpc("create_bill_with_sync", { ...params, p_bill: { ...params.p_bill, customerName: "Different Customer" } });
+    expect(altered.error?.message).toContain("different bill request");
+    const other = await db.rpc("create_bill_with_sync", { ...params, p_device_id: otherDevice, p_operation_id: randomUUID() });
+    expect(other.error?.message).toContain("does not have offline billing permission");
+    expect((await db.from("business_profiles").select().eq("id", business.id).single()).data.next_bill_number).toBe(2);
+    expect((await db.from("bills").select().eq("profile_id", business.id)).data).toHaveLength(1);
+  });
+  it("imports historical bills atomically, preserves missing delivery details and continues numbering", async () => {
+    const db = open(); const business = await profile(db);
+    const row = { billNo: 7001, billDate: "2022-04-01", deliveryNo: "6132", deliveryDate: "2022-05-01", name: "Customer", address: "Street", particulars: "Minor Chain", phone: "", amount: 11000, metal: "Gold" };
+    const imported = await db.rpc("import_historical_bills", { p_owner_id: localOwnerId, p_account_slot: 1, p_bills: [row, { ...row, billNo: 7002, deliveryNo: "", deliveryDate: "2022-05-31" }, { ...row, billNo: 7003, deliveryNo: "", deliveryDate: null }] });
+    expect(imported.error).toBeNull();
+    const first = (await db.from("bills").select("*, bill_items(*)").eq("id", imported.data.ids[1]).single()).data;
+    expect(first).toMatchObject({ bill_number: 7002, delivery_no: null, delivery_date: "2022-05-31", historical_delivery: true, historical_missing_details: true, father_name: null, total_assessed_value: null, total_loan_amount: 11000, bill_items: [{ grams: null, assessed_value: null, metal: "Gold" }] });
+    const pending = (await db.from("bills").select().eq("id", imported.data.ids[2]).single()).data;
+    expect(pending.historical_delivery).toBe(false);
+    expect((await db.from("business_profiles").select().eq("id", business.id).single()).data).toMatchObject({ next_bill_number: 7004, next_delivery_number: 6133 });
+    const duplicate = await db.rpc("import_historical_bills", { p_owner_id: localOwnerId, p_account_slot: 1, p_bills: [{ ...row, billNo: 8000 }, row] });
+    expect(duplicate.error?.message).toContain("duplicated");
+    expect((await db.from("bills").select().eq("profile_id", business.id)).data).toHaveLength(3);
+    const next = await issue(db);
+    expect((await db.from("bills").select().eq("id", next.data.id).single()).data.bill_number).toBe(7004);
+  });
   it("persists and edits jewellery remarks and requires a delivery choice before issuing a receipt", async () => {
     const db = open(); const business = await profile(db);
     const input = { ...bill, items: [{ ...bill.items[0], remarks: " Slightly bent; missing stone " }] };

@@ -31,4 +31,11 @@ describe("delivery bill history", () => {
     expect(deliveryCollection({ ...delivered, deliveryDate: "2027-12-29", deliverySummary: summary })).toBe(summary);
     expect(deliveryCollection({ ...delivered, deliveryDate: "" })).toBeNull();
   });
+  it("includes historical deliveries with missing details without inventing collected interest", () => {
+    const noNumber = { ...delivered, id: "no-number", historicalDelivery: true, deliveryNo: "" };
+    const noDate = { ...delivered, id: "no-date", historicalDelivery: true, deliveryDate: "" };
+    expect(deliveryBillHistory([noNumber, noDate])).toHaveLength(2);
+    expect(deliveryCollection(noNumber)).toBeNull();
+    expect(deliveryCollection(noDate)).toBeNull();
+  });
 });

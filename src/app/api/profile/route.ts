@@ -4,6 +4,8 @@ import { requireUser } from "@/lib/auth";
 import { createAdminSupabase } from "@/lib/supabase";
 import { accountSlot } from "@/lib/accounts";
 import { profileSchema } from "@/lib/profile-validation";
+import { localStorageEnabled } from "@/lib/storage-mode";
+import { cloudMultiUserEnabled } from "@/lib/cloud-mode";
 
 async function GETHandler(request: Request) {
   try {
@@ -19,7 +21,8 @@ async function POSTHandler(request: Request) {
   try {
     const user = await requireUser(request);
     const input = { ...profileSchema.parse(await request.json()), accountSlot: accountSlot(request) };
-    const { data, error } = await createAdminSupabase().rpc("save_business_profile", { p_owner_id: user.id, p_profile: input });
+    const method = !localStorageEnabled && cloudMultiUserEnabled() ? "save_cloud_business_profile" : "save_business_profile";
+    const { data, error } = await createAdminSupabase().rpc(method, { p_owner_id: user.id, p_profile: input });
     if (error) throw error;
     return NextResponse.json({ profile: data });
   } catch (error) { return NextResponse.json({ error: error instanceof Error ? error.message : "Unable to save profile" }, { status: 400 }); }

@@ -11,6 +11,7 @@ import { RepaymentDetails } from "./repayment-details";
 import { MultipleDelivery } from "./multiple-delivery";
 import { DeliveredBillNotice } from "./delivered-bill-notice";
 import { deliveryBillHistory } from "@/lib/delivery-history";
+import { isDelivered } from "@/lib/delivery-status";
 
 function today() {
   const date = new Date();
@@ -101,7 +102,7 @@ function SingleBillDelivery({ accountSlot, onSaved, onOpen, onOverview, onReceip
     {message && <p className="excel-notice delivery-notice" role="status">{message}</p>}
     {warnings.map((warning) => <p className="overview-warning" key={warning}>{warning}</p>)}
     {bill && <div className="delivery-details">
-      <div className="section-heading"><div><h2>Bill #{bill.billNumber} · {bill.customerName}</h2><p className="muted">Bill date: {bill.billDate}</p></div><span className="pill">{bill.status === "void" ? bill.deliveryNo && bill.deliveryDate ? "Voided · Delivered" : "Voided" : bill.deliveryNo && bill.deliveryDate ? "Delivered" : "Awaiting delivery"}</span></div>
+      <div className="section-heading"><div><h2>Bill #{bill.billNumber} · {bill.customerName}</h2><p className="muted">Bill date: {bill.billDate}</p></div><span className="pill">{bill.status === "void" ? isDelivered(bill) ? "Voided · Delivered" : "Voided" : isDelivered(bill) ? "Delivered" : "Awaiting delivery"}</span></div>
       <div className="delivery-customer"><p><b>Father&apos;s name:</b> {bill.fatherName}</p><p><b>Address:</b> {bill.address}</p>{bill.phone && <p><b>Mobile:</b> {bill.phone}</p>}<p><b>Loan amount:</b> {formatINR(bill.totalLoanAmount)}</p></div>
       <div className="item-table-wrap"><table className="history-table"><thead><tr><th>Metal</th><th>Particulars</th><th>Gram</th><th>Assessed value</th><th>Principal</th><th>Monthly rate</th><th>Interest to collect</th></tr></thead><tbody>{bill.items.map((item, index) => <tr key={index}><td>{item.metal ?? <select aria-label={`Metal for item ${index + 1}`} value={itemMetals[index] ?? ""} disabled={Boolean(busy)} onChange={(event) => { const metal = event.target.value; setItemMetals(current => current.map((choice, itemIndex) => itemIndex === index ? metal === "Gold" || metal === "Silver" ? metal : null : choice)); setMessage(""); }}><option value="">Choose metal</option><option value="Gold">Gold</option><option value="Silver">Silver</option></select>}</td><td>{item.particulars}</td><td>{item.grams}</td><td>{formatINR(item.assessedValue)}</td><td>{formatINR(item.loanAmount)}</td><td>{collection.repayment?.lines[index].ratePercent == null ? "—" : `${collection.repayment.lines[index].ratePercent}%`}</td><td>{collection.repayment?.lines[index].interest == null ? "—" : formatINR(collection.repayment.lines[index].interest!)}</td></tr>)}</tbody></table></div>
       <div className="delivery-bill-actions"><button type="button" className="secondary" onClick={() => onOpen(bill)}>Open bill</button><button type="button" className="secondary" onClick={() => onOverview(bill)}>Repayment overview</button>{bill.deliveryNo && bill.deliveryDate && <button type="button" className="secondary" onClick={() => onReceipt(bill)}>View delivery bill</button>}</div>

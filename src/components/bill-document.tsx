@@ -19,7 +19,7 @@ export function BillDocument({ bill, profile, accountSlot, onClose, documentType
   const licenseNumber = billLicenseNumber(bill, profile);
   const delivery = documentType === "delivery";
   const hasRemarks = bill.items.some(item => Boolean(item.remarks?.trim()));
-  const repayment = delivery && bill.deliveryDate ? bill.deliverySummary ?? calculateRepayment(bill.items, bill.billDate, bill.deliveryDate) : null;
+  const repayment = delivery && bill.deliveryDate ? bill.deliverySummary ?? (bill.historicalDelivery ? null : calculateRepayment(bill.items, bill.billDate, bill.deliveryDate)) : null;
 
   async function downloadPdf() {
     setError("");
@@ -45,11 +45,12 @@ export function BillDocument({ bill, profile, accountSlot, onClose, documentType
     {error && <p className="error">{error}</p>}
     <article className="print-bill"><header className="bill-document-header"><img className="bill-header-logo" src="/business-logo.jpg" alt="Business logo" />{licenseNumber && <p className="bill-license-number">License No.: {licenseNumber}</p>}<h1>{business.business_name}</h1><p>{business.address} · {business.phone}</p><h2>{delivery ? "DELIVERY BILL" : "FINANCE BILL"}</h2></header>
       {!delivery && bill.status === "void" && <p className="bill-void-label">VOIDED</p>}
+      {bill.historicalImport && <p>Imported historical record · Original physical bill not included</p>}
       <div className="bill-meta"><span>{delivery ? "Delivery No." : "Bill No."} <b>{delivery ? bill.deliveryNo : bill.billNumber}</b></span><span>Date <b>{delivery ? bill.deliveryDate : bill.billDate}</b></span></div>
       {delivery ? <p>Original Bill No. {bill.billNumber} &nbsp; Bill Date {bill.billDate}{bill.status === "void" && <> · Original bill voided; delivery recorded</>}</p> : (bill.deliveryNo || bill.deliveryDate) && <p>Delivery No. {bill.deliveryNo || "—"} &nbsp; Delivery Date {bill.deliveryDate || "—"}</p>}
       {delivery && <p><b>Delivery remarks:</b> {bill.deliveryBillReceiptStatus ? billReceiptLabels[bill.deliveryBillReceiptStatus] : "Not recorded"}</p>}
       <section className="customer-box"><p><b>Name:</b> {bill.customerName}</p><p><b>Father&apos;s Name:</b> {bill.fatherName}</p><p><b>Address:</b> {bill.address}</p>{(bill.phone || bill.governmentId) && <p>{bill.phone && <><b>Phone:</b> {bill.phone}</>}{bill.governmentId && <> &nbsp; <b>ID:</b> {bill.governmentId}</>}</p>}</section>
-      <table className="print-table"><thead><tr><th>Metal</th><th>Particulars</th>{hasRemarks && <th>Remarks</th>}<th>Gram</th><th>Total Value</th><th>Amount</th></tr></thead><tbody>{bill.items.map((item, index) => <tr key={index}><td>{item.metal ?? ""}</td><td>{item.particulars}</td>{hasRemarks && <td className="print-remarks">{item.remarks ?? ""}</td>}<td>{item.grams}</td><td>{formatINR(item.assessedValue)}</td><td>{formatINR(item.loanAmount)}</td></tr>)}</tbody><tfoot><tr><th colSpan={hasRemarks ? 4 : 3}>Total</th><th>{formatINR(bill.totalAssessedValue)}</th><th>{formatINR(bill.totalLoanAmount)}</th></tr></tfoot></table>
+      <table className="print-table"><thead><tr><th>Metal</th><th>Particulars</th>{hasRemarks && <th>Remarks</th>}<th>Gram</th><th>Total Value</th><th>Amount</th></tr></thead><tbody>{bill.items.map((item, index) => <tr key={index}><td>{item.metal ?? ""}</td><td>{item.particulars}</td>{hasRemarks && <td className="print-remarks">{item.remarks ?? ""}</td>}<td>{bill.historicalMissingDetails ? "Not recorded" : item.grams}</td><td>{bill.historicalMissingDetails ? "Not recorded" : formatINR(item.assessedValue)}</td><td>{formatINR(item.loanAmount)}</td></tr>)}</tbody><tfoot><tr><th colSpan={hasRemarks ? 4 : 3}>Total</th><th>{bill.historicalMissingDetails ? "Not recorded" : formatINR(bill.totalAssessedValue)}</th><th>{formatINR(bill.totalLoanAmount)}</th></tr></tfoot></table>
       {repayment && <RepaymentDetails repayment={repayment} />}
       <p className="words"><b>Amount in words:</b> {repayment?.total !== undefined && repayment.total !== null ? amountInWords(repayment.total) : bill.amountInWords}</p><footer><div>Business Signature</div><div>Customer Signature</div></footer>
       {!delivery && <BillConditions />}

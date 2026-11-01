@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import type { AccountSlot } from "@/lib/account-url";
 import type { Bill } from "@/lib/types";
+import { isDelivered } from "@/lib/delivery-status";
 import type { GlobalSearchResult } from "@/lib/global-search";
 import { formatINR } from "@/lib/money";
 import { api } from "./api";
@@ -56,7 +57,7 @@ export function AllAccountSearch({ accountSlot }: { accountSlot: AccountSlot }) 
       <div className="item-table-wrap" aria-busy={busy}><table className="history-table all-account-results"><thead><tr><th>Account</th><th>Bill</th><th>Customer</th><th>Contact</th><th>Address</th><th>Particulars</th><th>Loan amount</th><th>Status</th><th /></tr></thead><tbody>
         {busy ? <tr><td colSpan={9} className="empty">Searching all accounts…</td></tr> : error ? <tr><td colSpan={9} className="empty">Search could not be completed.</td></tr> : results.length ? results.map(result => {
           const { bill } = result;
-          const delivered = Boolean(bill.deliveryNo?.trim() && bill.deliveryDate?.trim());
+          const delivered = isDelivered(bill);
           const code = bill.customerCode || result.matchedCustomerCode;
           return <tr key={bill.id}><td><b>{result.profile.business_name}</b><small>Account {result.accountSlot}</small></td><td><b>#{bill.billNumber}</b><small>{displayDate(bill.billDate)}</small></td><td><b>{bill.customerName}</b><small>{bill.fatherName}</small>{code && <small>{code}</small>}</td><td>{bill.phone || "—"}{bill.governmentId && <small>ID ending {bill.governmentId.replace(/[\s-]/g, "").slice(-4)}</small>}</td><td className="customer-address">{bill.address}</td><td>{bill.items.map(item => `${item.metal ? `${item.metal}: ` : ""}${item.particulars}`).join(", ")}</td><td>{formatINR(bill.totalLoanAmount)}</td><td>{bill.status === "void" ? "Voided" : "Issued"}<small className={delivered ? "delivery-status-complete" : undefined}>{delivered ? `Delivered #${bill.deliveryNo}` : "Not delivered"}</small></td><td className="row-actions"><button type="button" className="text-button" onClick={() => setSelected(result)}>Open bill</button><button type="button" className="text-button" onClick={() => setOverview(bill)}>Overview</button></td></tr>;
         }) : <tr><td colSpan={9} className="empty">{submittedQuery ? "No matching bills found in any account." : "Enter customer details above to search every account."}</td></tr>}

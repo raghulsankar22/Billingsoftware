@@ -1,5 +1,6 @@
 import { billingPeriod, type PeriodRange } from "./business-updates";
 import type { Bill } from "./types";
+import { isDelivered } from "./delivery-status";
 
 /** A monthly cohort: October 2026 reviews all of October 2025. */
 export function overduePeriod(reviewMonth: string): PeriodRange {
@@ -18,7 +19,7 @@ export function pendingBillHistory(bills: readonly Bill[], range: PeriodRange, s
   const query = search.trim().toLocaleLowerCase().replace(/^#/, "");
   return bills.filter(bill => {
     if (bill.billDate < range.from || bill.billDate > range.to) return false;
-    if (bill.deliveryNo?.trim() && bill.deliveryDate?.trim()) return false;
+    if (isDelivered(bill)) return false;
     return !query || [String(bill.billNumber), bill.customerCode, bill.customerName, bill.fatherName, bill.address, bill.phone, ...bill.items.map(item => item.particulars)]
       .some(value => value?.toLocaleLowerCase().includes(query));
   }).sort((a, b) => a.billDate.localeCompare(b.billDate) || a.billNumber - b.billNumber || a.id.localeCompare(b.id));

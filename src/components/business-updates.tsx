@@ -7,6 +7,7 @@ import { billingPeriod, billingToday, businessUpdates, type UpdatePeriod } from 
 import { formatINR } from "@/lib/money";
 import { api } from "./api";
 import { JewelInventory } from "./jewel-inventory";
+import { isDelivered } from "@/lib/delivery-status";
 
 const labels: Record<UpdatePeriod, string> = { yesterday: "Yesterday", daily: "Today", weekly: "Weekly", monthly: "Monthly", yearly: "Yearly" };
 const periods = ["yesterday", "daily", "weekly", "monthly", "yearly"] as const;
@@ -92,7 +93,7 @@ export function BusinessUpdates({ accountSlot, onBill, onDelivery, onExportExcel
           <td className="dashboard-loan-address">{bill.address}</td>
           <td>{[...new Set(bill.items.map(item => item.metal ?? "Not set"))].join(", ") || "—"}</td>
           <td className="dashboard-loan-particulars">{bill.items.map((item, index) => <div key={index}>{item.particulars}</div>)}</td>
-          <td>{bill.status === "void" ? "Voided" : "Issued"}{bill.deliveryNo && bill.deliveryDate && <small>Delivered</small>}</td>
+          <td>{bill.status === "void" ? "Voided" : "Issued"}{isDelivered(bill) && <small>Delivered</small>}</td>
           <td>{formatINR(bill.totalLoanAmount)}</td>
           <td><button className="text-button" onClick={() => onBill(bill)}>Open</button></td>
         </tr>)}{!report.loans.length && <tr><td colSpan={9} className="empty">{busy ? "Loading…" : "No loan bills recorded in this period."}</td></tr>}</tbody>

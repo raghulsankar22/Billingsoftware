@@ -1,6 +1,7 @@
 node_modules/
 .next/
 .next-website-*/
+.next-cloud-check/
 .env.local
 .env*.local
 coverage/
@@ -11,3 +12,5 @@ mattpocock-skills-source/
 *.tsbuildinfo
 .desktop-runtime/
 release/
+tmp/
+.vercel/

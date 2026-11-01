@@ -2,20 +2,18 @@ begin;
 do $$
 declare
   owner uuid := gen_random_uuid(); other_owner uuid := gen_random_uuid();
-  p1 uuid; p2 uuid; p3 uuid; b1 uuid; b2 uuid; replacement uuid;
+  p1 uuid; p2 uuid; p3 uuid; p4 uuid; b1 uuid; b2 uuid; replacement uuid;
   details jsonb := '{"businessName":"Business one","address":"123 Road","phone":"9876543210","logoUrl":"https://example.com/one.png","nextBillNumber":18}';
   payload jsonb := '{"billDate":"2026-10-03","customerName":"Customer","fatherName":"Father","address":"123 Road","phone":"9876543210","items":[{"particulars":"Ring","grams":1,"assessedValue":100,"loanAmount":80}]}';
 begin
   insert into auth.users(id) values (owner), (other_owner);
+  insert into public.billing_user_access(user_id, enabled) values (owner, true);
   p1 := (public.save_business_profile(owner, details)->>'id')::uuid;
   p2 := (public.save_business_profile(owner, details || '{"accountSlot":2,"businessName":"Business two","address":"456 Lane","phone":"9876543211","logoUrl":"https://example.com/two.png","nextBillNumber":1}'::jsonb)->>'id')::uuid;
   p3 := (public.save_business_profile(owner, details || '{"accountSlot":3}'::jsonb)->>'id')::uuid;
   if p1 = p2 or p2 = p3 then raise exception 'Accounts must have distinct stable profiles'; end if;
-  begin
-    perform public.save_business_profile(owner, details || '{"accountSlot":4}'::jsonb);
-    raise exception 'Fourth account accepted';
-  exception when check_violation then null;
-  end;
+  p4 := (public.save_business_profile(owner, details || '{"accountSlot":4}'::jsonb)->>'id')::uuid;
+  if p4 in (p1, p2, p3) then raise exception 'Fourth account is not distinct'; end if;
   b1 := (public.create_bill(owner, payload)->>'id')::uuid;
   b2 := (public.create_bill(owner, payload || '{"accountSlot":2}'::jsonb)->>'id')::uuid;
   if not exists (select 1 from public.bills where id = b1 and profile_id = p1 and bill_number = 18)
@@ -63,8 +61,8 @@ select set_config('request.jwt.claims', jsonb_build_object('sub', current_settin
 set local role authenticated;
 do $$
 begin
-  if (select count(*) from public.business_profiles) <> 3 or (select count(*) from public.bills) <> 3 then
-    raise exception 'Owner RLS does not expose exactly its three ledgers';
+  if (select count(*) from public.business_profiles) <> 4 or (select count(*) from public.bills) <> 3 then
+    raise exception 'Owner RLS does not expose exactly its four ledgers';
   end if;
 end;
 $$;

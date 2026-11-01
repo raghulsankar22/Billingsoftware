@@ -22,6 +22,8 @@ import { SignIn } from "./sign-in";
 import { LocalSignIn, localAuth } from "./local-sign-in";
 import { LocalUserManagement } from "./local-user-management";
 import { LocalMyAccount } from "./local-my-account";
+import { ImportPreview } from "./import-preview";
+import { isDelivered } from "@/lib/delivery-status";
 import type { LocalUser } from "@/lib/local-users";
 
 type Profile = {
@@ -37,6 +39,8 @@ type Profile = {
 
 const addAccountOption = "add-new-account";
 const ACCOUNT_STORAGE_KEY = "finance-billing-selected-account";
+// The online version remains opt-in until its security and sync work is complete.
+const extendedAccounts = localStorageEnabled || process.env.NEXT_PUBLIC_BILLING_CLOUD_MULTIUSER === "1";
 
 function accountLabel(slot: AccountSlot, profiles: Profile[]) {
   const profile = profiles.find((candidate) => Number(candidate.account_slot) === slot);
@@ -56,7 +60,7 @@ export function BillingApp() {
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [bills, setBills] = useState<Bill[]>([]);
   const [query, setQuery] = useState("");
-  const [view, setView] = useState<"bills" | "new" | "customers" | "delivery" | "delivery-bills" | "dashboard" | "notice" | "overdue" | "search" | "settings" | "users" | "my-account">("bills");
+  const [view, setView] = useState<"bills" | "new" | "customers" | "delivery" | "delivery-bills" | "dashboard" | "notice" | "overdue" | "search" | "settings" | "users" | "my-account" | "import">("bills");
   const [multiUser, setMultiUser] = useState(false);
   const [needsSetup, setNeedsSetup] = useState(false);
   const [localUser, setLocalUser] = useState<LocalUser | null>(null);
@@ -91,7 +95,7 @@ export function BillingApp() {
   useEffect(() => {
     try {
       const saved = window.localStorage.getItem(ACCOUNT_STORAGE_KEY);
-      if (saved && /^[1-9]\d*$/.test(saved) && isAccountSlot(Number(saved)) && (localStorageEnabled || Number(saved) <= 3)) setAccountSlot(Number(saved));
+      if (saved && /^[1-9]\d*$/.test(saved) && isAccountSlot(Number(saved)) && (extendedAccounts || Number(saved) <= 3)) setAccountSlot(Number(saved));
     } catch {
       // The selector still works for this session when browser storage is unavailable.
     }
@@ -276,10 +280,10 @@ export function BillingApp() {
           <label htmlFor="business-account">Business account</label>
           <select id="business-account" value={accountSlot} onChange={(event) => selectAccount(event.target.value)}>
             {accountSlots(profiles).map((slot) => <option key={slot} value={slot}>{accountLabel(slot, profiles)}</option>)}
-            {localStorageEnabled && <option value={addAccountOption}>+ Add new account…</option>}
+            {extendedAccounts && <option value={addAccountOption}>+ Add new account…</option>}
           </select>
-          <span>{localStorageEnabled ? "Separate profiles, bill histories and Excel registers for every account" : "One login · three separate business profiles and bill histories"}</span>
-          {localStorageEnabled && <button type="button" className="account-add-button" onClick={() => setAddingAccount(true)}>+ Add new account</button>}
+          <span>{extendedAccounts ? "Separate profiles, bill histories and Excel registers for every account" : "One login · three separate business profiles and bill histories"}</span>
+          {extendedAccounts && <button type="button" className="account-add-button" onClick={() => setAddingAccount(true)}>+ Add new account</button>}
         </div>
       </div>
       <div className="topbar-controls">
@@ -301,6 +305,7 @@ export function BillingApp() {
       {localStorageEnabled && <button className={view === "notice" ? "active" : ""} aria-current={view === "notice" ? "page" : undefined} onClick={() => { setExcelNotice(""); setView("notice"); }}><span className="nav-icon" aria-hidden="true">📨</span>Notice</button>}
       {localStorageEnabled && <button className={view === "overdue" ? "active" : ""} aria-current={view === "overdue" ? "page" : undefined} onClick={() => { setExcelNotice(""); setView("overdue"); }}><span className="nav-icon" aria-hidden="true">⏰</span>Overdue</button>}
       {localStorageEnabled && <button className={view === "search" ? "active" : ""} aria-current={view === "search" ? "page" : undefined} onClick={() => { setExcelNotice(""); setView("search"); }}><span className="nav-icon" aria-hidden="true">🔍</span>Search</button>}
+      {localStorageEnabled && <button className={view === "import" ? "active" : ""} aria-current={view === "import" ? "page" : undefined} onClick={() => { setExcelNotice(""); setView("import"); }}><span className="nav-icon" aria-hidden="true">📥</span>Import old bills</button>}
       {multiUser && localUser && <button className={view === "my-account" ? "active" : ""} onClick={() => { setExcelNotice(""); setView("my-account"); }}><span className="nav-icon" aria-hidden="true">🔐</span>My account</button>}
       {multiUser && localUser?.administrator && <button className={view === "users" ? "active" : ""} onClick={() => { setExcelNotice(""); setView("users"); }}><span className="nav-icon" aria-hidden="true">👤</span>Users</button>}
       <button className={`business-profile-tab${view === "settings" ? " active" : ""}`} onClick={() => { setExcelNotice(""); setView("settings"); }}><span className="nav-icon" aria-hidden="true">⚙️</span>Business profile</button>
@@ -326,6 +331,7 @@ export function BillingApp() {
       {view === "overdue" && profile && accountLoaded && <OverdueBills key={accountSlot} accountSlot={accountSlot} onOpen={setSelected} onOverview={setOverviewBill} />}
       {view === "notice" && profile && accountLoaded && <NoticeBills key={accountSlot} accountSlot={accountSlot} onOpen={setSelected} onOverview={setOverviewBill} />}
       {view === "search" && accountLoaded && <AllAccountSearch accountSlot={accountSlot} />}
+      {view === "import" && profile && accountLoaded && <ImportPreview key={accountSlot} accountSlot={accountSlot} onImported={() => void load(query, accountSlot)} />}
       {view === "bills" && accountLoaded && profile && <section className="panel">
         <div className="section-heading history-heading">
           <div><p className="eyebrow">ACCOUNT {accountSlot} HISTORY</p><h2>All bills</h2></div>
@@ -337,7 +343,7 @@ export function BillingApp() {
         <div className="item-table-wrap"><table className="history-table">
           <thead><tr><th>Bill</th><th>Date</th><th>Customer</th><th>Particulars</th><th>Amount</th><th>Excel</th><th /></tr></thead>
           <tbody>{bills.length ? bills.map((bill) => <tr key={bill.id} className={bill.status === "void" ? "void-row" : ""}>
-            <td>#{bill.billNumber}<small>{bill.status === "void" ? bill.deliveryNo && bill.deliveryDate ? "Voided · Delivered" : "Voided" : bill.deliveryNo && bill.deliveryDate ? "Delivered" : "Issued"}</small>{bill.deliveryNo && bill.deliveryDate && <small className="delivery-recorded">Delivery #{bill.deliveryNo} · {bill.deliveryDate}</small>}</td>
+            <td>#{bill.billNumber}<small>{bill.status === "void" ? isDelivered(bill) ? "Voided · Delivered" : "Voided" : isDelivered(bill) ? "Delivered" : "Issued"}</small>{isDelivered(bill) && <small className="delivery-recorded">Delivery {bill.deliveryNo ? `#${bill.deliveryNo}` : "number not recorded"} · {bill.deliveryDate || "date not recorded"}</small>}</td>
             <td>{bill.billDate}</td>
             <td><b>{bill.customerName}</b>{bill.phone && <small>{bill.phone}</small>}</td>
             <td>{bill.items.map((item) => `${item.metal ? `${item.metal}: ` : ""}${item.particulars}`).join(", ")}</td>

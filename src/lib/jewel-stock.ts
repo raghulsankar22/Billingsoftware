@@ -1,4 +1,5 @@
 import type { Bill, BillItemInput } from "./types";
+import { isDelivered } from "./delivery-status";
 
 const maxQuantity = 9999;
 
@@ -44,9 +45,6 @@ export type JewelStock = {
   unknownMetalRows: number;
 };
 
-function isDelivered(bill: Bill) {
-  return Boolean(bill.deliveryNo?.trim() && bill.deliveryDate?.trim());
-}
 
 function isKnownMetal(metal: BillItemInput["metal"]): metal is "Gold" | "Silver" {
   return metal === "Gold" || metal === "Silver";

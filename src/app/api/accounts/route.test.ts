@@ -1,12 +1,13 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { POST } from "./route";
 
-const mocks = vi.hoisted(() => ({ local: true, rpc: vi.fn(), requireUser: vi.fn() }));
+const mocks = vi.hoisted(() => ({ local: true, cloud: false, rpc: vi.fn(), requireUser: vi.fn() }));
 vi.mock("@/lib/storage-mode", () => ({ get localStorageEnabled() { return mocks.local; } }));
+vi.mock("@/lib/cloud-mode", () => ({ cloudMultiUserEnabled: () => mocks.cloud }));
 vi.mock("@/lib/supabase", () => ({ createAdminSupabase: () => ({ rpc: mocks.rpc }) }));
 vi.mock("@/lib/auth", () => ({ requireUser: mocks.requireUser }));
 vi.mock("@/lib/profile-validation", async () => import("../../../lib/profile-validation"));
-afterEach(() => { mocks.local = true; vi.resetAllMocks(); });
+afterEach(() => { mocks.local = true; mocks.cloud = false; vi.resetAllMocks(); });
 
 const details = { businessName: "Fourth Finance", address: "123 Main Street", phone: "1234567890", licenseNumber: "LICENSE/4" };
 const request = (body: unknown = details) => new Request("http://localhost:3115/api/accounts", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
@@ -44,5 +45,14 @@ describe("create business account endpoint", () => {
     expect(await response.json()).toEqual({ error: "Adding business accounts is available only in local billing." });
     expect(mocks.requireUser).not.toHaveBeenCalled();
     expect(mocks.rpc).not.toHaveBeenCalled();
+  });
+
+  it("uses the authenticated owner for cloud creation only when the new mode is enabled", async () => {
+    mocks.local = false; mocks.cloud = true;
+    mocks.requireUser.mockResolvedValue({ id: "approved-cloud-user" });
+    mocks.rpc.mockResolvedValue({ data: { id: "cloud-profile", account_slot: 4 }, error: null });
+    const response = await POST(request({ ...details, ownerId: "another-user" }));
+    expect(response.status).toBe(201);
+    expect(mocks.rpc).toHaveBeenCalledWith("create_business_account", { p_owner_id: "approved-cloud-user", p_profile: details });
   });
 });

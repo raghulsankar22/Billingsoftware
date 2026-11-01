@@ -9,6 +9,14 @@ const precision = (value: number, scale: number) => Math.abs(value * scale - Mat
 const moneySchema = z.coerce.number().finite().positive().max(100_000_000).refine((value) => precision(value, 100), "Amounts can have up to two decimal places.");
 const billReceiptStatusSchema = z.enum(["has_bill", "lost_bill"], { required_error: "Choose whether the customer has the bill or lost the bill.", invalid_type_error: "Choose whether the customer has the bill or lost the bill." });
 
+export const historicalImportSchema = z.array(z.object({
+  billNo: z.number().int().min(1).max(2147483646), billDate: dateSchema,
+  deliveryNo: z.string().max(60), deliveryDate: dateSchema.nullable(),
+  name: z.string().trim().min(1).max(120), address: z.string().trim().max(500),
+  particulars: z.string().trim().min(1).max(180), phone: z.string().trim().max(20),
+  amount: moneySchema, metal: z.enum(["Gold", "Silver"]),
+})).min(1).max(10000);
+
 export const deliverySchema = z.object({
   deliveryDate: dateSchema,
   billReceiptStatus: billReceiptStatusSchema,

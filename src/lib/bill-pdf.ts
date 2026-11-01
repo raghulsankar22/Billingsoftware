@@ -21,7 +21,7 @@ export async function createBillPdf(bill: SnapshottedBill, currentProfile: Busin
   const delivery = documentType === "delivery";
   const hasRemarks = bill.items.some(item => Boolean(item.remarks?.trim()));
   if (delivery && (!bill.deliveryNo || !bill.deliveryDate)) throw new Error("Save delivery before printing the delivery bill.");
-  const repayment = delivery ? bill.deliverySummary ?? calculateRepayment(bill.items, bill.billDate, bill.deliveryDate!) : null;
+  const repayment = delivery ? bill.deliverySummary ?? (bill.historicalDelivery ? null : calculateRepayment(bill.items, bill.billDate, bill.deliveryDate!)) : null;
   if (repayment?.missingMetal) throw new Error("Choose Gold or Silver for every item before printing the delivery bill.");
   const business = bill.businessSnapshot ?? currentProfile;
   const pdf = new jsPDF({ unit: "mm", format: "a4", compress: true });
@@ -98,6 +98,7 @@ export async function createBillPdf(bill: SnapshottedBill, currentProfile: Busin
   pdf.setFontSize(14);
   pdf.text(delivery ? "DELIVERY BILL" : "FINANCE BILL", 105, y, { align: "center" });
   y += 10;
+  if (bill.historicalImport) line("Imported historical record - original physical bill not included", left, 180, 9);
   if (!delivery && bill.status === "void") {
     pdf.setFillColor(255, 240, 238);
     pdf.rect(left, y - 5, 180, 9, "F");
@@ -137,8 +138,8 @@ export async function createBillPdf(bill: SnapshottedBill, currentProfile: Busin
     if (item.metal) pdf.text(item.metal, 18, y);
     pdf.text(description, hasRemarks ? 40 : 44, y);
     if (remarks.length) pdf.text(remarks, 74, y);
-    pdf.text(String(item.grams), 112, y);
-    currency(money(item.assessedValue), 162, 32);
+    pdf.text(bill.historicalMissingDetails ? "-" : String(item.grams), 112, y);
+    currency(bill.historicalMissingDetails ? "-" : money(item.assessedValue), 162, 32);
     currency(money(item.loanAmount), 192, 27);
     y += height;
     pdf.setDrawColor(220, 226, 232);
@@ -160,7 +161,7 @@ export async function createBillPdf(bill: SnapshottedBill, currentProfile: Busin
     }
     line(`Amount in words: ${amountInWords(repayment.total ?? repayment.principal)}`, left, 180, 10);
   } else {
-    currency(`Total Value: ${money(bill.totalAssessedValue)}`, 105, 90, 10);
+    currency(`Total Value: ${bill.historicalMissingDetails ? "Not recorded" : money(bill.totalAssessedValue)}`, 105, 90, 10);
     currency(`Loan Amount: ${money(bill.totalLoanAmount)}`, 195, 77, 10);
     y += 8;
     line(`Amount in words: ${amountInWords(bill.totalLoanAmount)}`, left, 180, 10);

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { assertOwnerEmail, requireUser } from "./auth";
+import { assertBillingApproval, assertOwnerEmail, requireUser } from "./auth";
 
 describe("owner-only access", () => {
   it("rejects unconfigured owner access", () => {
@@ -10,6 +10,15 @@ describe("owner-only access", () => {
   });
   it("accepts the configured owner without case sensitivity", () => {
     expect(() => assertOwnerEmail("Owner@Example.com", " owner@example.com ")).not.toThrow();
+  });
+});
+
+describe("cloud user approval", () => {
+  it("allows only an explicitly enabled approval for the same signed-in user", () => {
+    expect(() => assertBillingApproval(null, "user-a")).toThrow(/not approved/);
+    expect(() => assertBillingApproval({ user_id: "user-b", enabled: true }, "user-a")).toThrow(/not approved/);
+    expect(() => assertBillingApproval({ user_id: "user-a", enabled: false }, "user-a")).toThrow(/not approved/);
+    expect(() => assertBillingApproval({ user_id: "user-a", enabled: true }, "user-a")).not.toThrow();
   });
 });
 

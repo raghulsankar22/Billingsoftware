@@ -34,6 +34,9 @@ describe("monthly overdue cohorts", () => {
   it("keeps bills with incomplete delivery records visible until delivery is completed", () => {
     expect(overdueBillHistory([bill("no-date", { deliveryNo: "1" }), bill("no-number", { deliveryDate: "2026-10-29" }), bill("whitespace", { deliveryNo: " ", deliveryDate: " " })], "2026-10")).toHaveLength(3);
   });
+  it("excludes imported historical deliveries even when a delivery detail is missing", () => {
+    expect(overdueBillHistory([bill("no-date", { historicalDelivery: true, deliveryNo: "1" }), bill("no-number", { historicalDelivery: true, deliveryDate: "2026-10-29" }), bill("pending")], "2026-10").map(row => row.id)).toEqual(["pending"]);
+  });
   it("filters literal customer details and keeps deterministic ordering without mutating history", () => {
     const late = bill("late", { billNumber: 3, billDate: "2025-10-30", customerCode: "C000001", customerName: "A.B (Gold)" });
     const early = bill("early", { billNumber: 2 });

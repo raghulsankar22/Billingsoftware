@@ -1,11 +1,16 @@
 import { createAdminSupabase } from "./supabase";
 import { localStorageEnabled } from "./storage-mode";
 import { isAccountSlot } from "./account-url";
+import { cloudMultiUserEnabled } from "./cloud-mode";
 
 export function assertOwnerEmail(actual: string | undefined, configured: string | undefined) {
   const ownerEmail = configured?.trim().toLowerCase();
   if (!ownerEmail) throw new Error("BILLING_OWNER_EMAIL is not configured on the server.");
   if (actual?.toLowerCase() !== ownerEmail) throw new Error("This account is not authorized to access billing.");
+}
+
+export function assertBillingApproval(approval: { user_id?: string; enabled?: boolean } | null, userId: string) {
+  if (!approval || approval.user_id !== userId || approval.enabled !== true) throw new Error("This user is not approved for billing.");
 }
 
 const localHosts = new Set(["localhost", "127.0.0.1", "[::1]"]);
@@ -35,12 +40,18 @@ export async function requireUser(request: Request) {
   const supabase = createAdminSupabase();
   const { data, error } = await supabase.auth.getUser(token);
   if (error || !data.user) throw new Error("Your session has expired. Please sign in again.");
-  assertOwnerEmail(data.user.email, process.env.BILLING_OWNER_EMAIL);
+  if (cloudMultiUserEnabled()) {
+    const { data: approval, error: approvalError } = await supabase.from("billing_user_access").select("user_id,enabled").eq("user_id", data.user.id).maybeSingle();
+    if (approvalError) throw new Error("Unable to verify billing access.");
+    assertBillingApproval(approval, data.user.id);
+  } else {
+    assertOwnerEmail(data.user.email, process.env.BILLING_OWNER_EMAIL);
+  }
   return data.user;
 }
 
 export async function requireOwnerProfile(ownerId: string, account = 1) {
-  if (!isAccountSlot(account) || (!localStorageEnabled && account > 3)) throw new Error("Choose a valid business account.");
+  if (!isAccountSlot(account) || (!localStorageEnabled && !cloudMultiUserEnabled() && account > 3)) throw new Error("Choose a valid business account.");
   const supabase = createAdminSupabase();
   const { data, error } = await supabase.from("business_profiles").select("*").eq("owner_id", ownerId).eq("account_slot", account).maybeSingle();
   if (error) throw error;
