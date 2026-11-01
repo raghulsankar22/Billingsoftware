@@ -1,5 +1,7 @@
 # Tamil website preview
 
+For the newer offline phonetic-entry and reviewed Tamil bill-print checkpoint, see [offline-tamil-billing.md](offline-tamil-billing.md). The original implementation notes below describe the 1.0.17 baseline.
+
 This phase changes only localhost website source. Do not package or install the desktop application until separately approved.
 
 ## Open the isolated demo

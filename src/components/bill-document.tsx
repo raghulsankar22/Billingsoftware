@@ -9,12 +9,16 @@ import { requestHeaders } from "./api";
 import { billReceiptLabels, collectedByText, type Bill } from "@/lib/types";
 import { BillConditions } from "./bill-conditions";
 import { billLicenseNumber } from "@/lib/business-license";
+import { TamilBillDocument } from "./tamil-bill-document";
+import { useLanguage } from "./language-provider";
 
 type Profile = { business_name: string; address: string; phone: string; logo_url?: string | null; license_number?: string | null };
 type SnapshottedBill = Bill & { businessSnapshot?: Profile };
 
 export function BillDocument({ bill, profile, accountSlot, onClose, documentType = "finance" }: { bill: SnapshottedBill; profile: Profile; accountSlot: AccountSlot; onClose: () => void; documentType?: "finance" | "delivery" }) {
   const [error, setError] = useState("");
+  const { language } = useLanguage();
+  const [tamil, setTamil] = useState(language === "ta");
   const business = bill.businessSnapshot ?? profile;
   const licenseNumber = billLicenseNumber(bill, profile);
   const delivery = documentType === "delivery";
@@ -40,8 +44,10 @@ export function BillDocument({ bill, profile, accountSlot, onClose, documentType
     }
   }
 
+  if (tamil) return <TamilBillDocument key={JSON.stringify([bill, business, delivery])} bill={bill} profile={profile} delivery={delivery} onClose={onClose} onEnglish={() => setTamil(false)} />;
+
   return <div className="modal-backdrop"><section className="bill-modal">
-    <div className="modal-actions"><button className="secondary" onClick={onClose}>Close</button><button className="secondary" onClick={() => window.print()}>Print</button><button onClick={downloadPdf}>Download PDF</button></div>
+    <div className="modal-actions"><button className="secondary" onClick={onClose}>Close</button><button className="secondary" onClick={() => setTamil(true)}>தமிழ் ரசீது</button><button className="secondary" onClick={() => window.print()}>Print</button><button onClick={downloadPdf}>Download English PDF</button></div>
     {error && <p className="error">{error}</p>}
     <article className="print-bill"><header className="bill-document-header"><img className="bill-header-logo" src="/business-logo.jpg" alt="Business logo" />{licenseNumber && <p className="bill-license-number">License No.: {licenseNumber}</p>}<h1>{business.business_name}</h1><p>{business.address} · {business.phone}</p><h2>{delivery ? "DELIVERY BILL" : "FINANCE BILL"}</h2></header>
       {!delivery && bill.status === "void" && <p className="bill-void-label">VOIDED</p>}

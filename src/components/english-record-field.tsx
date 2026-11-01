@@ -2,7 +2,8 @@
 
 import { useId, useRef, useState } from "react";
 import { containsTamil } from "@/lib/english-records";
-import { canConfirmEnglish, suggestEnglish } from "@/lib/tamil-input";
+import { canConfirmEnglish } from "@/lib/tamil-input";
+import { suggestTamil, transliterateTamil } from "@/lib/tamil-transliteration";
 import { useLanguage } from "./language-provider";
 
 type Props = {
@@ -12,12 +13,13 @@ type Props = {
 };
 
 export function EnglishRecordField(props: Props) {
-  const { t } = useLanguage();
+  const { language, t } = useLanguage();
+  const [tamilPreview, setTamilPreview] = useState<string | null>(null);
   const generatedId = useId();
   const id = props.id ?? generatedId;
   const [draft, setDraft] = useState<string | null>(null);
   const [previousValue, setPreviousValue] = useState(props.value);
-  if (previousValue !== props.value) { setPreviousValue(props.value); setDraft(null); }
+  if (previousValue !== props.value) { setPreviousValue(props.value); setDraft(null); setTamilPreview(null); }
   const [suggestion, setSuggestion] = useState("");
   const input = useRef<HTMLInputElement & HTMLTextAreaElement>(null);
   const pending = draft !== null;
@@ -25,7 +27,7 @@ export function EnglishRecordField(props: Props) {
   function change(value: string) {
     if (containsTamil(value) || pending) {
       setDraft(value);
-      setSuggestion(suggestEnglish(value));
+      setSuggestion(transliterateTamil(value));
       input.current?.setCustomValidity(t(confirmationMessage));
     } else props.onChange(value);
   }
@@ -45,8 +47,13 @@ export function EnglishRecordField(props: Props) {
   return <div className={props.className}>
     <label htmlFor={id}>{t(props.label)}</label>
     {props.multiline ? <textarea {...attributes} /> : <input {...attributes} />}
+    {language === "ta" && !pending && props.value.trim() && <div className="notice">
+      <label htmlFor={id + "-tamil"}>தமிழ் உச்சரிப்பு வரைவு (சேமிக்கப்படாது)</label>
+      <input id={id + "-tamil"} lang="ta" value={tamilPreview ?? suggestTamil(props.value)} disabled={props.disabled} onChange={event => setTamilPreview(event.target.value)} />
+      <small>இது இணையமில்லா உச்சரிப்பு உதவி மட்டுமே. சரியான மொழிபெயர்ப்பு அல்ல. பதிவில் ஆங்கிலம் மட்டுமே சேமிக்கப்படும்.</small>
+    </div>}
     {pending && <div id={id + "-review"} className="notice" role="status">
-      <p>{t("Tamil draft — not saved. Local vocabulary suggestions are not full sentence translations. Unknown words need English spelling entered manually.")}</p>
+      <p>{language === "ta" ? "தமிழ் வரைவு சேமிக்கப்படாது. இணையமில்லா உச்சரிப்பு உதவி மட்டுமே; ஆங்கில எழுத்துகளைச் சரிபார்த்து உறுதிசெய்யவும்." : "Tamil draft — not saved. Offline phonetic suggestions are approximate, not sentence translations. Check and confirm the English spelling."}</p>
       <label htmlFor={id + "-english"}>{t("English text to save")}</label>
       <input id={id + "-english"} value={suggestion} disabled={props.disabled} onChange={event => setSuggestion(event.target.value)} />
       <button type="button" disabled={props.disabled || !canConfirmEnglish(suggestion)} onClick={confirm}>{t("Confirm English spelling")}</button>{" "}
