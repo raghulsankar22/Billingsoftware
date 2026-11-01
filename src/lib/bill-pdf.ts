@@ -99,6 +99,8 @@ export async function createBillPdf(bill: SnapshottedBill, currentProfile: Busin
   pdf.text(delivery ? "DELIVERY BILL" : "FINANCE BILL", 105, y, { align: "center" });
   y += 10;
   if (bill.historicalImport) line("Imported historical record - original physical bill not included", left, 180, 9);
+  pdf.setFont("helvetica", "bold");
+  pdf.setFontSize(14);
   if (!delivery && bill.status === "void") {
     pdf.setFillColor(255, 240, 238);
     pdf.rect(left, y - 5, 180, 9, "F");
@@ -119,7 +121,7 @@ export async function createBillPdf(bill: SnapshottedBill, currentProfile: Busin
     line(`Delivery No.: ${bill.deliveryNo || "-"}     Delivery Date: ${bill.deliveryDate || "-"}`, left, 180);
   }
   line(`Name: ${bill.customerName}`, left, 180);
-  line(`Father's Name: ${bill.fatherName}`, left, 180);
+  line(`Father's Name: ${bill.fatherName || (bill.historicalImport ? "Not recorded" : "")}`, left, 180);
   line(`Address: ${bill.address}`, left, 180);
   const contactDetails = [bill.phone && `Phone: ${bill.phone}`, bill.governmentId && `Government ID: ${bill.governmentId}`].filter(Boolean).join("     ");
   if (contactDetails) line(contactDetails, left, 180);
@@ -138,8 +140,8 @@ export async function createBillPdf(bill: SnapshottedBill, currentProfile: Busin
     if (item.metal) pdf.text(item.metal, 18, y);
     pdf.text(description, hasRemarks ? 40 : 44, y);
     if (remarks.length) pdf.text(remarks, 74, y);
-    pdf.text(bill.historicalMissingDetails ? "-" : String(item.grams), 112, y);
-    currency(bill.historicalMissingDetails ? "-" : money(item.assessedValue), 162, 32);
+    pdf.text(item.grams === null ? "-" : String(item.grams), 112, y);
+    currency(item.assessedValue === null ? "-" : money(item.assessedValue), 162, 32);
     currency(money(item.loanAmount), 192, 27);
     y += height;
     pdf.setDrawColor(220, 226, 232);
@@ -161,7 +163,12 @@ export async function createBillPdf(bill: SnapshottedBill, currentProfile: Busin
     }
     line(`Amount in words: ${amountInWords(repayment.total ?? repayment.principal)}`, left, 180, 10);
   } else {
-    currency(`Total Value: ${bill.historicalMissingDetails ? "Not recorded" : money(bill.totalAssessedValue)}`, 105, 90, 10);
+    if (bill.totalAssessedValue === null) {
+      // The embedded currency font is a subset without the letters of this label.
+      pdf.setFont("helvetica", "normal");
+      pdf.setFontSize(10);
+      pdf.text("Total Value: Not recorded", 105, y, { align: "right" });
+    } else currency(`Total Value: ${money(bill.totalAssessedValue)}`, 105, 90, 10);
     currency(`Loan Amount: ${money(bill.totalLoanAmount)}`, 195, 77, 10);
     y += 8;
     line(`Amount in words: ${amountInWords(bill.totalLoanAmount)}`, left, 180, 10);

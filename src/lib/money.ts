@@ -45,6 +45,10 @@ export function assessedValueForLoan(loan: number): number {
   return Math.round(paise * 110 / 100) / 100;
 }
 
+export const notRecorded = "Not recorded";
+export const recordedGrams = (value: number | null | undefined) => value == null ? notRecorded : String(value);
+export const recordedINR = (value: number | null | undefined) => value == null ? notRecorded : formatINR(value);
+
 export function itemSummary(items: BillItemInput[]): string {
-  return items.map((item) => `${item.metal ? `${item.metal}: ` : ""}${item.particulars} (${item.grams || 0} g)${item.remarks?.trim() ? ` [Remarks: ${item.remarks.trim()}]` : ""}`).join(", ");
+  return items.map((item) => `${item.metal ? `${item.metal}: ` : ""}${item.particulars} (${item.grams == null ? "weight not recorded" : `${item.grams || 0} g`})${item.remarks?.trim() ? ` [Remarks: ${item.remarks.trim()}]` : ""}`).join(", ");
 }

@@ -45,6 +45,8 @@ export function MultipleDelivery({ accountSlot, onSaved, onReceipt, onOpen, onAl
       const results = await Promise.all(requested.map(number => api(`/api/delivery?billNumber=${number}`, accountSlot)));
       if (current !== generation.current) return;
       const found = results.map(result => result.bill as Bill);
+      const fromRegister = found.filter(bill => bill.historicalDelivery);
+      if (fromRegister.length) { setError(`${fromRegister.map(bill => `Bill #${bill.billNumber}`).join(", ")} already ${fromRegister.length === 1 ? "has a delivery" : "have deliveries"} from your old register. Use Single Delivery to add anything missing.`); return; }
       setReceiptStatuses(previous => ({ ...previous, ...Object.fromEntries(found.map(bill => [bill.id, previous[bill.id] ?? bill.deliveryBillReceiptStatus ?? ""])) }));
       setBills(existing => [...existing, ...found.filter(bill => !existing.some(row => row.id === bill.id))]);
       setNumbers("");

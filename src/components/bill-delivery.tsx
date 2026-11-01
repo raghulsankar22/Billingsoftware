@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { AccountSlot } from "@/lib/account-url";
-import { formatINR } from "@/lib/money";
+import { formatINR, recordedGrams, recordedINR } from "@/lib/money";
 import type { Bill, BillReceiptStatus } from "@/lib/types";
 import { BillReceiptSelect } from "./bill-receipt-select";
 import { api } from "./api";
@@ -39,7 +39,8 @@ function SingleBillDelivery({ accountSlot, onSaved, onOpen, onOverview, onReceip
   const generation = useRef(0);
   useEffect(() => () => { generation.current += 1; }, []);
   const collection = useMemo(() => {
-    if (!bill || !deliveryDate) return { repayment: null, error: "" };
+    // The old register doesn't show what interest was collected, so none is calculated.
+    if (!bill || !deliveryDate || bill.historicalDelivery) return { repayment: null, error: "" };
     try {
       return { repayment: calculateRepayment(bill.items.map((item, index) => ({ ...item, metal: item.metal ?? itemMetals[index] ?? undefined })), bill.billDate, deliveryDate), error: "" };
     } catch (failure) {
@@ -58,7 +59,7 @@ function SingleBillDelivery({ accountSlot, onSaved, onOpen, onOverview, onReceip
       setBillReceiptStatus(found.deliveryBillReceiptStatus ?? "");
       setDeliveryNo(found.deliveryNo || String(nextDeliveryNumber));
       setItemMetals(found.items.map((item: Bill["items"][number]) => item.metal ?? null));
-      setDeliveryDate(found.deliveryDate || (today() < found.billDate ? found.billDate : today()));
+      setDeliveryDate(found.deliveryDate || (found.historicalDelivery ? "" : today() < found.billDate ? found.billDate : today()));
       const delivered = deliveryBillHistory([found]);
       if (delivered.length) onAlreadyDelivered(delivered);
     } catch (failure) {
@@ -72,7 +73,7 @@ function SingleBillDelivery({ accountSlot, onSaved, onOpen, onOverview, onReceip
     event.preventDefault();
     if (!bill) return;
     if (!billReceiptStatus) { setError("Choose whether the customer has the bill or lost the bill."); return; }
-    if (!collection.repayment || collection.repayment.missingMetal) { setError(collection.error || "Choose Gold or Silver for each item to calculate interest."); return; }
+    if (bill.historicalDelivery ? !deliveryDate : !collection.repayment || collection.repayment.missingMetal) { setError(bill.historicalDelivery ? "Choose the delivery date." :collection.error || "Choose Gold or Silver for each item to calculate interest."); return; }
     const request = ++generation.current;
     setBusy("save"); setError(""); setMessage(""); setWarnings([]);
     try {
@@ -103,16 +104,17 @@ function SingleBillDelivery({ accountSlot, onSaved, onOpen, onOverview, onReceip
     {warnings.map((warning) => <p className="overview-warning" key={warning}>{warning}</p>)}
     {bill && <div className="delivery-details">
       <div className="section-heading"><div><h2>Bill #{bill.billNumber} · {bill.customerName}</h2><p className="muted">Bill date: {bill.billDate}</p></div><span className="pill">{bill.status === "void" ? isDelivered(bill) ? "Voided · Delivered" : "Voided" : isDelivered(bill) ? "Delivered" : "Awaiting delivery"}</span></div>
-      <div className="delivery-customer"><p><b>Father&apos;s name:</b> {bill.fatherName}</p><p><b>Address:</b> {bill.address}</p>{bill.phone && <p><b>Mobile:</b> {bill.phone}</p>}<p><b>Loan amount:</b> {formatINR(bill.totalLoanAmount)}</p></div>
-      <div className="item-table-wrap"><table className="history-table"><thead><tr><th>Metal</th><th>Particulars</th><th>Gram</th><th>Assessed value</th><th>Principal</th><th>Monthly rate</th><th>Interest to collect</th></tr></thead><tbody>{bill.items.map((item, index) => <tr key={index}><td>{item.metal ?? <select aria-label={`Metal for item ${index + 1}`} value={itemMetals[index] ?? ""} disabled={Boolean(busy)} onChange={(event) => { const metal = event.target.value; setItemMetals(current => current.map((choice, itemIndex) => itemIndex === index ? metal === "Gold" || metal === "Silver" ? metal : null : choice)); setMessage(""); }}><option value="">Choose metal</option><option value="Gold">Gold</option><option value="Silver">Silver</option></select>}</td><td>{item.particulars}</td><td>{item.grams}</td><td>{formatINR(item.assessedValue)}</td><td>{formatINR(item.loanAmount)}</td><td>{collection.repayment?.lines[index].ratePercent == null ? "—" : `${collection.repayment.lines[index].ratePercent}%`}</td><td>{collection.repayment?.lines[index].interest == null ? "—" : formatINR(collection.repayment.lines[index].interest!)}</td></tr>)}</tbody></table></div>
+      <div className="delivery-customer"><p><b>Father&apos;s name:</b> {bill.fatherName || (bill.historicalImport ? "Not recorded" : "")}</p><p><b>Address:</b> {bill.address}</p>{bill.phone && <p><b>Mobile:</b> {bill.phone}</p>}<p><b>Loan amount:</b> {formatINR(bill.totalLoanAmount)}</p></div>
+      <div className="item-table-wrap"><table className="history-table"><thead><tr><th>Metal</th><th>Particulars</th><th>Gram</th><th>Assessed value</th><th>Principal</th><th>Monthly rate</th><th>Interest to collect</th></tr></thead><tbody>{bill.items.map((item, index) => <tr key={index}><td>{item.metal ?? <select aria-label={`Metal for item ${index + 1}`} value={itemMetals[index] ?? ""} disabled={Boolean(busy)} onChange={(event) => { const metal = event.target.value; setItemMetals(current => current.map((choice, itemIndex) => itemIndex === index ? metal === "Gold" || metal === "Silver" ? metal : null : choice)); setMessage(""); }}><option value="">Choose metal</option><option value="Gold">Gold</option><option value="Silver">Silver</option></select>}</td><td>{item.particulars}</td><td>{recordedGrams(item.grams)}</td><td>{recordedINR(item.assessedValue)}</td><td>{formatINR(item.loanAmount)}</td><td>{collection.repayment?.lines[index].ratePercent == null ? "—" : `${collection.repayment.lines[index].ratePercent}%`}</td><td>{collection.repayment?.lines[index].interest == null ? "—" : formatINR(collection.repayment.lines[index].interest!)}</td></tr>)}</tbody></table></div>
       <div className="delivery-bill-actions"><button type="button" className="secondary" onClick={() => onOpen(bill)}>Open bill</button><button type="button" className="secondary" onClick={() => onOverview(bill)}>Repayment overview</button>{bill.deliveryNo && bill.deliveryDate && <button type="button" className="secondary" onClick={() => onReceipt(bill)}>View delivery bill</button>}</div>
-      <form className="delivery-entry" onSubmit={saveDelivery}>
+      {bill.historicalDelivery && <p className="overview-warning">This delivery came from your old register. {bill.deliveryNo && bill.deliveryDate ? "It is complete and can't be changed here; use Edit bill to correct it." : "Add only what is missing. No interest will be calculated, because the register doesn't show what was collected."}</p>}
+      {!(bill.historicalDelivery && bill.deliveryNo && bill.deliveryDate) && <form className="delivery-entry" onSubmit={saveDelivery}>
         <BillReceiptSelect billNumber={bill.billNumber} value={billReceiptStatus} disabled={Boolean(busy)} onChange={value => { setBillReceiptStatus(value); setMessage(""); setError(""); }} />
-        <div className="form-grid"><label>Delivery bill number (automatic)<input value={deliveryNo} readOnly /></label><label>Delivery bill date<input type="date" min={bill.billDate} value={deliveryDate} disabled={Boolean(busy)} onChange={(event) => { setDeliveryDate(event.target.value); setMessage(""); }} required /></label></div>
+        <div className="form-grid"><label>Delivery bill number (automatic)<input value={deliveryNo} readOnly /></label><label>Delivery bill date<input type="date" min={bill.billDate} value={deliveryDate} disabled={Boolean(busy) || Boolean(bill.historicalDelivery && bill.deliveryDate)} onChange={(event) => { setDeliveryDate(event.target.value); setMessage(""); }} required /></label></div>
         {collection.error && <p className="error" role="alert">{collection.error}</p>}
         {collection.repayment && <RepaymentDetails repayment={collection.repayment} />}
         <button disabled={Boolean(busy)}>{busy === "save" ? "Saving…" : bill.deliveryNo && bill.deliveryDate ? "Update delivery" : "Save delivery"}</button>
-      </form>
+      </form>}
     </div>}
   </section>;
 }

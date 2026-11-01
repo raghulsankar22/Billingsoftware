@@ -1,6 +1,7 @@
 import type { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
 import { createSyncOutbox } from "./sync-outbox";
+import { sequenceDeliveryNumber } from "./delivery-status";
 
 const uuid = z.string().uuid();
 const epochValue = z.number().int().nonnegative().safe();
@@ -45,7 +46,7 @@ export function createLocalIssuerStore(db: DatabaseSync) {
         const profile = JSON.parse(String(profileRow.body));
         const bills = db.prepare("SELECT body FROM records WHERE table_name='bills' AND json_extract(body,'$.profile_id')=?").all(profileId).map(row => JSON.parse(String(row.body)));
         const nextBill = bills.length ? Number(profile.next_bill_number) : 1;
-        const nextDelivery = bills.reduce((next: number, bill: { delivery_no?: unknown }) => /^\d+$/.test(String(bill.delivery_no ?? "")) ? Math.max(next, Number(bill.delivery_no) + 1) : next, Math.max(1, Number(profile.next_delivery_number) || 1));
+        const nextDelivery = bills.reduce((next: number, bill: { delivery_no?: unknown }) => Math.max(next, (sequenceDeliveryNumber(bill.delivery_no) ?? 0) + 1), Math.max(1, Number(profile.next_delivery_number) || 1));
         if (nextBill !== remote.nextBillNumber || nextDelivery !== remote.nextDeliveryNumber) throw new Error("Bill or delivery numbers differ. Sync this account before enabling offline billing.");
         db.prepare("INSERT INTO sync_local_issuers(profile_id,device_id,epoch,state) VALUES(?,?,?,'assigned') ON CONFLICT(profile_id) DO UPDATE SET device_id=excluded.device_id,epoch=excluded.epoch,state='assigned'").run(profileId, deviceId, epoch);
         return read(profileId)!;

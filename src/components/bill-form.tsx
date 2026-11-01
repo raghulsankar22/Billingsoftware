@@ -96,7 +96,9 @@ export function BillForm({ onCreated, editingSource, accountSlot }: { onCreated:
     setForm(current => ({ ...current, ...(previous ? { customerName: "", fatherName: "", address: "", phone: "", governmentId: "" } : {}), customerId: "", [field === "phone" ? "phone" : "governmentId"]: value }));
     setCustomerLookup({ field, value });
   }
-  const item = (index: number, key: keyof BillItemInput, value: string) => setForm((current) => ({ ...current, items: current.items.map((row, rowIndex) => rowIndex === index ? { ...row, [key]: key === "particulars" || key === "remarks" ? value : Number(value), ...(key === "loanAmount" ? { assessedValue: assessedValueForLoan(Number(value)) } : {}) } : row) }));
+  // Imported bills keep unrecorded details blank, and a guessed value is never filled in for them.
+  const keepsBlanks = editingSource?.historicalMissingDetails === true;
+  const item = (index: number, key: keyof BillItemInput, value: string) => setForm((current) => ({ ...current, items: current.items.map((row, rowIndex) => rowIndex === index ? { ...row, [key]: key === "particulars" || key === "remarks" ? value : keepsBlanks && value === "" && key !== "loanAmount" ? null : Number(value), ...(key === "loanAmount" && !keepsBlanks ? { assessedValue: assessedValueForLoan(Number(value)) } : {}) } : row) }));
   const setMetal = (index: number, metal: "Gold" | "Silver") => setForm((current) => ({ ...current, items: current.items.map((row, rowIndex) => rowIndex === index ? { ...row, metal } : row) }));
   function setJewelleryDraft(index: number, patch: { name?: string; quantity?: string; error?: string }) {
     setJewelleryDrafts(current => {
@@ -156,15 +158,15 @@ export function BillForm({ onCreated, editingSource, accountSlot }: { onCreated:
   }
   return <section className="panel">
     <form onSubmit={submit}>
-      <div className="section-heading bill-form-heading"><div><p className="eyebrow">{editingSource ? `ACCOUNT ${accountSlot} · ${localStorageEnabled ? "EDIT" : "REPLACE"} BILL #${editingSource.billNumber}` : `ACCOUNT ${accountSlot} · NEW BILL`}</p><h2>Customer and pledge details</h2>{editingSource && <p>{localStorageEnabled ? "Saving updates this bill without changing its number." : "Saving voids the original and issues a new bill number."}</p>}</div><label className="bill-date-field">Bill date<input type="date" value={form.billDate} onChange={(e) => set("billDate", e.target.value)} required /></label></div>
+      <div className="section-heading bill-form-heading"><div><p className="eyebrow">{editingSource ? `ACCOUNT ${accountSlot} · ${localStorageEnabled ? "EDIT" : "REPLACE"} BILL #${editingSource.billNumber}` : `ACCOUNT ${accountSlot} · NEW BILL`}</p><h2>Customer and pledge details</h2>{editingSource && <p>{localStorageEnabled ? "Saving updates this bill without changing its number." : "Saving voids the original and issues a new bill number."}</p>}{keepsBlanks && <p className="muted">Imported from your old register. Details you leave blank stay &quot;Not recorded&quot;.</p>}</div><label className="bill-date-field">Bill date<input type="date" value={form.billDate} onChange={(e) => set("billDate", e.target.value)} required /></label></div>
       {localStorageEnabled && <p className="muted customer-lookup-help">Enter a saved customer&apos;s mobile number or Aadhaar to fill their details automatically.</p>}
       <div className="form-grid customer-details-grid">
         <label>Customer name<input aria-label="Customer name" value={form.customerName} onChange={(e) => set("customerName", e.target.value)} required /></label>
-        <label>Father&apos;s name<input aria-label="Customer father's name" value={form.fatherName} onChange={(e) => set("fatherName", e.target.value)} required /></label>
+        <label>Father&apos;s name<input aria-label="Customer father's name" value={form.fatherName} onChange={(e) => set("fatherName", e.target.value)} required={!keepsBlanks} /></label>
         <label><span className="field-label">Mobile number <span className="muted">(optional)</span></span><input inputMode="tel" aria-label="Customer mobile number" value={form.phone} disabled={busy} onChange={e => setIdentifier("phone", e.target.value)} /></label>
         {localStorageEnabled && <label><span className="field-label">Aadhaar <span className="muted">(optional)</span></span><input inputMode="numeric" aria-label="Customer Aadhaar" maxLength={17} value={form.governmentId ?? ""} disabled={busy} onChange={e => setIdentifier("aadhaar", e.target.value)} /></label>}
         {localStorageEnabled && <label className="wide customer-code-field">Customer ID<input aria-label="Customer ID" value={customerCode} readOnly placeholder="Filled automatically from a saved customer" /></label>}
-        <label className="wide">Address<textarea aria-label="Customer address" value={form.address} onChange={(e) => set("address", e.target.value)} required /></label>
+        <label className="wide">Address<textarea aria-label="Customer address" value={form.address} onChange={(e) => set("address", e.target.value)} required={!keepsBlanks} /></label>
       </div>
       {customerNotice && <p className="notice customer-lookup-notice" role="status">{customerNotice}</p>}
       {catalogueError && <p className="error" role="alert">{catalogueError} <button type="button" className="text-button" onClick={() => setCatalogueRefresh(value => value + 1)}>Retry jewellery list</button></p>}
@@ -194,9 +196,9 @@ export function BillForm({ onCreated, editingSource, accountSlot }: { onCreated:
           </div>}
         </div> : <input aria-label={`Particulars for item ${index + 1}`} value={row.particulars} onChange={event => item(index, "particulars", event.target.value)} required />}</td>
         {localStorageEnabled && <td><JewelleryRemarks index={index} value={row.remarks} disabled={busy} onChange={value => item(index, "remarks", value)} /></td>}
-        <td><input type="number" aria-label={`Gram for item ${index + 1}`} step="0.001" min="0" value={row.grams || ""} onChange={(e) => item(index, "grams", e.target.value)} required /></td>
+        <td><input type="number" aria-label={`Gram for item ${index + 1}`} step="0.001" min="0" value={row.grams || ""} onChange={(e) => item(index, "grams", e.target.value)} required={!keepsBlanks} /></td>
         <td><div className="currency-input"><span aria-hidden="true">₹</span><input type="number" inputMode="decimal" aria-label={`Loan amount in rupees for item ${index + 1}`} step="0.01" min="0" value={row.loanAmount || ""} onChange={(e) => item(index, "loanAmount", e.target.value)} required /></div></td>
-        <td><div className="currency-input"><span aria-hidden="true">₹</span><input type="number" inputMode="decimal" aria-label={`Assessed value in rupees for item ${index + 1}`} step="0.01" min="0" value={row.assessedValue || ""} readOnly={!editingSource?.historicalMissingDetails} onChange={event => item(index, "assessedValue", event.target.value)} required /></div><small className="assessed-note muted">{editingSource?.historicalMissingDetails ? "Enter the recorded value" : row.assessedValue === assessedValueForLoan(row.loanAmount) ? "Loan + 10%" : "Saved assessed value"}</small></td>
+        <td><div className="currency-input"><span aria-hidden="true">₹</span><input type="number" inputMode="decimal" aria-label={`Assessed value in rupees for item ${index + 1}`} step="0.01" min="0" value={row.assessedValue || ""} readOnly={!keepsBlanks} onChange={event => item(index, "assessedValue", event.target.value)} required={!keepsBlanks} /></div><small className="assessed-note muted">{keepsBlanks ? "Leave blank if not recorded" : row.assessedValue === assessedValueForLoan(row.loanAmount) ? "Loan + 10%" : "Saved assessed value"}</small></td>
         <td>{form.items.length > 1 && <button type="button" className="icon-button danger" aria-label="Remove item" disabled={busy || newJewellery !== null} onClick={() => removeItem(index)}>×</button>}</td>
       </tr>)}</tbody></table></div>
       {jewelleryNotice && <p className="notice" role="status">{jewelleryNotice}</p>}

@@ -3,7 +3,8 @@ import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
 import { mkdirSync, readFileSync, writeFileSync, openSync, fsyncSync, closeSync, linkSync, unlinkSync } from "node:fs";
 import { resolve, dirname, isAbsolute } from "node:path";
-import { batchDeliverySchema, billSchema, deliverySchema, historicalImportSchema } from "./validation";
+import { batchDeliverySchema, billSchema, deliverySchema, historicalBillEditSchema, historicalImportSchema } from "./validation";
+import { sequenceDeliveryNumber } from "./delivery-status";
 import { calculateRepayment } from "./interest";
 import { jewelleryChoices, jewelleryKey, jewelleryNameSchema } from "./jewellery";
 import { isAccountSlot } from "./account-url";
@@ -142,16 +143,22 @@ export function createLocalDatabase(directory = localDataDirectory()) {
       const ids = aliases.map(alias => String(alias.id));
       const codes = aliases.map(alias => customerCode(Number(alias.customer_number)));
       const phones = [...new Set(aliases.map(alias => String(alias.phone)).filter(Boolean))]
-        .filter(phone => !customers.some(row => row.phone === phone && !ids.includes(String(row.id))));
+        .filter(phone => (byPhone.get(phone) ?? []).every(index => ids.includes(String(customers[index].id))));
       const identifiers = { phones, aadhaars: [...new Set(aliases.map(alias => String(alias.aadhaar)).filter(Boolean))] };
       return { customer, ids, codes, ...identifiers, aliases, detailId: String(latest.id) };
     });
   };
   const findIdentity = (identifier: string) => customerIdentities().find(identity => identity.ids.includes(identifier) || identity.codes.includes(identifier.toUpperCase()));
-  const canonicalBill = (row: Row, identities: ReturnType<typeof customerIdentities>): Row => {
-    if (!rows("business_profiles").some(profile => profile.id === row.profile_id && profile.owner_id === localOwnerId)) return row;
-    const identity = identities.find(candidate => row.customer_id ? candidate.ids.includes(String(row.customer_id)) : row.customer_code && candidate.codes.includes(String(row.customer_code).toUpperCase()));
-    return identity ? { ...row, customer_id: identity.customer.id, customer_code: identity.customer.customerCode } : row;
+  // Built once per query: a request can return every bill in the account.
+  const billCanonicalizer = (identities: ReturnType<typeof customerIdentities>) => {
+    const ownedProfiles = new Set(rows("business_profiles").filter(profile => profile.owner_id === localOwnerId).map(profile => profile.id));
+    const byId = new Map(identities.flatMap(identity => identity.ids.map(id => [id, identity] as const)));
+    const byCode = new Map(identities.flatMap(identity => identity.codes.map(code => [code, identity] as const)));
+    return (row: Row): Row => {
+      if (!ownedProfiles.has(row.profile_id)) return row;
+      const identity = row.customer_id ? byId.get(String(row.customer_id)) : row.customer_code ? byCode.get(String(row.customer_code).toUpperCase()) : undefined;
+      return identity ? { ...row, customer_id: identity.customer.id, customer_code: identity.customer.customerCode } : row;
+    };
   };
   const customerLink = (profileId: string, id?: string) => {
     if (!id) return { customer_id: null, customer_code: null };
@@ -161,7 +168,20 @@ export function createLocalDatabase(directory = localDataDirectory()) {
     if (!identity || !identity.ids.includes(id)) throw new Error("Customer not found in this account.");
     return { customer_id: identity.customer.id, customer_code: identity.customer.customerCode };
   };
-  const nextDeliveryNumber = (profile: Row) => rows("bills").filter(bill => bill.profile_id === profile.id && /^\d+$/.test(String(bill.delivery_no ?? ""))).reduce((next, bill) => Math.max(next, Number(bill.delivery_no) + 1), Math.max(1, Number(profile.next_delivery_number) || 1));
+  const nextDeliveryNumber = (profile: Row) => rows("bills").filter(bill => bill.profile_id === profile.id).reduce((next, bill) => Math.max(next, (sequenceDeliveryNumber(bill.delivery_no) ?? 0) + 1), Math.max(1, Number(profile.next_delivery_number) || 1));
+  const checkHistoricalImport = (ownerId: string, parameters: Row) => {
+    const account = slot(parameters.p_account_slot);
+    const profile = rows("business_profiles").find(row => row.owner_id === ownerId && row.account_slot === account);
+    if (!profile) throw new Error("Set up this business account first.");
+    const input = historicalImportSchema.parse(parameters.p_bills);
+    const numbers = new Set(rows("bills").filter(row => row.profile_id === profile.id).map(row => row.bill_number));
+    for (const bill of input) {
+      if (numbers.has(bill.billNo)) throw new Error(`Bill #${bill.billNo} is duplicated. No bills were imported.`);
+      numbers.add(bill.billNo);
+      if (bill.deliveryDate && bill.deliveryDate < bill.billDate) throw new Error(`Bill #${bill.billNo} has a delivery date before the bill date.`);
+    }
+    return { profile, input };
+  };
   const issue = (ownerId: string, input: Row) => {
     const bill = billSchema.parse(input);
     if (bill.items.some(item => !item.metal)) throw new Error("Choose Gold or Silver for every item.");
@@ -189,33 +209,40 @@ export function createLocalDatabase(directory = localDataDirectory()) {
     if (slot(account) !== profile.account_slot) throw new Error("Bill not found in this account.");
     if (!["issued", "void"].includes(bill.status)) throw new Error("Delivery cannot be recorded for this bill status.");
     const input = deliverySchema.parse(delivery);
-    if (input.deliveryDate < bill.bill_date) throw new Error("Delivery date cannot be before the bill date.");
+    // A register delivery really happened: never replace what it recorded or invent interest for it.
+    const historical = bill.historical_delivery === true;
+    if (historical && bill.delivery_no && bill.delivery_date) throw new Error(`Bill #${bill.bill_number}'s delivery came from your old register and is already complete. Use Edit bill to correct it.`);
+    const deliveryDate = historical && bill.delivery_date ? String(bill.delivery_date) : input.deliveryDate;
+    if (deliveryDate < bill.bill_date) throw new Error("Delivery date cannot be before the bill date.");
     const savedItems = rows("bill_items").filter(item => item.bill_id === bill.id).sort((left, right) => left.sort_order - right.sort_order);
     if (!savedItems.length) throw new Error("This bill has no pledged items.");
     if (input.itemMetals && input.itemMetals.length !== savedItems.length) throw new Error("The item list changed. Find the bill again.");
     const items = savedItems.map((item, index) => ({ metal: item.metal === "Gold" || item.metal === "Silver" ? item.metal : input.itemMetals?.[index] ?? undefined, particulars: String(item.particulars), grams: Number(item.grams), assessedValue: Number(item.assessed_value), loanAmount: Number(item.loan_amount) }));
     if (items.some(item => !item.metal)) throw new Error("Choose Gold or Silver for each item before saving delivery.");
-    const summary = calculateRepayment(items, bill.bill_date, input.deliveryDate);
+    const summary = historical ? bill.delivery_summary ?? null : calculateRepayment(items, bill.bill_date, deliveryDate);
     const nextNumber = nextDeliveryNumber(profile);
     if (!bill.delivery_no && (!Number.isSafeInteger(nextNumber) || nextNumber >= 2147483647)) throw new Error("Delivery number limit reached.");
     const deliveryNo = bill.delivery_no || String(nextNumber);
     const now = new Date().toISOString();
     if (!bill.delivery_no) save("business_profiles", { ...profile, next_delivery_number: nextNumber + 1, updated_at: now });
     savedItems.forEach((item, index) => { if (!item.metal) save("bill_items", { ...item, metal: items[index].metal }); });
-    const updated = { ...bill, delivery_no: deliveryNo, delivery_date: input.deliveryDate, delivery_bill_receipt_status: input.billReceiptStatus, delivery_summary: summary, excel_sync_status: "pending", excel_sync_error: null, pdf_storage_path: null, pdf_error: null, delivery_pdf_storage_path: null, delivery_pdf_error: null, updated_at: now };
+    const updated = { ...bill, delivery_no: deliveryNo, delivery_date: deliveryDate, delivery_bill_receipt_status: input.billReceiptStatus, delivery_summary: summary, excel_sync_status: "pending", excel_sync_error: null, pdf_storage_path: null, pdf_error: null, delivery_pdf_storage_path: null, delivery_pdf_error: null, updated_at: now };
     save("bills", updated);
-    return { id: bill.id, previousPdfPath: bill.pdf_storage_path, previousDeliveryPdfPath: bill.delivery_pdf_storage_path, bill: { ...canonicalBill(updated, customerIdentities()), bill_items: rows("bill_items").filter(item => item.bill_id === bill.id).sort((left, right) => left.sort_order - right.sort_order) } };
+    return { id: bill.id, previousPdfPath: bill.pdf_storage_path, previousDeliveryPdfPath: bill.delivery_pdf_storage_path, bill: { ...billCanonicalizer(customerIdentities())(updated), bill_items: rows("bill_items").filter(item => item.bill_id === bill.id).sort((left, right) => left.sort_order - right.sort_order) } };
   };
   const editBill = (ownerId: string, billId: string, value: Row) => {
     const { bill: original, profile } = billOwner(ownerId, billId);
     if (original.status !== "issued") throw new Error("Only issued bills can be edited.");
     if (value.accountSlot !== undefined && slot(value.accountSlot) !== profile.account_slot) throw new Error("A bill must remain in its original account.");
-    const input = billSchema.parse(value);
+    // Register imports keep unknown details blank until someone actually records them.
+    const keepsBlanks = original.historical_missing_details === true;
+    const input = keepsBlanks ? historicalBillEditSchema.parse(value) : billSchema.parse(value);
     const link = input.customerId === undefined ? {} : customerLink(profile.id, input.customerId);
     if (input.items.some(item => !item.metal)) throw new Error("Choose Gold or Silver for every item.");
-    const total = (key: "assessedValue" | "loanAmount") => input.items.reduce((sum, item) => sum + Math.round(item[key] * 100), 0) / 100;
+    const total = (key: "assessedValue" | "loanAmount") => input.items.some(item => item[key] === null) ? null : input.items.reduce((sum, item) => sum + Math.round(Number(item[key]) * 100), 0) / 100;
+    const stillMissing = keepsBlanks && (!input.fatherName || input.items.some(item => item.grams === null || item.assessedValue === null));
     const deliverySummary = input.deliveryNo && input.deliveryDate && input.deliveryDate >= input.billDate ? calculateRepayment(input.items, input.billDate, input.deliveryDate) : null;
-    save("bills", { ...original, ...link, historical_missing_details: false, bill_date: input.billDate, delivery_no: input.deliveryNo || null, delivery_date: input.deliveryDate || null, delivery_summary: original.historical_delivery ? original.delivery_summary ?? null : deliverySummary, customer_name: input.customerName, father_name: input.fatherName, address: input.address, phone: input.phone, government_id: input.governmentId === undefined ? original.government_id ?? null : input.governmentId || null, total_assessed_value: total("assessedValue"), total_loan_amount: total("loanAmount"), excel_sync_status: "pending", excel_sync_error: null, pdf_storage_path: null, pdf_error: null, delivery_pdf_storage_path: null, delivery_pdf_error: null, updated_at: new Date().toISOString() });
+    save("bills", { ...original, ...link, historical_missing_details: stillMissing, bill_date: input.billDate, delivery_no: input.deliveryNo || null, delivery_date: input.deliveryDate || null, delivery_summary: original.historical_delivery ? original.delivery_summary ?? null : deliverySummary, customer_name: input.customerName, father_name: input.fatherName || null, address: input.address, phone: input.phone, government_id: input.governmentId === undefined ? original.government_id ?? null : input.governmentId || null, total_assessed_value: total("assessedValue"), total_loan_amount: total("loanAmount"), excel_sync_status: "pending", excel_sync_error: null, pdf_storage_path: null, pdf_error: null, delivery_pdf_storage_path: null, delivery_pdf_error: null, updated_at: new Date().toISOString() });
     database.prepare("DELETE FROM records WHERE table_name='bill_items' AND json_extract(body,'$.bill_id')=?").run(original.id);
     input.items.forEach((item, index) => save("bill_items", { id: randomUUID(), bill_id: original.id, metal: item.metal, particulars: item.particulars, remarks: item.remarks, grams: item.grams, assessed_value: item.assessedValue, loan_amount: item.loanAmount, sort_order: index }));
     return { id: original.id, previousPdfPath: original.pdf_storage_path, previousDeliveryPdfPath: original.delivery_pdf_storage_path };
@@ -272,12 +299,17 @@ export function createLocalDatabase(directory = localDataDirectory()) {
           });
         });
         result.sort((a, b) => { for (const order of this.orders) { if (a[order.key] !== b[order.key]) return (a[order.key] < b[order.key] ? -1 : 1) * (order.ascending ? 1 : -1); } return 0; });
-        const identities = this.table === "bills" ? transaction(customerIdentities) : [];
+        const canonicalize = this.table === "bills" ? billCanonicalizer(transaction(customerIdentities)) : (row: Row) => row;
+        const itemsByBill = new Map<string, Row[]>();
+        if (this.columns.includes("bill_items(")) {
+          for (const item of rows("bill_items")) { const list = itemsByBill.get(item.bill_id); if (list) list.push(item); else itemsByBill.set(item.bill_id, [item]); }
+          for (const list of itemsByBill.values()) list.sort((a, b) => a.sort_order - b.sort_order);
+        }
         result = result.slice(this.start, this.end === Infinity ? undefined : this.end + 1).map(storedRow => {
           // Canonicalize references in responses; printed customer/financial
           // snapshots in stored bills remain byte-for-byte unchanged.
-          const row = this.table === "bills" ? canonicalBill(storedRow, identities) : storedRow;
-          const joined = this.columns.includes("bill_items(") ? { ...row, bill_items: rows("bill_items").filter(item => item.bill_id === row.id).sort((a, b) => a.sort_order - b.sort_order) } : row;
+          const row = canonicalize(storedRow);
+          const joined = this.columns.includes("bill_items(") ? { ...row, bill_items: itemsByBill.get(row.id) ?? [] } : row;
           return this.columns.includes("*") ? joined : Object.fromEntries(this.columns.split(",").map(key => [key.trim(), joined[key.trim()]]));
         });
         if (mode && (result.length > 1 || (mode === "single" && result.length !== 1))) throw new Error("Expected one record");
@@ -420,18 +452,9 @@ export function createLocalDatabase(directory = localDataDirectory()) {
           database.prepare("INSERT INTO sync_local_requests(operation_id,profile_id,device_id,issuer_epoch,request_hash,bill_id) VALUES(?,?,?,?,?,?)").run(operationId, profile.id, deviceId, epoch, requestHash, bill.id);
           return created;
         }
+        if (name === "check_historical_bills") { checkHistoricalImport(ownerId, parameters); return { ok: true }; }
         if (name === "import_historical_bills") {
-          const account = slot(parameters.p_account_slot);
-          const profile = rows("business_profiles").find(row => row.owner_id === ownerId && row.account_slot === account);
-          if (!profile) throw new Error("Set up this business account first.");
-          const input = historicalImportSchema.parse(parameters.p_bills);
-          const current = rows("bills").filter(row => row.profile_id === profile.id);
-          const numbers = new Set(current.map(row => row.bill_number));
-          for (const bill of input) {
-            if (numbers.has(bill.billNo)) throw new Error(`Bill #${bill.billNo} is duplicated. No bills were imported.`);
-            numbers.add(bill.billNo);
-            if (bill.deliveryDate && bill.deliveryDate < bill.billDate) throw new Error(`Bill #${bill.billNo} has a delivery date before the bill date.`);
-          }
+          const { profile, input } = checkHistoricalImport(ownerId, parameters);
           const now = new Date().toISOString();
           const ids: string[] = [];
           for (const bill of input) {
@@ -439,13 +462,13 @@ export function createLocalDatabase(directory = localDataDirectory()) {
             save("bills", { id, profile_id: profile.id, bill_number: bill.billNo, bill_date: bill.billDate,
               delivery_no: bill.deliveryNo || null, delivery_date: bill.deliveryDate, historical_delivery: Boolean(bill.deliveryNo || bill.deliveryDate), historical_import: true, historical_missing_details: true,
               customer_id: null, customer_code: null, customer_name: bill.name, father_name: null, address: bill.address, phone: bill.phone, government_id: null,
-              total_assessed_value: null, total_loan_amount: bill.amount, status: "issued", replacement_for_id: null,
-              excel_sync_status: "pending", excel_sync_error: null, pdf_storage_path: null, pdf_error: null, created_at: now, voided_at: null,
+              total_assessed_value: null, total_loan_amount: bill.amount, status: bill.voided ? "void" : "issued", replacement_for_id: null,
+              excel_sync_status: "pending", excel_sync_error: null, pdf_storage_path: null, pdf_error: null, created_at: now, voided_at: bill.voided ? now : null,
               business_snapshot: { business_name: profile.business_name, address: profile.address, phone: profile.phone, logo_url: profile.logo_url, license_number: profile.license_number ?? null } });
             save("bill_items", { id: randomUUID(), bill_id: id, metal: bill.metal, particulars: bill.particulars, remarks: null, grams: null, assessed_value: null, loan_amount: bill.amount, sort_order: 0 });
           }
           const nextBillNumber = Math.max(Number(profile.next_bill_number) || 1, ...input.map(bill => bill.billNo + 1));
-          const deliveryNumbers = input.map(bill => /^\d+$/.test(bill.deliveryNo) ? Number(bill.deliveryNo) : 0).filter(number => Number.isSafeInteger(number) && number < 2147483647);
+          const deliveryNumbers = input.map(bill => sequenceDeliveryNumber(bill.deliveryNo) ?? 0);
           const nextDelivery = Math.max(Number(profile.next_delivery_number) || 1, ...deliveryNumbers.map(number => number + 1));
           save("business_profiles", { ...profile, next_bill_number: nextBillNumber, next_delivery_number: nextDelivery, updated_at: now });
           return { ids, count: ids.length, profileId: profile.id };
@@ -466,6 +489,10 @@ export function createLocalDatabase(directory = localDataDirectory()) {
         if (name === "record_bill_delivery") return recordDelivery(ownerId, parameters.p_bill_id, parameters.p_account_slot, parameters.p_delivery);
         if (name === "record_bill_deliveries") {
           const input = batchDeliverySchema.parse(parameters.p_delivery);
+          for (const delivery of input.deliveries) {
+            const { bill } = billOwner(ownerId, delivery.billId);
+            if (bill.historical_delivery === true) throw new Error(`Bill #${bill.bill_number}'s delivery came from your old register. Complete it in Single Delivery; no deliveries were saved.`);
+          }
           return input.deliveries.map(delivery => recordDelivery(ownerId, delivery.billId, parameters.p_account_slot, { deliveryDate: input.deliveryDate, itemMetals: delivery.itemMetals, billReceiptStatus: delivery.billReceiptStatus }));
         }
         if (name === "edit_bill") return editBill(ownerId, parameters.p_bill_id, parameters.p_bill);

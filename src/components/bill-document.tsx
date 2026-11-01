@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { withAccountSlot, type AccountSlot } from "@/lib/account-url";
-import { amountInWords, formatINR } from "@/lib/money";
+import { amountInWords, formatINR, recordedGrams, recordedINR } from "@/lib/money";
 import { calculateRepayment } from "@/lib/interest";
 import { RepaymentDetails } from "./repayment-details";
 import { requestHeaders } from "./api";
@@ -49,8 +49,8 @@ export function BillDocument({ bill, profile, accountSlot, onClose, documentType
       <div className="bill-meta"><span>{delivery ? "Delivery No." : "Bill No."} <b>{delivery ? bill.deliveryNo : bill.billNumber}</b></span><span>Date <b>{delivery ? bill.deliveryDate : bill.billDate}</b></span></div>
       {delivery ? <p>Original Bill No. {bill.billNumber} &nbsp; Bill Date {bill.billDate}{bill.status === "void" && <> · Original bill voided; delivery recorded</>}</p> : (bill.deliveryNo || bill.deliveryDate) && <p>Delivery No. {bill.deliveryNo || "—"} &nbsp; Delivery Date {bill.deliveryDate || "—"}</p>}
       {delivery && <p><b>Delivery remarks:</b> {bill.deliveryBillReceiptStatus ? billReceiptLabels[bill.deliveryBillReceiptStatus] : "Not recorded"}</p>}
-      <section className="customer-box"><p><b>Name:</b> {bill.customerName}</p><p><b>Father&apos;s Name:</b> {bill.fatherName}</p><p><b>Address:</b> {bill.address}</p>{(bill.phone || bill.governmentId) && <p>{bill.phone && <><b>Phone:</b> {bill.phone}</>}{bill.governmentId && <> &nbsp; <b>ID:</b> {bill.governmentId}</>}</p>}</section>
-      <table className="print-table"><thead><tr><th>Metal</th><th>Particulars</th>{hasRemarks && <th>Remarks</th>}<th>Gram</th><th>Total Value</th><th>Amount</th></tr></thead><tbody>{bill.items.map((item, index) => <tr key={index}><td>{item.metal ?? ""}</td><td>{item.particulars}</td>{hasRemarks && <td className="print-remarks">{item.remarks ?? ""}</td>}<td>{bill.historicalMissingDetails ? "Not recorded" : item.grams}</td><td>{bill.historicalMissingDetails ? "Not recorded" : formatINR(item.assessedValue)}</td><td>{formatINR(item.loanAmount)}</td></tr>)}</tbody><tfoot><tr><th colSpan={hasRemarks ? 4 : 3}>Total</th><th>{bill.historicalMissingDetails ? "Not recorded" : formatINR(bill.totalAssessedValue)}</th><th>{formatINR(bill.totalLoanAmount)}</th></tr></tfoot></table>
+      <section className="customer-box"><p><b>Name:</b> {bill.customerName}</p><p><b>Father&apos;s Name:</b> {bill.fatherName || (bill.historicalImport ? "Not recorded" : "")}</p><p><b>Address:</b> {bill.address}</p>{(bill.phone || bill.governmentId) && <p>{bill.phone && <><b>Phone:</b> {bill.phone}</>}{bill.governmentId && <> &nbsp; <b>ID:</b> {bill.governmentId}</>}</p>}</section>
+      <table className="print-table"><thead><tr><th>Metal</th><th>Particulars</th>{hasRemarks && <th>Remarks</th>}<th>Gram</th><th>Total Value</th><th>Amount</th></tr></thead><tbody>{bill.items.map((item, index) => <tr key={index}><td>{item.metal ?? ""}</td><td>{item.particulars}</td>{hasRemarks && <td className="print-remarks">{item.remarks ?? ""}</td>}<td>{recordedGrams(item.grams)}</td><td>{recordedINR(item.assessedValue)}</td><td>{formatINR(item.loanAmount)}</td></tr>)}</tbody><tfoot><tr><th colSpan={hasRemarks ? 4 : 3}>Total</th><th>{recordedINR(bill.totalAssessedValue)}</th><th>{formatINR(bill.totalLoanAmount)}</th></tr></tfoot></table>
       {repayment && <RepaymentDetails repayment={repayment} />}
       <p className="words"><b>Amount in words:</b> {repayment?.total !== undefined && repayment.total !== null ? amountInWords(repayment.total) : bill.amountInWords}</p><footer><div>Business Signature</div><div>Customer Signature</div></footer>
       {!delivery && <BillConditions />}

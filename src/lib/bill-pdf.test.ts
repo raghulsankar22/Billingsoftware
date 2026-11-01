@@ -58,6 +58,19 @@ describe("bill PDF", () => {
     expect(voided[0]).toContain("(VOIDED)");
     expect(voided.every(page => page.includes("VOIDED"))).toBe(true);
   });
+  it("prints Not recorded in a font that has those letters on imported bills", async () => {
+    const imported = { ...bill, deliveryNo: "", deliveryDate: "", fatherName: "", historicalImport: true, historicalMissingDetails: true, totalAssessedValue: null, items: [{ ...bill.items[0], grams: null, assessedValue: null }] };
+    const content = (await pageContents(await createBillPdf(imported, bill.businessSnapshot!))).join("\n");
+    // Plain literal text means the standard font; the currency subset would be glyph-encoded.
+    expect(content).toContain("(Total Value: Not recorded)");
+    expect(content).toContain("(Father's Name: Not recorded)");
+  });
+  it("keeps the VOIDED label large and bold on imported bills", async () => {
+    const imported = { ...bill, status: "void" as const, historicalImport: true };
+    const content = (await pageContents(await createBillPdf(imported, bill.businessSnapshot!))).join("\n");
+    const label = content.slice(0, content.indexOf("(VOIDED)"));
+    expect(label.slice(label.lastIndexOf(" Tf") - 12)).toMatch(/\/F2 14\.?\d* Tf/);
+  });
   it("prints collection balances without the interest-at-issue row or note", async () => {
     const bytes = await createBillPdf(bill, bill.businessSnapshot!, "delivery");
     const document = await PDFDocument.load(bytes);

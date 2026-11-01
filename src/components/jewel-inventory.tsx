@@ -13,7 +13,7 @@ export function JewelInventory({ bills, metal, busy, error, onBill }: { bills: B
   const silver = useMemo(() => jewelStock(bills, "Silver"), [bills]);
   const title = metal ? `${metal} jewellery` : "All jewellery";
   const pieces = stock.unknownQuantityRows ? stock.knownPieces ? `${stock.knownPieces}+` : "Not recorded" : String(stock.knownPieces);
-  const missingWeights = stock.lines.filter(line => line.bill.historicalMissingDetails).length;
+  const missingWeights = stock.lines.filter(line => line.item.grams === null).length;
 
   if (error) return <p className="error" role="alert">{error}</p>;
   if (busy) return <p className="muted" role="status">Loading jewellery stock…</p>;
@@ -28,9 +28,9 @@ export function JewelInventory({ bills, metal, busy, error, onBill }: { bills: B
     </div>
     {stock.unknownQuantityRows > 0 && <p className="overview-warning">{stock.unknownQuantityRows} pledge {stock.unknownQuantityRows === 1 ? "row has" : "rows have"} no complete quantity recorded. The piece total includes only rows with quantities such as “Ring 2, Studs 1”. Weight includes only recorded weights.</p>}
     {stock.unknownMetalRows > 0 && <p className="overview-warning">{stock.unknownMetalRows} undelivered pledge {stock.unknownMetalRows === 1 ? "row has" : "rows have"} no metal recorded. These appear under Jewels and are excluded from Gold and Silver totals.</p>}
-    {missingWeights > 0 && <p className="overview-warning">{missingWeights} imported {missingWeights === 1 ? "bill has" : "bills have"} no weight recorded. Total weight includes only known weights.</p>}
+    {missingWeights > 0 && <p className="overview-warning">{missingWeights} imported pledge {missingWeights === 1 ? "row has" : "rows have"} no weight recorded. Total weight includes only known weights.</p>}
     <div className="item-table-wrap"><table className="history-table"><thead><tr><th>Bill</th><th>Customer</th><th>Metal</th><th>Particulars</th><th>Pieces</th><th>Gram</th><th>Loan amount</th><th /></tr></thead><tbody>
-      {stock.lines.length ? stock.lines.map(line => <tr key={`${line.bill.id}-${line.index}`}><td><b>#{line.bill.billNumber}</b><small>{line.bill.billDate.split("-").reverse().join("/")}</small>{line.bill.status === "void" && <small>Voided · Not delivered</small>}</td><td><b>{line.bill.customerName}</b>{line.bill.customerCode && <small>{line.bill.customerCode}</small>}{line.bill.phone && <small>{line.bill.phone}</small>}</td><td>{line.item.metal ?? "Not recorded"}</td><td>{line.item.particulars}</td><td>{line.quantity ?? "Not recorded"}</td><td>{line.bill.historicalMissingDetails ? "Not recorded" : grams(line.item.grams)}</td><td>{formatINR(line.item.loanAmount)}</td><td><button type="button" className="text-button" onClick={() => onBill(line.bill)}>Open bill</button></td></tr>) : <tr><td colSpan={8} className="empty">{metal ? `No undelivered ${metal.toLowerCase()} jewellery.` : "No undelivered jewellery stock."}</td></tr>}
+      {stock.lines.length ? stock.lines.map(line => <tr key={`${line.bill.id}-${line.index}`}><td><b>#{line.bill.billNumber}</b><small>{line.bill.billDate.split("-").reverse().join("/")}</small>{line.bill.status === "void" && <small>Voided · Not delivered</small>}</td><td><b>{line.bill.customerName}</b>{line.bill.customerCode && <small>{line.bill.customerCode}</small>}{line.bill.phone && <small>{line.bill.phone}</small>}</td><td>{line.item.metal ?? "Not recorded"}</td><td>{line.item.particulars}</td><td>{line.quantity ?? "Not recorded"}</td><td>{line.item.grams === null ? "Not recorded" : grams(line.item.grams)}</td><td>{formatINR(line.item.loanAmount)}</td><td><button type="button" className="text-button" onClick={() => onBill(line.bill)}>Open bill</button></td></tr>) : <tr><td colSpan={8} className="empty">{metal ? `No undelivered ${metal.toLowerCase()} jewellery.` : "No undelivered jewellery stock."}</td></tr>}
     </tbody></table></div>
     <p className="muted collection-note">Stock remains here until delivery is recorded. Each metal&apos;s amount and known weight are taken from its pledge rows; date filters in Activity do not limit this stock list.</p>
   </>;

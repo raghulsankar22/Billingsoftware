@@ -9,8 +9,10 @@ export type BillItemInput = {
   metal?: "Gold" | "Silver";
   particulars: string;
   remarks?: string;
-  grams: number;
-  assessedValue: number;
+  /** null only on a register-imported bill whose weight was never recorded. */
+  grams: number | null;
+  /** null only on a register-imported bill whose value was never recorded. */
+  assessedValue: number | null;
   loanAmount: number;
 };
 
@@ -44,7 +46,7 @@ export type Bill = BillInput & {
   billNumber: number;
   status: BillStatus;
   replacementForId?: string;
-  totalAssessedValue: number;
+  totalAssessedValue: number | null;
   totalLoanAmount: number;
   amountInWords: string;
   excelSyncStatus: "synced" | "pending" | "failed";

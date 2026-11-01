@@ -2,9 +2,9 @@ import { withLocalSession } from "../../../../lib/local-request";
 import { NextResponse } from "next/server";
 import { accountSlot } from "@/lib/accounts";
 import { requireOwnerProfile, requireUser } from "@/lib/auth";
-import { billSchema } from "@/lib/validation";
+import { validationMessage } from "@/lib/validation";
 import { createAdminSupabase } from "@/lib/supabase";
-import { toBill, totals } from "@/lib/bills";
+import { toBill } from "@/lib/bills";
 import { refreshUpdatedBillOutputs } from "@/lib/bill-update-outputs";
 import { syncAccountRegister } from "@/lib/register-sync";
 import { localStorageEnabled } from "@/lib/storage-mode";
@@ -19,10 +19,9 @@ async function PATCHHandler(request: Request, context: Context) {
     const profile = await requireOwnerProfile(user.id, accountSlot(request));
     if (!profile) return NextResponse.json({ error: "Business profile is required." }, { status: 422 });
     const { id } = await context.params;
-    const input = billSchema.parse(await request.json());
-    const total = totals(input);
     const db = createAdminSupabase();
-    const { data: result, error: editError } = await db.rpc("edit_bill", { p_owner_id: user.id, p_bill_id: id, p_bill: { ...input, accountSlot: accountSlot(request), totalAssessedValue: total.assessedValue, totalLoanAmount: total.loanAmount } });
+    // The ledger chooses the rules: imported bills may keep unrecorded details blank.
+    const { data: result, error: editError } = await db.rpc("edit_bill", { p_owner_id: user.id, p_bill_id: id, p_bill: { ...await request.json(), accountSlot: accountSlot(request) } });
     if (editError) throw editError;
     const { data, error } = await db.from("bills").select("*, bill_items(*)").eq("id", result.id).eq("profile_id", profile.id).single();
     if (error) throw error;
@@ -30,7 +29,7 @@ async function PATCHHandler(request: Request, context: Context) {
     const warnings = await refreshUpdatedBillOutputs(profile, bill, result.previousPdfPath, result.previousDeliveryPdfPath);
     return NextResponse.json({ bill, warnings });
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : "Unable to edit bill" }, { status: 400 });
+    return NextResponse.json({ error: validationMessage(error, "Unable to edit bill") }, { status: 400 });
   }
 }
 

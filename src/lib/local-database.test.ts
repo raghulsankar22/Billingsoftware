@@ -75,6 +75,99 @@ describe("durable local ledger", () => {
     const next = await issue(db);
     expect((await db.from("bills").select().eq("id", next.data.id).single()).data.bill_number).toBe(7004);
   });
+  describe("register imports", () => {
+    const row = { billNo: 1, billDate: "2022-04-01", deliveryNo: "", deliveryDate: null, name: "Customer", address: "Street", particulars: "Minor Chain", phone: "", amount: 11000, metal: "Gold" };
+    const importBills = (db: ReturnType<typeof open>, bills: Record<string, unknown>[]) => db.rpc("import_historical_bills", { p_owner_id: localOwnerId, p_account_slot: 1, p_bills: bills });
+    const stored = async (db: ReturnType<typeof open>, id: string) => (await db.from("bills").select("*, bill_items(*)").eq("id", id).single()).data;
+    const receipt = { deliveryDate: "2026-10-30", billReceiptStatus: "has_bill" };
+    const deliver = (db: ReturnType<typeof open>, id: string, delivery: Record<string, unknown> = receipt) => db.rpc("record_bill_delivery", { p_owner_id: localOwnerId, p_bill_id: id, p_account_slot: 1, p_delivery: delivery });
+    const blankEdit = { billDate: "2022-04-01", customerName: "Customer", fatherName: "", address: "Street", phone: "123", items: [{ metal: "Gold", particulars: "Minor Chain", grams: null, assessedValue: null, loanAmount: 11000 }] };
+
+    it("doesn't let a wrong-column delivery number break numbering", async () => {
+      const db = open(); await profile(db);
+      const { data } = await importBills(db, [{ ...row, deliveryNo: "9876543210", deliveryDate: "2022-05-01" }, { ...row, billNo: 2, deliveryNo: "20220501", deliveryDate: "2022-05-01" }, { ...row, billNo: 3, deliveryNo: "40", deliveryDate: "2022-05-01" }, { ...row, billNo: 4 }]);
+      const number = await db.rpc("get_next_delivery_number", { p_owner_id: localOwnerId, p_account_slot: 1 });
+      expect(number.data.number).toBe(41);
+      const delivered = await deliver(db, data.ids[3]);
+      expect(delivered.error).toBeNull();
+      expect((await stored(db, data.ids[3])).delivery_no).toBe("41");
+      expect((await stored(db, data.ids[0])).delivery_no).toBe("9876543210");
+    });
+    it("imports a register's voided row as a voided bill", async () => {
+      const db = open(); await profile(db);
+      const { data } = await importBills(db, [{ ...row, voided: true }, { ...row, billNo: 2 }]);
+      const voided = await stored(db, data.ids[0]);
+      expect(voided.status).toBe("void");
+      expect(voided.voided_at).toBeTruthy();
+      expect((await stored(db, data.ids[1])).status).toBe("issued");
+    });
+    it("won't overwrite a complete register delivery", async () => {
+      const db = open(); await profile(db);
+      const { data } = await importBills(db, [{ ...row, deliveryNo: "6132", deliveryDate: "2022-05-01" }]);
+      const before = await stored(db, data.ids[0]);
+      expect((await deliver(db, data.ids[0])).error?.message).toContain("old register");
+      expect(await stored(db, data.ids[0])).toEqual(before);
+    });
+    it("adds only what a register delivery is missing and calculates no interest", async () => {
+      const db = open(); await profile(db);
+      const { data } = await importBills(db, [{ ...row, deliveryDate: "2022-05-31" }, { ...row, billNo: 2, deliveryNo: "77" }]);
+      expect((await deliver(db, data.ids[0])).error).toBeNull();
+      expect(await stored(db, data.ids[0])).toMatchObject({ delivery_no: "78", delivery_date: "2022-05-31", delivery_summary: null });
+      expect((await deliver(db, data.ids[1])).error).toBeNull();
+      expect(await stored(db, data.ids[1])).toMatchObject({ delivery_no: "77", delivery_date: "2026-10-30", delivery_summary: null });
+    });
+    it("keeps normal interest for an imported bill delivered for the first time", async () => {
+      const db = open(); await profile(db);
+      const { data } = await importBills(db, [row]);
+      expect((await deliver(db, data.ids[0])).error).toBeNull();
+      expect((await stored(db, data.ids[0])).delivery_summary.principal).toBe(11000);
+    });
+    it("refuses a whole multiple-delivery batch containing a register delivery", async () => {
+      const db = open(); await profile(db);
+      const { data } = await importBills(db, [row, { ...row, billNo: 2, deliveryDate: "2022-05-31" }]);
+      const batch = await db.rpc("record_bill_deliveries", { p_owner_id: localOwnerId, p_account_slot: 1, p_delivery: { deliveryDate: "2026-10-30", deliveries: data.ids.map((billId: string) => ({ billId, billReceiptStatus: "has_bill" })) } });
+      expect(batch.error?.message).toContain("Bill #2");
+      expect((await stored(db, data.ids[0])).delivery_no).toBeNull();
+    });
+    it("lets an imported bill be corrected while unknown details stay blank", async () => {
+      const db = open(); await profile(db);
+      const { data } = await importBills(db, [row]);
+      const edited = await db.rpc("edit_bill", { p_owner_id: localOwnerId, p_bill_id: data.ids[0], p_bill: blankEdit });
+      expect(edited.error).toBeNull();
+      expect(await stored(db, data.ids[0])).toMatchObject({ phone: "123", father_name: null, historical_missing_details: true, total_assessed_value: null, total_loan_amount: 11000, bill_items: [{ grams: null, assessed_value: null }] });
+    });
+    it("stops showing Not recorded only once every detail is really entered", async () => {
+      const db = open(); await profile(db);
+      const { data } = await importBills(db, [row]);
+      await db.rpc("edit_bill", { p_owner_id: localOwnerId, p_bill_id: data.ids[0], p_bill: { ...blankEdit, items: [{ ...blankEdit.items[0], grams: 4.5 }] } });
+      expect(await stored(db, data.ids[0])).toMatchObject({ historical_missing_details: true, total_assessed_value: null, bill_items: [{ grams: 4.5, assessed_value: null }] });
+      await db.rpc("edit_bill", { p_owner_id: localOwnerId, p_bill_id: data.ids[0], p_bill: { ...blankEdit, fatherName: "Parent", items: [{ ...blankEdit.items[0], grams: 4.5, assessedValue: 12100 }] } });
+      expect(await stored(db, data.ids[0])).toMatchObject({ historical_missing_details: false, total_assessed_value: 12100, father_name: "Parent" });
+    });
+    it("still requires full details when editing an ordinary bill", async () => {
+      const db = open(); await profile(db);
+      const created = await issue(db);
+      const edited = await db.rpc("edit_bill", { p_owner_id: localOwnerId, p_bill_id: created.data.id, p_bill: blankEdit });
+      expect(edited.error).toBeTruthy();
+    });
+    it("checks a workbook without saving anything", async () => {
+      const db = open(); await profile(db);
+      const params = { p_owner_id: localOwnerId, p_account_slot: 1 };
+      expect((await db.rpc("check_historical_bills", { ...params, p_bills: [row] })).error).toBeNull();
+      expect((await db.from("bills").select()).data).toHaveLength(0);
+      expect((await db.rpc("check_historical_bills", { ...params, p_bills: [row, row] })).error?.message).toContain("duplicated");
+    });
+    it("stays responsive with 10,000 imported bills", async () => {
+      const db = open(); await profile(db);
+      const imported = await importBills(db, Array.from({ length: 10000 }, (_, index) => ({ ...row, billNo: index + 1 })));
+      expect(imported.error).toBeNull();
+      const started = performance.now();
+      const { data } = await db.from("bills").select("*, bill_items(*)").eq("profile_id", imported.data.profileId);
+      expect(data).toHaveLength(10000);
+      expect(data[9999].bill_items).toHaveLength(1);
+      expect(performance.now() - started).toBeLessThan(5000);
+    }, 60000);
+  });
   it("persists and edits jewellery remarks and requires a delivery choice before issuing a receipt", async () => {
     const db = open(); const business = await profile(db);
     const input = { ...bill, items: [{ ...bill.items[0], remarks: " Slightly bent; missing stone " }] };

@@ -26,9 +26,9 @@ export function toBill(row: Record<string, unknown>): Bill {
     governmentId: String(row.government_id ?? ""),
     items: items.map((item) => {
       const source = item as Record<string, unknown>;
-      return { metal: source.metal === "Gold" || source.metal === "Silver" ? source.metal : undefined, particulars: String(source.particulars), remarks: typeof source.remarks === "string" ? source.remarks : undefined, grams: Number(source.grams), assessedValue: Number(source.assessed_value), loanAmount: Number(source.loan_amount) };
+      return { metal: source.metal === "Gold" || source.metal === "Silver" ? source.metal : undefined, particulars: String(source.particulars), remarks: typeof source.remarks === "string" ? source.remarks : undefined, grams: source.grams == null ? null : Number(source.grams), assessedValue: source.assessed_value == null ? null : Number(source.assessed_value), loanAmount: Number(source.loan_amount) };
     }),
-    totalAssessedValue: Number(row.total_assessed_value ?? 0),
+    totalAssessedValue: row.total_assessed_value == null ? null : Number(row.total_assessed_value),
     totalLoanAmount,
     amountInWords: amountInWords(totalLoanAmount),
     excelSyncStatus: String(row.excel_sync_status ?? "pending") as Bill["excelSyncStatus"],

@@ -50,12 +50,12 @@ function isKnownMetal(metal: BillItemInput["metal"]): metal is "Gold" | "Silver"
   return metal === "Gold" || metal === "Silver";
 }
 
-function paise(amount: number) {
-  return Number.isFinite(amount) ? Math.round(amount * 100) : 0;
+function paise(amount: number | null) {
+  return amount !== null && Number.isFinite(amount) ? Math.round(amount * 100) : 0;
 }
 
-function milligrams(grams: number) {
-  return Number.isFinite(grams) ? Math.round(grams * 1000) : 0;
+function milligrams(grams: number | null) {
+  return grams !== null && Number.isFinite(grams) ? Math.round(grams * 1000) : 0;
 }
 
 /**
