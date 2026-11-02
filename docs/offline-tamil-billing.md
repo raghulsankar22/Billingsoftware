@@ -10,7 +10,7 @@ In Tamil interface mode, English-record fields now show an editable Tamil phonet
 
 Typing Tamil instead keeps a pending draft and offers approximate Latin spelling beyond the old dictionary. Check/edit and explicitly confirm the English spelling before saving. Existing server refusal of Tamil record text is unchanged. Phone, Aadhaar, identifiers, dates, amounts and weights have no conversion control.
 
-This is a dictionary plus deterministic letter-based spelling aid, NOT Google Translate or full sentence translation. English spellings do not uniquely identify Tamil spellings; Latin suggestions are not guaranteed official names. Addresses need human correction. Unsupported characters may stay unchanged. No customer text is sent online.
+The default offline path is a dictionary plus deterministic letter-based spelling aid, NOT Google Translate or full sentence translation. English spellings do not uniquely identify Tamil spellings; Latin suggestions are not guaranteed official names. Addresses need human correction. Unsupported characters may stay unchanged. Only the separately consented Google option sends selected text online.
 
 ## Tamil customer bill
 
@@ -36,4 +36,4 @@ Automated tests cover bidirectional example spellings, unchanged identifiers, un
 
 ## Optional Google integration
 
-Not implemented or activated. Requires a separately agreed online flow, official credentials and cost/privacy decisions. Never commit a Google key or customer text. Google is not an offline dependency of this feature.
+The optional button and authenticated server endpoint are now implemented, but not activated or live-tested without an owner-supplied API key. See [google-translation.md](google-translation.md) for the per-field consent flow, setup, data handling, cost controls and remaining checks. Google is not an offline dependency; never commit its key or customer text.

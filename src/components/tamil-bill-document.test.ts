@@ -10,6 +10,8 @@ vi.mock("@/lib/interest", () => import("../lib/interest"));
 vi.mock("@/lib/money", () => import("../lib/money"));
 vi.mock("@/lib/types", () => import("../lib/types"));
 vi.mock("@/lib/bill-conditions", () => import("../lib/bill-conditions"));
+vi.mock("./api", () => ({ requestHeaders: async () => ({}) }));
+vi.mock("@/lib/language", () => import("../lib/language"));
 import { TamilBillDocument } from "./tamil-bill-document";
 
 const profile: BusinessSnapshot = { business_name: "Kumar", address: "12 Chennai Street", phone: "9876543210" };
@@ -29,6 +31,7 @@ describe("Tamil bill markup", () => {
     expect(html).toContain("123456789012");
     expect(html).toContain("9876543210");
     expect(html).toContain("Ten thousand rupees only");
+    expect(html.match(/Translate with Google/g)).toHaveLength(3);
     expect(html).toMatch(/disabled="">தமிழில் அச்சிடு/);
     expect(html).not.toContain('class="bill-modal tamil-bill-modal tamil-bill-reviewed"');
     expect(JSON.stringify(bill)).toBe(before);

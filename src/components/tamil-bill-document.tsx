@@ -1,12 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import { billLicenseNumber } from "@/lib/business-license";
 import { createTamilBillDraft, tamilBillText } from "@/lib/tamil-bill-presentation";
 import { calculateRepayment } from "@/lib/interest";
 import { amountInWords, formatINR, recordedGrams, recordedINR } from "@/lib/money";
 import { billReceiptLabels, collectedByRelationLabels, type Bill, type BusinessSnapshot } from "@/lib/types";
 import { BillConditions } from "./bill-conditions";
+import { GoogleTranslateButton } from "./google-translate-button";
+import type { GoogleTranslationField } from "../lib/google-translation-input";
 
 export function TamilBillDocument({ bill, profile, delivery, onClose, onEnglish }: {
   bill: Bill; profile: BusinessSnapshot; delivery: boolean; onClose: () => void; onEnglish: () => void;
@@ -14,6 +16,9 @@ export function TamilBillDocument({ bill, profile, delivery, onClose, onEnglish 
   const business = bill.businessSnapshot ?? profile;
   const [draft, setDraft] = useState(() => createTamilBillDraft(bill, business));
   const [reviewed, setReviewed] = useState(false);
+  const [googleUsed, setGoogleUsed] = useState(false);
+  const id = useId();
+  const googleFields: Record<string, GoogleTranslationField | undefined> = { customerName: "customerName", fatherName: "fatherName", address: "address" };
   const [error, setError] = useState("");
   const [printing, setPrinting] = useState(false);
   const license = billLicenseNumber(bill, profile);
@@ -44,9 +49,9 @@ export function TamilBillDocument({ bill, profile, delivery, onClose, onEnglish 
     <div className="modal-actions"><button type="button" className="secondary" onClick={onClose}>மூடு</button><button type="button" className="secondary" onClick={onEnglish}>English bill / PDF</button><button type="button" disabled={!reviewed || !complete || printing} onClick={print}>தமிழில் அச்சிடு / PDF</button></div>
     <section className="tamil-bill-review panel" aria-label="தமிழ் ரசீதைச் சரிபார்க்கவும்">
       <h2>தமிழ் ரசீதைச் சரிபார்க்கவும்</h2>
-      <p>இணையமில்லா உச்சரிப்பு உதவி மட்டுமே; பெயர் மற்றும் முகவரியின் எழுத்துகளைத் திருத்தவும். இது Google Translate அல்லது முழுமையான மொழிபெயர்ப்பு அல்ல.</p>
+      <p>முதலில் காட்டப்படுவது இணையமில்லா உச்சரிப்பு உதவி மட்டுமே; முழுமையான மொழிபெயர்ப்பு அல்ல. பெயர் மற்றும் முகவரியின் எழுத்துகளைத் திருத்தவும். Google பொத்தான் ஒப்புதல் பெற்ற பிறகே இணையத்தைப் பயன்படுத்தும்.</p>
       <p>இந்தத் திருத்தங்கள் இந்த ரசீதை அச்சிட மட்டுமே. மூடியதும் மறைந்துவிடும். ஆங்கிலப் பதிவுகள், Excel மற்றும் சேமித்த PDF மாறாது. சட்ட நிபந்தனைகளும் தொகை எழுத்துகளும் அசல் ஆங்கிலத்தில் இருக்கும்.</p>
-      <div className="tamil-bill-fields">{fields.map(([key, label, original]) => <label key={key}>{label}<small lang="en">{original || "Not recorded"}</small><textarea maxLength={2000} value={draft[key] ?? ""} onChange={event => { setDraft({ ...draft, [key]: event.target.value }); setReviewed(false); }} /></label>)}</div>
+      <div className="tamil-bill-fields">{fields.map(([key, label, original]) => <div key={key}><label htmlFor={id + key}>{label}</label><small lang="en">{original || "Not recorded"}</small><textarea id={id + key} maxLength={2000} value={draft[key] ?? ""} onChange={event => { setDraft({ ...draft, [key]: event.target.value }); setReviewed(false); }} />{googleFields[key] && <GoogleTranslateButton text={original} field={googleFields[key]} source="en" target="ta" disabled={printing} onTranslated={value => { setDraft(current => ({ ...current, [key]: value })); setReviewed(false); setGoogleUsed(true); }} />}</div>)}</div>
       <label className="tamil-bill-confirm"><input type="checkbox" checked={reviewed} disabled={!complete} onChange={event => setReviewed(event.target.checked)} /> தமிழ் எழுத்துகளையும் ஆங்கில மூல விவரங்களையும் சரிபார்த்தேன்.</label>
       <p>PDF பெற அச்சு சாளரத்தில் “Save as PDF” என்பதைத் தேர்ந்தெடுக்கவும். / Select “Save as PDF” in the print dialog.</p>
       {error && <p role="alert" className="error">{error}</p>}
@@ -64,6 +69,7 @@ export function TamilBillDocument({ bill, profile, delivery, onClose, onEnglish 
       {repayment && <section className="repayment-summary"><h3>வசூலிக்க வேண்டிய தொகை</h3><p>{repayment.chargedMonths} கூடுதல் வட்டி மாதங்கள் · {[...new Set(repayment.lines.filter(item => item.ratePercent !== null).map(item => tamilBillText(item.metal ?? "") + ": " + item.ratePercent + "% மாதாந்திரம்"))].join(" · ")}</p>{repayment.missingMetal && <p>வட்டி கணக்கிட ஒவ்வொரு நகைக்கும் தங்கம் அல்லது வெள்ளி தேர்ந்தெடுக்கப்பட வேண்டும்.</p>}<dl><div><dt>அசல்</dt><dd>{formatINR(repayment.principal)}</dd></div><div><dt>வட்டி</dt><dd>{repayment.interest === null ? "—" : formatINR(repayment.interest)}</dd></div><div><dt>மொத்த வசூல்</dt><dd>{repayment.total === null ? "—" : formatINR(repayment.total)}</dd></div></dl></section>}
       <p className="words"><b>தொகை எழுத்தில் (ஆங்கிலம்):</b> <span lang="en">{repayment?.total !== undefined && repayment.total !== null ? amountInWords(repayment.total) : bill.amountInWords}</span></p>
       <footer><div>நிறுவனத்தின் கையொப்பம்</div><div>வாடிக்கையாளரின் கையொப்பம்</div></footer>
+      {googleUsed && <p className="google-bill-attribution">Google Translate பரிந்துரைகளைக் கொண்டு சரிபார்க்கப்பட்ட தமிழ் நகல். <a href="https://translate.google.com/" target="_blank" rel="noreferrer">Powered by Google Translate</a></p>}
       {!delivery && <BillConditions />}
     </article>
   </section></div>;

@@ -74,11 +74,11 @@ export function Customers({ accountSlot }: { accountSlot: AccountSlot }) {
       <p className="customer-code-note">{editingId ? `${t("Customer ID:")} ${customerCode}` : t("A unique customer ID will be assigned automatically when you save.")}</p>
       <fieldset key={formRevision} disabled={busy}>
         <div className="form-grid">
-          <EnglishRecordField id="customer-name" label="Customer name" value={form.name} minLength={2} maxLength={120} required onChange={value => { holdCaret(); const name = capitalizeWords(value); setForm(current => ({ ...current, name })); }} />
-          <EnglishRecordField label="Father's name" value={form.fatherName} minLength={2} maxLength={120} required onChange={value => { holdCaret(); const fatherName = capitalizeWords(value); setForm(current => ({ ...current, fatherName })); }} />
+          <EnglishRecordField id="customer-name" label="Customer name" googleField="customerName" value={form.name} minLength={2} maxLength={120} required onChange={value => { holdCaret(); const name = capitalizeWords(value); setForm(current => ({ ...current, name })); }} />
+          <EnglishRecordField label="Father's name" googleField="fatherName" value={form.fatherName} minLength={2} maxLength={120} required onChange={value => { holdCaret(); const fatherName = capitalizeWords(value); setForm(current => ({ ...current, fatherName })); }} />
           <label><span>{t("Mobile number")} <span className="muted">{t("(optional)")}</span></span><input type="tel" inputMode="tel" maxLength={20} placeholder={t("10-digit mobile number")} value={form.phone} onChange={e => setForm(current => ({ ...current, phone: e.target.value }))} /></label>
           <label><span>{t("Aadhaar")} <span className="muted">{t("(optional)")}</span></span><input inputMode="numeric" maxLength={17} placeholder={t("12-digit Aadhaar number")} value={form.aadhaar} onChange={e => setForm(current => ({ ...current, aadhaar: e.target.value }))} /></label>
-          <EnglishRecordField label="Address" multiline className="wide" value={form.address} minLength={5} maxLength={500} required onChange={value => { holdCaret(); const address = capitalizeWords(value); setForm(current => ({ ...current, address })); }} />
+          <EnglishRecordField label="Address" googleField="address" multiline className="wide" value={form.address} minLength={5} maxLength={500} required onChange={value => { holdCaret(); const address = capitalizeWords(value); setForm(current => ({ ...current, address })); }} />
         </div>
         <div className="customer-actions"><button>{busy ? t("Saving…") : editingId ? t("Save customer changes") : t("Save customer")}</button>{editingId && <button type="button" className="secondary" onClick={reset}>{t("Cancel edit")}</button>}</div>
       </fieldset>

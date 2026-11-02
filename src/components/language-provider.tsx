@@ -33,7 +33,7 @@ export function LanguageProvider({ children, demo = false }: { children: React.R
         <div className="language-explanation">
           {demo && <p>{value.t("DEMO: Synthetic sample data only. This is not a real ledger. Do not enter real customer or financial data.")}</p>}
           <p>{value.t("Stored records and Excel remain in English. Check and explicitly confirm local spelling suggestions before saving English values.")}</p>
-          <p>{value.t("Tamil text is a draft only. No online translation is used.")}</p>
+          <p>{language === "ta" ? "இயல்பாக இணையமில்லா பரிந்துரைகள் மட்டுமே. Google பொத்தானைத் தேர்ந்தெடுத்து ஒப்புதல் அளித்தால் அந்தப் புலத்தின் உரை மட்டும் இணையம் வழியாக அனுப்பப்படும்; கட்டணம் ஏற்படலாம்." : "Suggestions are offline by default. Google translation sends only the selected field’s text online after your consent and may incur charges."}</p>
         </div>
       </details>
     </aside>
