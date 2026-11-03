@@ -18,6 +18,7 @@ export function toBill(row: Record<string, unknown>): Bill {
     historicalMissingDetails: row.historical_missing_details === true,
     historicalImport: row.historical_import === true,
     deliveryBillReceiptStatus: row.delivery_bill_receipt_status === "has_bill" || row.delivery_bill_receipt_status === "lost_bill" ? row.delivery_bill_receipt_status : undefined,
+    lostBillDeclaredAt: row.delivery_bill_receipt_status === "lost_bill" && row.delivery_lost_bill_declared_at ? String(row.delivery_lost_bill_declared_at) : undefined,
     deliveryCollectedByName: row.delivery_collected_by_name ? String(row.delivery_collected_by_name) : undefined,
     deliveryCollectedByRelation: typeof row.delivery_collected_by_relation === "string" && row.delivery_collected_by_relation in collectedByRelationLabels ? row.delivery_collected_by_relation as CollectedByRelation : undefined,
     cancelledDeliveries: Array.isArray(row.cancelled_deliveries) ? row.cancelled_deliveries.map((entry: { delivery_no?: unknown; delivery_date?: unknown; cancelled_at?: unknown }) => ({ deliveryNo: String(entry.delivery_no ?? ""), deliveryDate: String(entry.delivery_date ?? ""), cancelledAt: String(entry.cancelled_at ?? "") })) : undefined,

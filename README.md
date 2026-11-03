@@ -99,7 +99,7 @@ node scripts/check-local-migration.mjs  # Check data consistency before any migr
 
 Things to know:
 
-- **Back up your data.** Close the app and copy the whole data folder to another drive. The offline app has no cloud backup.
+- **Back up your data.** On the Dashboard, choose a backup folder on a USB drive or another disk; the app saves a dated copy every day and can restore one from the same panel. You can also close the app and copy the whole data folder. The offline app has no cloud backup.
 - **Data isn't encrypted on disk.** Customer details, including Aadhaar numbers, can be read by anyone with access to the Windows account.
 - **The installer isn't digitally signed.** Only install builds you made yourself.
 - **Never run `git clean -x` in a folder holding live data.** The data folder is ignored by Git, so Git can't restore it.

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { isEnglishRecord, englishRecordMessage } from "./english-records";
+
 
 export interface CustomerInput {
   name: string;
@@ -42,9 +42,9 @@ export function normalizeAadhaar(value: string): string {
 }
 
 export const customerSchema = z.object({
-  name: z.string().trim().min(2, "Enter the customer's name.").max(120).refine(isEnglishRecord, englishRecordMessage),
-  fatherName: z.string().trim().min(2, "Enter the father's name.").max(120).refine(isEnglishRecord, englishRecordMessage),
-  address: z.string().trim().min(5, "Enter the customer's address.").max(500).refine(isEnglishRecord, englishRecordMessage),
+  name: z.string().trim().min(2, "Enter the customer's name.").max(120),
+  fatherName: z.string().trim().min(2, "Enter the father’s or husband’s name.").max(120),
+  address: z.string().trim().min(5, "Enter the customer's address.").max(500),
   phone: z.string().max(80).default("").transform(normalizePhone)
     .refine(value => !value || /^\d{10}$/.test(value), "Enter a 10-digit phone number, optionally with +91."),
   aadhaar: z.string().max(80).default("").transform(normalizeAadhaar)

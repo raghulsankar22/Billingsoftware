@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import ExcelJS from 'exceljs';
 import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
 const base = process.env.BILLING_TEST_URL || 'http://127.0.0.1:3111';
 async function api(path, method = 'GET', body) {
   const response = await fetch(base + path, { method, headers: { 'content-type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
@@ -101,6 +103,13 @@ for (const [account, startingNumber] of [[2, 1], [3, 500]]) {
   assert.equal(rows.getRow(2).getCell(9).numFmt, '"₹" #,##0.00');
   assert.equal(rows.getRow(3).getCell(4).value, null);
 }
+const combinedResponse = await fetch(`${base}/api/reports/excel?scope=all&account=2&from=2099-01-01`);
+assert.equal(combinedResponse.status, 200);
+const combinedRegister = new ExcelJS.Workbook();
+await combinedRegister.xlsx.load(Buffer.from(await combinedResponse.arrayBuffer()));
+assert.deepEqual(combinedRegister.worksheets.map(sheet => sheet.name), ['Account 1', 'Account 2', 'Account 3']);
+for (const account of [2, 3]) assert.equal(combinedRegister.getWorksheet('Account ' + account).getCell('F2').value, 'Account ' + account + ' customer');
+assert.equal((await api('/api/reports/excel?scope=all&account=3', 'POST')).ok, true);
 await api(`/api/bills/${issued.id}`, 'DELETE');
 await api(`/api/bills/${replaced.id}`, 'DELETE');
 assert.equal((await api('/api/profile')).profile.next_bill_number, 1);
@@ -134,7 +143,8 @@ assert.equal(delivered.bill.deliveryDate, deliveryInput.deliveryDate);
 assert.equal(delivered.bill.totalLoanAmount, 80);
 assert.equal(delivered.bill.excelSyncStatus, 'synced');
 assert.deepEqual(delivered.warnings, []);
-await api(`/api/bills/${restarted.id}/delivery`, 'PATCH', { deliveryDate: '2026-10-29', billReceiptStatus: 'lost_bill', collectedByRelation: 'self' });
+assert.equal((await fetch(`${base}/api/bills/${restarted.id}/delivery`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ deliveryDate: '2026-10-29', billReceiptStatus: 'lost_bill', collectedByRelation: 'self' }) })).status, 400, 'A lost bill needs the signed declaration');
+await api(`/api/bills/${restarted.id}/delivery`, 'PATCH', { deliveryDate: '2026-10-29', billReceiptStatus: 'lost_bill', lostBillDeclarationSigned: true, collectedByRelation: 'self' });
 assert.equal((await api('/api/bills')).bills.length, 1);
 assert.equal((await api('/api/profile')).profile.next_bill_number, 2);
 const deliveryWorkbook = new ExcelJS.Workbook();
@@ -209,7 +219,7 @@ assert.deepEqual(batchLoans.map(bill => bill.billNumber), [1, 2, 3]);
 const fifthBill = (await api('/api/bills?account=5', 'POST', { ...input, deliveryNo: '', deliveryDate: '' })).bill;
 assert.equal(fifthBill.billNumber, 1);
 await api(`/api/bills/${batchLoans[1].id}/void?account=4`, 'POST');
-const batchBody = { deliveryDate: '2026-11-29', deliveries: batchLoans.map((bill, index) => ({ billId: bill.id, billReceiptStatus: index === 1 ? 'lost_bill' : 'has_bill', collectedByRelation: 'self' })) };
+const batchBody = { deliveryDate: '2026-11-29', deliveries: batchLoans.map((bill, index) => ({ billId: bill.id, billReceiptStatus: index === 1 ? 'lost_bill' : 'has_bill', ...(index === 1 ? { lostBillDeclarationSigned: true } : {}), collectedByRelation: 'self' })) };
 const invalidBatch = body => fetch(base + '/api/delivery/batch?account=4', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
 assert.equal((await invalidBatch({ ...batchBody, deliveries: [{ billId: batchLoans[0].id, billReceiptStatus: 'has_bill', collectedByRelation: 'self' }, { billId: fifthBill.id, billReceiptStatus: 'has_bill', collectedByRelation: 'self' }] })).status, 400);
 assert.equal((await invalidBatch({ ...batchBody, deliveries: [{ billId: batchLoans[0].id, billReceiptStatus: 'has_bill', collectedByRelation: 'self' }, { billId: batchLoans[0].id, billReceiptStatus: 'has_bill', collectedByRelation: 'self' }] })).status, 400);
@@ -237,7 +247,7 @@ assert.ok(!(await api('/api/bills?account=5')).bills[0].deliveryNo);
 assert.deepEqual((await api('/api/profile')).profiles.filter(profile => profile.account_slot <= 3), originalProfiles);
 // Simulate a blocked Excel target in this disposable test directory. Delivery records must survive.
 const fourthLoan = (await api('/api/bills?account=4', 'POST', { ...input, billDate: '2026-10-28', deliveryNo: '', deliveryDate: '' })).bill;
-const retryBody = { deliveryDate: '2026-11-29', deliveries: [{ billId: fourthLoan.id, billReceiptStatus: 'lost_bill', collectedByRelation: 'self' }] };
+const retryBody = { deliveryDate: '2026-11-29', deliveries: [{ billId: fourthLoan.id, billReceiptStatus: 'lost_bill', lostBillDeclarationSigned: true, collectedByRelation: 'self' }] };
 await fs.rename(register4, register4 + '.test-backup'); await fs.mkdir(register4);
 try {
   const blocked = await api('/api/delivery/batch?account=4', 'POST', retryBody);
@@ -322,4 +332,36 @@ assert.ok(repeatedPreview.data.rows.every(row => row.issues.includes('Bill numbe
 const duplicateImport = await uploadRegister('import-historical', { 'Bills:2': 'Gold', 'Bills:3': 'Gold', 'Bills:4': 'Silver' });
 assert.equal(duplicateImport.response.status, 400);
 assert.equal((await api('/api/bills?account=' + importSlot)).bills.length, 3);
-console.log('Local HTTP flow passed: shared-phone confirmation and selection, delivery date validation, sample register preview/import and duplicate rejection, shared customers and IDs, all-account search, prior-year bill filtering, account numbering/Excel, PDFs, atomic multi-delivery, interest and safe Excel retries.');
+const billsBeforeCatalogueEdit = (await api('/api/bills')).bills;
+assert.equal((await api('/api/jewellery?account=2', 'PATCH', { originalName: 'Ring', name: 'Runtime Edited Ring' })).name, 'Runtime Edited Ring');
+assert.ok(!(await api('/api/jewellery?account=3')).items.includes('Ring'));
+await api('/api/jewellery', 'DELETE', { name: 'Chain' });
+assert.ok(!(await api('/api/jewellery')).items.includes('Chain'));
+assert.deepEqual((await api('/api/bills')).bills, billsBeforeCatalogueEdit);
+await api('/api/jewellery', 'PATCH', { originalName: 'Runtime Edited Ring', name: 'Ring' });
+await api('/api/jewellery', 'POST', { name: 'Chain' });
+assert.ok((await api('/api/jewellery')).items.includes('Ring'));
+assert.ok((await api('/api/jewellery')).items.includes('Chain'));
+// Backup and restore: copy the ledger to a folder outside the data folder, change it, then go back.
+const backupFolder = await fs.mkdtemp(path.join(os.tmpdir(), 'billing-backup-verify-'));
+try {
+  assert.equal((await api('/api/backup')).folder, null);
+  assert.equal((await fetch(base + '/api/backup', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ folder: 'relative/folder' }) })).status, 400);
+  const firstBackup = await api('/api/backup', 'PUT', { folder: backupFolder });
+  assert.equal(firstBackup.copies, 1);
+  assert.equal(firstBackup.due, false);
+  const billsAtBackup = (await api('/api/bills')).bills;
+  await api('/api/jewellery', 'POST', { name: 'Verify After Backup' });
+  assert.ok((await api('/api/jewellery')).items.includes('Verify After Backup'));
+  const offered = (await api('/api/backup-restore')).backups;
+  assert.equal(offered.length, 1);
+  const restored = await api('/api/backup-restore', 'POST', { file: offered[0].file });
+  assert.match(restored.safetyCopy, /^before-restore-/);
+  assert.ok(!(await api('/api/jewellery')).items.includes('Verify After Backup'), 'Restore must bring back the backed-up catalogue');
+  assert.deepEqual((await api('/api/bills')).bills, billsAtBackup);
+  assert.equal((await fetch(base + '/api/backup-restore', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ file: '../billing.sqlite' }) })).status, 400);
+  await api('/api/jewellery', 'POST', { name: 'Verify Saves After Restore' });
+  assert.ok((await api('/api/jewellery')).items.includes('Verify Saves After Restore'));
+  await api('/api/jewellery', 'DELETE', { name: 'Verify Saves After Restore' });
+} finally { await fs.rm(backupFolder, { recursive: true, force: true }); }
+console.log('Local HTTP flow passed: jewellery rename/delete without changing saved bills, shared-phone confirmation and selection, delivery date validation, sample register preview/import and duplicate rejection, backup and restore, shared customers and IDs, all-account search, prior-year bill filtering, account numbering/Excel, PDFs, atomic multi-delivery, interest and safe Excel retries.');

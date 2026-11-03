@@ -1,6 +1,7 @@
 "use client";
 
 import { useLanguage } from "./language-provider";
+import { formatParticulars } from "@/lib/jewellery";
 
 import { useMemo, useState } from "react";
 import { calculateRepayment } from "@/lib/interest";
@@ -34,7 +35,7 @@ export function BillOverview({ bill, onClose }: { bill: Bill; onClose: () => voi
       {result.repayment && <>
         <p className="overview-method">{result.repayment.chargedMonths} {t("additional interest month")}{result.repayment.chargedMonths === 1 ? "" : t("s")} {t("charged. Interest is charged on the day after each monthly anniversary. Combined Gold loan over ₹5,000: 2%; Gold up to ₹5,000: 2.5%; Silver: 3% at any amount.")}</p>
         {result.repayment.missingMetal && <p className="overview-warning">{t("One or more older items have no Gold/Silver selection.")} {bill.status === "issued" ? t("Choose a metal by editing the bill before using this total.") : t("This voided bill cannot be recalculated accurately.")}</p>}
-        <div className="item-table-wrap"><table className="overview-table"><thead><tr><th>{t("Item")}</th><th>{t("Metal")}</th><th>{t("Principal")}</th><th>{t("Monthly rate")}</th><th>{t("Extra interest")}</th><th>{t("To repay")}</th></tr></thead><tbody>{result.repayment.lines.map((line, index) => <tr key={index}><td>{line.particulars}</td><td>{t(line.metal ?? "Not set")}</td><td>{formatINR(line.principal)}</td><td>{line.ratePercent === null ? "—" : `${line.ratePercent}%`}</td><td>{line.interest === null ? "—" : formatINR(line.interest)}</td><td>{line.total === null ? "—" : formatINR(line.total)}</td></tr>)}</tbody></table></div>
+        <div className="item-table-wrap"><table className="overview-table"><thead><tr><th>{t("Item")}</th><th>{t("Metal")}</th><th>{t("Principal")}</th><th>{t("Monthly rate")}</th><th>{t("Extra interest")}</th><th>{t("To repay")}</th></tr></thead><tbody>{result.repayment.lines.map((line, index) => <tr key={index}><td>{formatParticulars(line.particulars)}</td><td>{t(line.metal ?? "Not set")}</td><td>{formatINR(line.principal)}</td><td>{line.ratePercent === null ? "—" : `${line.ratePercent}%`}</td><td>{line.interest === null ? "—" : formatINR(line.interest)}</td><td>{line.total === null ? "—" : formatINR(line.total)}</td></tr>)}</tbody></table></div>
         <div className="overview-totals"><div><span>{t("Principal to repay")}</span><strong>{formatINR(result.repayment.principal)}</strong></div><div><span>{t("Additional interest")}</span><strong>{result.repayment.interest === null ? "—" : formatINR(result.repayment.interest)}</strong></div><div className="overview-grand"><span>{t("Total to repay")}</span><strong>{result.repayment.total === null ? "—" : formatINR(result.repayment.total)}</strong></div></div>
       </>}
     </section>

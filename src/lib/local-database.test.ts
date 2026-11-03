@@ -215,11 +215,33 @@ describe("durable local ledger", () => {
     expect((await read()).data.delivery_no).toBeNull();
     expect((await db.from("business_profiles").select().eq("id", business.id).single()).data.next_delivery_number).toBe(1);
     expect((await db.rpc("edit_bill", { p_owner_id: localOwnerId, p_bill_id: first.data.id, p_bill: { ...input, items: [{ ...input.items[0], remarks: "No screw" }] } })).error).toBeNull();
-    const delivery = { p_owner_id: localOwnerId, p_bill_id: first.data.id, p_account_slot: 1, p_delivery: { deliveryDate: "2026-10-30", billReceiptStatus: "lost_bill", collectedByRelation: "self" } };
+    const delivery = { p_owner_id: localOwnerId, p_bill_id: first.data.id, p_account_slot: 1, p_delivery: { deliveryDate: "2026-10-30", billReceiptStatus: "lost_bill", collectedByRelation: "self", lostBillDeclarationSigned: true } };
+    expect((await db.rpc("record_bill_delivery", { ...delivery, p_delivery: { ...delivery.p_delivery, lostBillDeclarationSigned: false } })).error).toBeTruthy();
+    expect((await read()).data.delivery_no).toBeNull();
     expect((await db.rpc("record_bill_delivery", delivery)).error).toBeNull();
     expect((await read()).data).toMatchObject({ bill_number: 1, delivery_no: "1", delivery_bill_receipt_status: "lost_bill", bill_items: [{ remarks: "No screw" }] });
+    const declaredAt = (await read()).data.delivery_lost_bill_declared_at;
+    expect(declaredAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    expect((await db.rpc("record_bill_delivery", delivery)).error).toBeNull();
+    expect((await read()).data.delivery_lost_bill_declared_at).toBe(declaredAt);
     expect((await db.rpc("record_bill_delivery", { ...delivery, p_delivery: { ...delivery.p_delivery, billReceiptStatus: "has_bill", collectedByRelation: "self" } })).error).toBeNull();
-    expect((await read()).data).toMatchObject({ delivery_no: "1", delivery_bill_receipt_status: "has_bill" });
+    expect((await read()).data).toMatchObject({ delivery_no: "1", delivery_bill_receipt_status: "has_bill", delivery_lost_bill_declared_at: null });
+    // Marking an older lost-bill delivery as signed.
+    const mark = (account = 1) => db.rpc("mark_lost_bill_declared", { p_owner_id: localOwnerId, p_bill_id: first.data.id, p_account_slot: account });
+    expect((await mark()).error?.message).toContain("isn't recorded as a lost bill");
+    // The app blocks direct ledger edits, so fake an older unsigned lost-bill delivery in this throwaway file.
+    const raw = new DatabaseSync(join(opened.at(-1)!.directory, "billing.sqlite"));
+    raw.prepare("UPDATE records SET body=json_set(body,'$.delivery_bill_receipt_status','lost_bill') WHERE table_name='bills' AND id=?").run(first.data.id);
+    raw.close();
+    expect((await read()).data).toMatchObject({ delivery_bill_receipt_status: "lost_bill", delivery_lost_bill_declared_at: null });
+    expect((await mark(2)).error).toBeTruthy();
+    expect((await read()).data.delivery_lost_bill_declared_at).toBeNull();
+    const marked = await mark();
+    expect(marked.error).toBeNull();
+    expect((await read()).data).toMatchObject({ delivery_lost_bill_declared_at: marked.data.declaredAt, excel_sync_status: "pending", delivery_no: "1" });
+    expect((await mark()).data.declaredAt).toBe(marked.data.declaredAt);
+    const waiting = await issue(db, { ...bill, phone: "9000000002" });
+    expect((await db.rpc("mark_lost_bill_declared", { p_owner_id: localOwnerId, p_bill_id: waiting.data.id, p_account_slot: 1 })).error?.message).toContain("no delivery yet");
   });
   it("saves separate account licenses, preserves issue snapshots and allows clearing the field", async () => {
     const db = open();

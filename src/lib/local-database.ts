@@ -18,7 +18,10 @@ import { parseSyncBill } from "./sync-bill";
 type Row = Record<string, any>;
 type Result = { data: any; error: Error | null; count?: number | null };
 const tables = new Set(["business_profiles", "bills", "bill_items"]);
-const connections = new Map<string, DatabaseSync>();
+// One shared connection per ledger file for the whole server, even when Next.js bundles this module separately for each route.
+// A restore must be able to close every handle before it swaps the file.
+const connectionRegistry = globalThis as typeof globalThis & { __billingConnections?: Map<string, DatabaseSync> };
+const connections = (connectionRegistry.__billingConnections ??= new Map<string, DatabaseSync>());
 export const localOwnerId = "local-owner";
 export function localDataDirectory() { return scopedDataDirectory(); }
 function failure(error: unknown) { return { data: null, error: error instanceof Error ? error : new Error(String(error)), count: null }; }
@@ -39,7 +42,7 @@ export function createLocalDatabase(directory = localDataDirectory()) {
     connections.set(filename, db);
   }
   const database = db;
-  database.exec("CREATE TABLE IF NOT EXISTS jewellery_items (name_key TEXT PRIMARY KEY, name TEXT NOT NULL)");
+  database.exec("CREATE TABLE IF NOT EXISTS jewellery_items (name_key TEXT PRIMARY KEY, name TEXT NOT NULL); CREATE TABLE IF NOT EXISTS jewellery_hidden_items (name_key TEXT PRIMARY KEY)");
   // Older desktop releases insert without customer_number. Allocate it in a
   // trigger shared by every writer, and serialize schema inspection/backfill.
   database.exec("BEGIN IMMEDIATE");
@@ -85,7 +88,10 @@ export function createLocalDatabase(directory = localDataDirectory()) {
     BEGIN SELECT RAISE(ABORT,'Customer number cannot be changed.'); END;`);
     database.exec("COMMIT");
   } catch (error) { database.exec("ROLLBACK"); throw error; }
-  const jewelleryList = () => jewelleryChoices(database.prepare("SELECT name FROM jewellery_items ORDER BY name COLLATE NOCASE, name").all().map(row => String(row.name)));
+  const jewelleryList = () => jewelleryChoices(
+    database.prepare("SELECT name FROM jewellery_items ORDER BY name COLLATE NOCASE, name").all().map(row => String(row.name)),
+    database.prepare("SELECT name_key FROM jewellery_hidden_items").all().map(row => String(row.name_key)),
+  );
   const rows = (table: string): Row[] => {
     if (!tables.has(table)) throw new Error(`Local storage does not support ${table}.`);
     return database.prepare("SELECT body FROM records WHERE table_name=?").all(table).map(row => JSON.parse(String(row.body)));
@@ -297,9 +303,21 @@ export function createLocalDatabase(directory = localDataDirectory()) {
     const now = new Date().toISOString();
     if (!bill.delivery_no) save("business_profiles", { ...profile, next_delivery_number: nextNumber + 1, updated_at: now });
     savedItems.forEach((item, index) => { if (!item.metal) save("bill_items", { ...item, metal: items[index].metal }); });
-    const updated = { ...bill, delivery_no: deliveryNo, delivery_date: deliveryDate, delivery_bill_receipt_status: input.billReceiptStatus, delivery_collected_by_relation: input.collectedByRelation, delivery_collected_by_name: input.collectedByRelation === "self" ? bill.customer_name : input.collectedByName, delivery_summary: summary, excel_sync_status: "pending", excel_sync_error: null, pdf_storage_path: null, pdf_error: null, delivery_pdf_storage_path: null, delivery_pdf_error: null, updated_at: now };
+    const declaredAt = input.billReceiptStatus === "lost_bill" ? bill.delivery_bill_receipt_status === "lost_bill" && bill.delivery_lost_bill_declared_at ? bill.delivery_lost_bill_declared_at : now : null;
+    const updated = { ...bill, delivery_no: deliveryNo, delivery_date: deliveryDate, delivery_bill_receipt_status: input.billReceiptStatus, delivery_lost_bill_declared_at: declaredAt, delivery_collected_by_relation: input.collectedByRelation, delivery_collected_by_name: input.collectedByRelation === "self" ? bill.customer_name : input.collectedByName, delivery_summary: summary, excel_sync_status: "pending", excel_sync_error: null, pdf_storage_path: null, pdf_error: null, delivery_pdf_storage_path: null, delivery_pdf_error: null, updated_at: now };
     save("bills", updated);
     return { id: bill.id, previousPdfPath: bill.pdf_storage_path, previousDeliveryPdfPath: bill.delivery_pdf_storage_path, bill: { ...billCanonicalizer(customerIdentities())(updated), bill_items: rows("bill_items").filter(item => item.bill_id === bill.id).sort((left, right) => left.sort_order - right.sort_order) } };
+  };
+  const markLostBillDeclared = (ownerId: string, billId: string, account: unknown) => {
+    const { bill, profile } = billOwner(ownerId, billId);
+    if (slot(account) !== profile.account_slot) throw new Error("Bill not found in this account.");
+    refuseIfSyncManaged(profile.id);
+    if (!bill.delivery_no && !bill.delivery_date) throw new Error("This bill has no delivery yet.");
+    if (bill.delivery_bill_receipt_status !== "lost_bill") throw new Error("This delivery isn't recorded as a lost bill.");
+    if (bill.delivery_lost_bill_declared_at) return { id: bill.id, declaredAt: String(bill.delivery_lost_bill_declared_at) };
+    const now = new Date().toISOString();
+    save("bills", { ...bill, delivery_lost_bill_declared_at: now, excel_sync_status: "pending", excel_sync_error: null, updated_at: now });
+    return { id: bill.id, declaredAt: now };
   };
   // Undoes a delivery but keeps a record of it. Its number stays used, because a paper receipt may exist.
   const cancelDelivery = (ownerId: string, billId: string, account: unknown) => {
@@ -309,8 +327,8 @@ export function createLocalDatabase(directory = localDataDirectory()) {
     if (!bill.delivery_no && !bill.delivery_date) throw new Error("This bill has no delivery to cancel.");
     if (bill.historical_delivery === true) throw new Error("This delivery came from your old register, so it can't be cancelled here. Use Edit bill to correct it.");
     const now = new Date().toISOString();
-    const cancelled = { delivery_no: bill.delivery_no, delivery_date: bill.delivery_date, bill_receipt_status: bill.delivery_bill_receipt_status ?? null, collected_by_relation: bill.delivery_collected_by_relation ?? null, collected_by_name: bill.delivery_collected_by_name ?? null, delivery_summary: bill.delivery_summary ?? null, cancelled_at: now };
-    const updated = { ...bill, delivery_no: null, delivery_date: null, delivery_bill_receipt_status: null, delivery_collected_by_relation: null, delivery_collected_by_name: null, delivery_summary: null, cancelled_deliveries: [...(Array.isArray(bill.cancelled_deliveries) ? bill.cancelled_deliveries : []), cancelled], excel_sync_status: "pending", excel_sync_error: null, pdf_storage_path: null, pdf_error: null, delivery_pdf_storage_path: null, delivery_pdf_error: null, updated_at: now };
+    const cancelled = { delivery_no: bill.delivery_no, delivery_date: bill.delivery_date, bill_receipt_status: bill.delivery_bill_receipt_status ?? null, lost_bill_declared_at: bill.delivery_lost_bill_declared_at ?? null, collected_by_relation: bill.delivery_collected_by_relation ?? null, collected_by_name: bill.delivery_collected_by_name ?? null, delivery_summary: bill.delivery_summary ?? null, cancelled_at: now };
+    const updated = { ...bill, delivery_no: null, delivery_date: null, delivery_bill_receipt_status: null, delivery_lost_bill_declared_at: null, delivery_collected_by_relation: null, delivery_collected_by_name: null, delivery_summary: null, cancelled_deliveries: [...(Array.isArray(bill.cancelled_deliveries) ? bill.cancelled_deliveries : []), cancelled], excel_sync_status: "pending", excel_sync_error: null, pdf_storage_path: null, pdf_error: null, delivery_pdf_storage_path: null, delivery_pdf_error: null, updated_at: now };
     save("bills", updated);
     return { id: bill.id, previousPdfPath: bill.pdf_storage_path, previousDeliveryPdfPath: bill.delivery_pdf_storage_path };
   };
@@ -420,6 +438,8 @@ export function createLocalDatabase(directory = localDataDirectory()) {
       held: (profileId: string) => createSyncOutbox(database).held(profileId),
       resolveHeld: (profileId: string, operationId: string, decision: "retry" | "dismiss") => createSyncOutbox(database).resolve(profileId, operationId, decision),
     },
+    /** Writes a consistent copy of the whole ledger, even while bills are being saved. */
+    snapshot: async (target: string) => { await backup(database, target); },
     backupBeforeImport: async () => {
       const directory = resolve(root, "backups");
       mkdirSync(directory, { recursive: true });
@@ -473,10 +493,35 @@ export function createLocalDatabase(directory = localDataDirectory()) {
       add: (value: unknown) => {
         const name = jewelleryNameSchema.parse(value);
         return transaction(() => {
+          database.prepare("DELETE FROM jewellery_hidden_items WHERE name_key=?").run(jewelleryKey(name));
           const existing = jewelleryList().find(choice => jewelleryKey(choice) === jewelleryKey(name));
           if (existing) return { name: existing, items: jewelleryList() };
           database.prepare("INSERT INTO jewellery_items(name_key,name) VALUES(?,?) ON CONFLICT(name_key) DO NOTHING").run(jewelleryKey(name), name);
           return { name, items: jewelleryList() };
+        });
+      },
+      rename: (originalValue: unknown, value: unknown) => {
+        const original = jewelleryNameSchema.parse(originalValue);
+        const name = jewelleryNameSchema.parse(value);
+        return transaction(() => {
+          const previousKey = jewelleryKey(original);
+          const nextKey = jewelleryKey(name);
+          const choices = jewelleryList();
+          if (!choices.some(choice => jewelleryKey(choice) === previousKey)) throw new Error("This jewellery name is no longer available. Refresh the list and try again.");
+          if (previousKey !== nextKey && choices.some(choice => jewelleryKey(choice) === nextKey)) throw new Error("A jewellery name with this spelling already exists.");
+          database.prepare("DELETE FROM jewellery_items WHERE name_key=?").run(previousKey);
+          if (previousKey !== nextKey) database.prepare("INSERT OR IGNORE INTO jewellery_hidden_items(name_key) VALUES(?)").run(previousKey);
+          database.prepare("DELETE FROM jewellery_hidden_items WHERE name_key=?").run(nextKey);
+          database.prepare("INSERT INTO jewellery_items(name_key,name) VALUES(?,?) ON CONFLICT(name_key) DO UPDATE SET name=excluded.name").run(nextKey, name);
+          return { name, items: jewelleryList() };
+        });
+      },
+      remove: (value: unknown) => {
+        const name = jewelleryNameSchema.parse(value);
+        return transaction(() => {
+          database.prepare("DELETE FROM jewellery_items WHERE name_key=?").run(jewelleryKey(name));
+          database.prepare("INSERT OR IGNORE INTO jewellery_hidden_items(name_key) VALUES(?)").run(jewelleryKey(name));
+          return { items: jewelleryList() };
         });
       },
     },
@@ -559,13 +604,14 @@ export function createLocalDatabase(directory = localDataDirectory()) {
         }
         if (name === "record_bill_delivery") return recordDelivery(ownerId, parameters.p_bill_id, parameters.p_account_slot, parameters.p_delivery);
         if (name === "cancel_bill_delivery") return cancelDelivery(ownerId, parameters.p_bill_id, parameters.p_account_slot);
+        if (name === "mark_lost_bill_declared") return markLostBillDeclared(ownerId, parameters.p_bill_id, parameters.p_account_slot);
         if (name === "record_bill_deliveries") {
           const input = batchDeliverySchema.parse(parameters.p_delivery);
           for (const delivery of input.deliveries) {
             const { bill } = billOwner(ownerId, delivery.billId);
             if (bill.historical_delivery === true) throw new Error(`Bill #${bill.bill_number}'s delivery came from your old register. Complete it in Single Delivery; no deliveries were saved.`);
           }
-          return input.deliveries.map(delivery => recordDelivery(ownerId, delivery.billId, parameters.p_account_slot, { deliveryDate: input.deliveryDate, itemMetals: delivery.itemMetals, billReceiptStatus: delivery.billReceiptStatus, collectedByRelation: delivery.collectedByRelation, collectedByName: delivery.collectedByName }));
+          return input.deliveries.map(delivery => recordDelivery(ownerId, delivery.billId, parameters.p_account_slot, { deliveryDate: input.deliveryDate, itemMetals: delivery.itemMetals, billReceiptStatus: delivery.billReceiptStatus, lostBillDeclarationSigned: delivery.lostBillDeclarationSigned, collectedByRelation: delivery.collectedByRelation, collectedByName: delivery.collectedByName }));
         }
         if (name === "edit_bill") return editBill(ownerId, parameters.p_bill_id, parameters.p_bill);
         if (name === "edit_bill_with_sync") {

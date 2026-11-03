@@ -14,7 +14,7 @@ vi.mock("./api", () => ({ requestHeaders: async () => ({}) }));
 vi.mock("@/lib/language", () => import("../lib/language"));
 import { TamilBillDocument } from "./tamil-bill-document";
 
-const profile: BusinessSnapshot = { business_name: "Kumar", address: "12 Chennai Street", phone: "9876543210" };
+const profile: BusinessSnapshot = { business_name: "Kumar", address: "12 Chennai Street", phone: "9000000000" };
 const bill: Bill = {
   id: "sample", billNumber: 42, billDate: "2026-11-02", customerName: "Muthu", fatherName: "Raja", address: "12 Chennai Street", phone: "9876543210", governmentId: "123456789012",
   items: [{ metal: "Gold", particulars: "Ring 2", grams: 2.5, assessedValue: 12000, loanAmount: 10000 }], totalAssessedValue: 12000, totalLoanAmount: 10000,
@@ -30,9 +30,13 @@ describe("Tamil bill markup", () => {
     expect(html).toContain("12 சென்னை தெரு");
     expect(html).toContain("123456789012");
     expect(html).toContain("9876543210");
+    expect(html).not.toContain("9000000000");
     expect(html).toContain("Ten thousand rupees only");
     expect(html.match(/Translate with Google/g)).toHaveLength(3);
-    expect(html).toMatch(/disabled="">தமிழில் அச்சிடு/);
+    expect(html).toContain('disabled="">Print English + Tamil / PDF');
+    expect(html).toContain('lang="en">Muthu</span>');
+    expect(html).toContain("Name / பெயர்");
+    expect(html).toContain("Gold");
     expect(html).not.toContain('class="bill-modal tamil-bill-modal tamil-bill-reviewed"');
     expect(JSON.stringify(bill)).toBe(before);
   });

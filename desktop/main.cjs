@@ -53,6 +53,18 @@ else {
     });
     // The page has no Electron access, so the menu tells it which page to open; the page checks the user may see it.
     const openPage = page => () => contents.executeJavaScript(`window.dispatchEvent(new CustomEvent('billing-file-menu', { detail: ${JSON.stringify(page)} }))`);
+    const selectLanguage = language => () => contents.executeJavaScript(`window.localStorage.setItem('finance-billing-language-v2', ${JSON.stringify(language)}); window.dispatchEvent(new CustomEvent('billing-language-change', { detail: ${JSON.stringify(language)} }))`);
+    contents.on('did-finish-load', async () => {
+      try {
+        const saved = await contents.executeJavaScript("window.localStorage.getItem('finance-billing-language-v2')");
+        const language = saved === 'ta' ? 'ta' : 'en';
+        const menu = Menu.getApplicationMenu();
+        for (const code of ['en', 'ta']) {
+          const item = menu?.getMenuItemById('language-' + code);
+          if (item) item.checked = code === language;
+        }
+      } catch {}
+    });
     Menu.setApplicationMenu(Menu.buildFromTemplate([
       { label: 'File', submenu: [
         { label: 'Import old bills', click: openPage('import') },
@@ -65,7 +77,7 @@ else {
         { type: 'separator' }, { role: 'quit' },
       ] },
       { label: 'Edit', submenu: [{ role: 'undo' }, { role: 'redo' }, { type: 'separator' }, { role: 'cut' }, { role: 'copy' }, { role: 'paste' }, { role: 'selectAll' }] },
-      { label: 'View', submenu: [{ role: 'reload' }, { role: 'resetZoom' }, { role: 'zoomIn' }, { role: 'zoomOut' }, { role: 'togglefullscreen' }] },
+      { label: 'View', submenu: [{ label: 'Languages', submenu: [{ id: 'language-en', label: 'English', type: 'radio', checked: true, click: selectLanguage('en') }, { id: 'language-ta', label: 'Tamil (தமிழ்)', type: 'radio', click: selectLanguage('ta') }] }, { type: 'separator' }, { role: 'reload' }, { role: 'resetZoom' }, { role: 'zoomIn' }, { role: 'zoomOut' }, { role: 'togglefullscreen' }] },
       { label: 'Help', submenu: [
         { label: 'Check for updates…', click: createUpdateAction({ app, dialog, getWindow: () => window, dataDirectory }) },
         { type: 'separator' },

@@ -20,4 +20,4 @@ export const billConditions = {
   addressNotice: "விலாசம்: மாறுதலை உடனே தெரிவிக்கவும் 3 மாதத்திற்கு 1 தரம் வட்டி செலுத்தவேண்டும்.",
 } as const;
 
-export const billPdfTemplateVersion = "finance-billing-text-conditions-license-v6";
+export const billPdfTemplateVersion = "finance-billing-private-shop-phone-v10";

@@ -5,6 +5,8 @@ import { requireOwnerProfile, requireUser } from "@/lib/auth";
 import { loadReportBills } from "@/lib/excel-report";
 import { buildNoticeRegister, noticeReportFilters } from "@/lib/notice-report";
 import { noticeBillHistory } from "@/lib/notices";
+import { noticeLastDate } from "@/lib/notice-messages";
+import { billingToday } from "@/lib/business-updates";
 
 async function GETHandler(request: Request) {
   try {
@@ -14,7 +16,7 @@ async function GETHandler(request: Request) {
     if (!profile) throw new Error("Business profile is required.");
     const { stage, month, range, query } = noticeReportFilters(new URL(request.url).searchParams);
     const bills = noticeBillHistory(await loadReportBills(profile.id, { ...range, query: "" }), month, stage, query);
-    const workbook = buildNoticeRegister(bills, stage);
+    const workbook = buildNoticeRegister(bills, stage, { business_name: String(profile.business_name ?? "") }, noticeLastDate(billingToday()));
     return new NextResponse(Buffer.from(await workbook.xlsx.writeBuffer()), { headers: {
       "content-type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
       "content-disposition": `attachment; filename="Notice-${stage}-Account-${account}-${month}.xlsx"`,

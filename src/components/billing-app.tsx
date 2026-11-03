@@ -1,6 +1,7 @@
 "use client";
 
 import { useLanguage } from "./language-provider";
+import { formatParticulars } from "@/lib/jewellery";
 
 import { useEffect, useRef, useState } from "react";
 import type { AccountSlot } from "@/lib/account-url";
@@ -16,6 +17,8 @@ import { BillOverview } from "./bill-overview";
 import { BillForm } from "./bill-form";
 import { BillDelivery } from "./bill-delivery";
 import { DeliveryBills } from "./delivery-bills";
+import { CustomerBillLost } from "./customer-bill-lost";
+import { BackupPanel } from "./backup-panel";
 import { BusinessUpdates } from "./business-updates";
 import { Customers } from "./customers";
 import { NoticeBills, OverdueBills } from "./overdue-bills";
@@ -26,6 +29,7 @@ import { LocalSignIn, localAuth } from "./local-sign-in";
 import { LocalUserManagement } from "./local-user-management";
 import { LocalMyAccount } from "./local-my-account";
 import { ImportPreview } from "./import-preview";
+import { SideNav, type NavView } from "./side-nav";
 import { deliveryLabel, isDelivered } from "@/lib/delivery-status";
 import type { LocalUser } from "@/lib/local-users";
 
@@ -62,7 +66,9 @@ export function BillingApp() {
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [bills, setBills] = useState<Bill[]>([]);
   const [query, setQuery] = useState("");
-  const [view, setView] = useState<"bills" | "new" | "customers" | "delivery" | "delivery-bills" | "dashboard" | "notice" | "overdue" | "search" | "settings" | "users" | "my-account" | "import">("bills");
+  const [view, setView] = useState<NavView>("bills");
+  /** Bumped after every successful reload, so the menu counts follow saves, edits, deletes and deliveries. */
+  const [navCountsVersion, setNavCountsVersion] = useState(0);
   const [multiUser, setMultiUser] = useState(false);
   const [needsSetup, setNeedsSetup] = useState(false);
   const [localUser, setLocalUser] = useState<LocalUser | null>(null);
@@ -136,6 +142,7 @@ export function BillingApp() {
       setProfiles(profileResult.profiles ?? []);
       setBills(billsResult.bills ?? []);
       setLoadedSlot(slot);
+      setNavCountsVersion(version => version + 1);
       setError("");
     } catch (failure) {
       if (generation === loadGeneration.current) setError(failure instanceof Error ? failure.message : "Unable to load billing data.");
@@ -207,7 +214,7 @@ export function BillingApp() {
 
   async function exportExcel() {
     try {
-      const response = await fetch(withAccountSlot("/api/reports/excel", accountSlot), { headers: await requestHeaders() });
+      const response = await fetch(withAccountSlot(localStorageEnabled ? "/api/reports/excel?scope=all" : "/api/reports/excel", accountSlot), { headers: await requestHeaders() });
       if (!response.ok) {
         const body = await response.json();
         throw new Error(body.error || "Excel export failed.");
@@ -215,7 +222,7 @@ export function BillingApp() {
       const link = document.createElement("a");
       const business = safeFilenamePart(profile?.business_name || `Account ${accountSlot}`);
       link.href = URL.createObjectURL(await response.blob());
-      link.download = `Finance Billing - ${business} - Account ${accountSlot}.xlsx`;
+      link.download = localStorageEnabled ? "Finance Billing - All Accounts.xlsx" : `Finance Billing - ${business} - Account ${accountSlot}.xlsx`;
       link.click();
       window.setTimeout(() => URL.revokeObjectURL(link.href), 60_000);
     } catch (failure) {
@@ -253,7 +260,7 @@ export function BillingApp() {
     setIsRefreshingExcel(true);
     setExcelNotice("");
     try {
-      const result = await api("/api/reports/excel", accountSlot, { method: "POST" });
+      const result = await api(localStorageEnabled ? "/api/reports/excel?scope=all" : "/api/reports/excel", accountSlot, { method: "POST" });
       await load(query, accountSlot);
       setExcelNotice(`Excel refreshed and saved to ${result.savedTo}. If you opened a downloaded copy, use Download Excel to get the latest version.`);
     } catch (failure) {
@@ -312,21 +319,9 @@ export function BillingApp() {
       </div>
     </header>
 
-    <nav className="side-nav" aria-label={t("Billing menu")}>
-      {localStorageEnabled && <button className={view === "dashboard" ? "active" : ""} aria-current={view === "dashboard" ? "page" : undefined} onClick={() => { setExcelNotice(""); setView("dashboard"); }}><span className="nav-icon" aria-hidden="true">📊</span>{t("Dashboard")}</button>}
-      {localStorageEnabled && <button className={view === "customers" ? "active" : ""} onClick={() => { setExcelNotice(""); setView("customers"); }}><span className="nav-icon" aria-hidden="true">👥</span>{t("Customers")}</button>}
-      <button className={view === "new" ? "active" : ""} onClick={() => { setExcelNotice(""); setEditingSource(null); setView("new"); }}><span className="nav-icon" aria-hidden="true">📝</span>{t("New bill")}</button>
-      {localStorageEnabled && <button className={view === "delivery" ? "active" : ""} onClick={() => { setExcelNotice(""); setView("delivery"); }}><span className="nav-icon" aria-hidden="true">📦</span>{t("Delivery")}</button>}
-      <button className={view === "bills" ? "active" : ""} aria-current={view === "bills" ? "page" : undefined} onClick={() => { setExcelNotice(""); setView("bills"); }}><span className="nav-icon" aria-hidden="true">📚</span>{t("All bills")}</button>
-      {localStorageEnabled && <button className={view === "delivery-bills" ? "active" : ""} onClick={() => { setExcelNotice(""); setView("delivery-bills"); }}><span className="nav-icon" aria-hidden="true">🧾</span>{t("Delivery Bills")}</button>}
-      {localStorageEnabled && <button className={view === "notice" ? "active" : ""} aria-current={view === "notice" ? "page" : undefined} onClick={() => { setExcelNotice(""); setView("notice"); }}><span className="nav-icon" aria-hidden="true">📨</span>{t("Notice")}</button>}
-      {localStorageEnabled && <button className={view === "overdue" ? "active" : ""} aria-current={view === "overdue" ? "page" : undefined} onClick={() => { setExcelNotice(""); setView("overdue"); }}><span className="nav-icon" aria-hidden="true">⏰</span>{t("Overdue")}</button>}
-      {localStorageEnabled && <button className={view === "search" ? "active" : ""} aria-current={view === "search" ? "page" : undefined} onClick={() => { setExcelNotice(""); setView("search"); }}><span className="nav-icon" aria-hidden="true">🔍</span>{t("Search")}</button>}
-      {!inDesktopApp && localStorageEnabled && <button className={view === "import" ? "active" : ""} aria-current={view === "import" ? "page" : undefined} onClick={() => { setExcelNotice(""); setView("import"); }}><span className="nav-icon" aria-hidden="true">📥</span>{t("Import old bills")}</button>}
-      {!inDesktopApp && multiUser && localUser && <button className={view === "my-account" ? "active" : ""} onClick={() => { setExcelNotice(""); setView("my-account"); }}><span className="nav-icon" aria-hidden="true">🔐</span>{t("My account")}</button>}
-      {!inDesktopApp && multiUser && localUser?.administrator && <button className={view === "users" ? "active" : ""} onClick={() => { setExcelNotice(""); setView("users"); }}><span className="nav-icon" aria-hidden="true">👤</span>{t("Users")}</button>}
-      {!inDesktopApp && <button className={`business-profile-tab${view === "settings" ? " active" : ""}`} onClick={() => { setExcelNotice(""); setView("settings"); }}><span className="nav-icon" aria-hidden="true">⚙️</span>{t("Business profile")}</button>}
-    </nav>
+    <SideNav view={view} accountSlot={accountSlot} countsVersion={navCountsVersion} countsEnabled={accountLoaded && Boolean(profile)}
+      access={{ localStorage: localStorageEnabled, inDesktopApp, signedInUser: Boolean(multiUser && localUser), administrator: Boolean(multiUser && localUser?.administrator) }}
+      onSelect={next => { setExcelNotice(""); if (next === "new") setEditingSource(null); setView(next); }} />
 
     <div className="content">
       {error && <p className="error">{t(error)}</p>}
@@ -342,11 +337,13 @@ export function BillingApp() {
       {view === "settings" && accountLoaded && <ProfileForm key={accountSlot} profile={profile} accountSlot={accountSlot} onSaved={() => void load(query, accountSlot)} />}
       {view === "new" && profile && accountLoaded && <BillForm key={`${accountSlot}-${editingSource?.id ?? "new"}`} accountSlot={accountSlot} editingSource={editingSource} onCreated={issueSuccess} />}
       {view === "customers" && accountLoaded && <Customers key={accountSlot} accountSlot={accountSlot} />}
-      {view === "delivery" && profile && accountLoaded && <BillDelivery key={accountSlot} accountSlot={accountSlot} onSaved={(bill) => { setDeliveryDocumentBill(bill); void load(query, accountSlot); }} onBatchSaved={() => void load(query, accountSlot)} onOpen={setSelected} onOverview={setOverviewBill} onReceipt={setDeliveryDocumentBill} />}
+      {view === "delivery" && profile && accountLoaded && <BillDelivery key={accountSlot} accountSlot={accountSlot} profile={profile} onSaved={(bill) => { setDeliveryDocumentBill(bill); void load(query, accountSlot); }} onBatchSaved={() => void load(query, accountSlot)} onOpen={setSelected} onOverview={setOverviewBill} onReceipt={setDeliveryDocumentBill} />}
+      {view === "lost-bills" && profile && accountLoaded && <CustomerBillLost key={accountSlot} accountSlot={accountSlot} profile={profile} onReceipt={setDeliveryDocumentBill} onOriginal={setSelected} />}
       {view === "delivery-bills" && profile && accountLoaded && <DeliveryBills key={accountSlot} accountSlot={accountSlot} onOpen={setDeliveryDocumentBill} onOriginal={setSelected} />}
-      {view === "dashboard" && profile && accountLoaded && <BusinessUpdates key={accountSlot} accountSlot={accountSlot} onBill={setSelected} onDelivery={setDeliveryDocumentBill} onExportExcel={exportExcel} onRefreshExcel={() => void refreshExcel()} isRefreshingExcel={isRefreshingExcel} />}
+      {view === "dashboard" && profile && accountLoaded && localStorageEnabled && <BackupPanel key={`backup-${accountSlot}`} accountSlot={accountSlot} />}
+      {view === "dashboard" && profile && accountLoaded && <BusinessUpdates key={accountSlot} accountSlot={accountSlot} onBill={setSelected} onDelivery={setDeliveryDocumentBill} onExportExcel={exportExcel} onRefreshExcel={refreshExcel} isRefreshingExcel={isRefreshingExcel} />}
       {view === "overdue" && profile && accountLoaded && <OverdueBills key={accountSlot} accountSlot={accountSlot} onOpen={setSelected} onOverview={setOverviewBill} />}
-      {view === "notice" && profile && accountLoaded && <NoticeBills key={accountSlot} accountSlot={accountSlot} onOpen={setSelected} onOverview={setOverviewBill} />}
+      {view === "notice" && profile && accountLoaded && <NoticeBills key={accountSlot} accountSlot={accountSlot} profile={profile} onOpen={setSelected} onOverview={setOverviewBill} />}
       {view === "search" && accountLoaded && <AllAccountSearch accountSlot={accountSlot} />}
       {view === "import" && profile && accountLoaded && <ImportPreview key={accountSlot} accountSlot={accountSlot} onImported={() => void load(query, accountSlot)} />}
       {view === "bills" && accountLoaded && profile && <section className="panel">
@@ -363,7 +360,7 @@ export function BillingApp() {
             <td>#{bill.billNumber}<small>{bill.status === "void" ? isDelivered(bill) ? t("Voided · Delivered") : t("Voided") : isDelivered(bill) ? t("Delivered") : t("Issued")}</small>{isDelivered(bill) && <small className="delivery-recorded">{t(deliveryLabel(bill))}</small>}</td>
             <td>{bill.billDate}</td>
             <td><b>{bill.customerName}</b>{bill.phone && <small>{bill.phone}</small>}</td>
-            <td>{bill.items.map((item) => `${item.metal ? `${t(item.metal)}: ` : ""}${item.particulars}`).join(", ")}</td>
+            <td>{bill.items.map((item) => `${item.metal ? `${t(item.metal)}: ` : ""}${formatParticulars(item.particulars)}`).join(", ")}</td>
             <td>{formatINR(bill.totalLoanAmount)}</td>
             <td><span className={`sync ${bill.excelSyncStatus}`}>{t(bill.excelSyncStatus)}</span>{bill.excelSyncStatus === "failed" && <button className="text-button" onClick={() => void retryExcel(bill.id)}>{t("Retry")}</button>}</td>
             <td className="row-actions">

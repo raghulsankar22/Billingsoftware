@@ -1,6 +1,7 @@
 import ExcelJS from "exceljs";
 import { excelINRFormat } from "./money";
 import { noticePeriod, type NoticeStage } from "./notices";
+import { noticeMessages, type NoticeBusiness } from "./notice-messages";
 import type { Bill } from "./types";
 
 export function noticeReportFilters(parameters: URLSearchParams) {
@@ -14,7 +15,8 @@ export function noticeReportFilters(parameters: URLSearchParams) {
   return { stage, month, range, query };
 }
 
-export function buildNoticeRegister(bills: readonly Bill[], stage: NoticeStage) {
+/** One row per bill, with the approved English and Tamil message for that customer. */
+export function buildNoticeRegister(bills: readonly Bill[], stage: NoticeStage, business: NoticeBusiness, lastDate: string) {
   const workbook = new ExcelJS.Workbook();
   const sheet = workbook.addWorksheet(`Notice ${stage}`);
   sheet.columns = [
@@ -29,21 +31,27 @@ export function buildNoticeRegister(bills: readonly Bill[], stage: NoticeStage) 
     { header: "Particulars", key: "particulars", width: 40 },
     { header: "Status", key: "status", width: 28 },
     { header: "Loan amount", key: "amount", width: 20 },
+    { header: "Message (English)", key: "messageEnglish", width: 70 },
+    { header: "Message (Tamil)", key: "messageTamil", width: 70 },
   ];
-  for (const bill of bills) sheet.addRow({
+  for (const bill of bills) {
+    const message = noticeMessages([bill], stage, business, lastDate);
+    sheet.addRow({
     date: bill.billDate.split("-").reverse().join("/"), bill: bill.billNumber,
     customerId: bill.customerCode ?? "", name: bill.customerName, fatherName: bill.fatherName,
     address: bill.address, phone: bill.phone || null,
     metal: [...new Set(bill.items.map(item => item.metal ?? "Not set"))].join(", "),
     particulars: bill.items.map(item => `${item.metal ? `${item.metal}: ` : ""}${item.particulars}`).join("\n"),
     status: bill.status === "void" ? "Voided · Pending delivery" : "Pending delivery", amount: bill.totalLoanAmount,
-  });
+    messageEnglish: message.english, messageTamil: message.tamil,
+    });
+  }
   sheet.getColumn("amount").numFmt = excelINRFormat;
   sheet.getColumn("phone").numFmt = "@";
   sheet.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } };
   sheet.getRow(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF17304F" } };
   sheet.eachRow(row => { row.alignment = { vertical: "top", wrapText: true }; });
   sheet.views = [{ state: "frozen", ySplit: 1 }];
-  sheet.autoFilter = { from: "A1", to: "K1" };
+  sheet.autoFilter = { from: "A1", to: "M1" };
   return workbook;
 }

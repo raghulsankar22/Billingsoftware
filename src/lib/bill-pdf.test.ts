@@ -37,10 +37,19 @@ async function pageContents(bytes: Uint8Array) {
 }
 
 describe("bill PDF", () => {
+  it("prints the customer's phone but never the shop's own phone", async () => {
+    for (const type of ["finance", "delivery"] as const) {
+      const text = (await pageContents(await createBillPdf(bill, bill.businessSnapshot!, type))).join("\n");
+      expect(text).toContain("9876543210");
+      expect(text).not.toContain(bill.businessSnapshot!.phone);
+      expect(text).toContain("1 Market Street, Chennai");
+    }
+  });
   it("prints jewellery-condition remarks and the saved customer bill choice on delivery receipts", async () => {
     const withRemarks = { ...bill, deliveryBillReceiptStatus: "lost_bill" as const, items: [{ ...bill.items[0], remarks: "No screw; slightly bent" }] };
     const finance = (await pageContents(await createBillPdf(withRemarks, bill.businessSnapshot!))).join("\n");
     expect(finance).toContain("(Remarks)");
+    expect(finance).toContain("Husband");
     expect(finance).toContain("No screw;");
     expect(finance).not.toContain("Customer lost bill");
     const delivery = (await pageContents(await createBillPdf(withRemarks, bill.businessSnapshot!, "delivery"))).join("\n");
@@ -66,7 +75,7 @@ describe("bill PDF", () => {
     const content = (await pageContents(await createBillPdf(imported, bill.businessSnapshot!))).join("\n");
     // Plain literal text means the standard font; the currency subset would be glyph-encoded.
     expect(content).toContain("(Total Value: Not recorded)");
-    expect(content).toContain("(Father's Name: Not recorded)");
+    expect(content).toContain("(Father's Name / Husband's Name: Not recorded)");
   });
   it("keeps the VOIDED label large and bold on imported bills", async () => {
     const imported = { ...bill, status: "void" as const, historicalImport: true };

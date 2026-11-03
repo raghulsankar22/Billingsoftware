@@ -65,6 +65,8 @@ export type Bill = BillInput & {
   businessSnapshot?: BusinessSnapshot;
   deliverySummary?: RepaymentSummary;
   deliveryBillReceiptStatus?: BillReceiptStatus;
+  /** When staff confirmed the customer signed the printed lost bill declaration. */
+  lostBillDeclaredAt?: string;
   deliveryCollectedByName?: string;
   deliveryCollectedByRelation?: CollectedByRelation;
   cancelledDeliveries?: { deliveryNo: string; deliveryDate: string; cancelledAt: string }[];

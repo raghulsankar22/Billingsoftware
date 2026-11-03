@@ -1,6 +1,48 @@
 # Windows desktop app
 
-Run the Finance Billing shortcut or install `release/1.0.15/Finance-Billing-Setup-1.0.15.exe`.
+## Version 1.0.25
+
+- Adds a **Data backup** panel at the top of the Dashboard. Type the full path of a folder on a USB drive or another disk once; the app then saves a verified, dated copy of the bills and customers database (`billing-backup-YYYY-MM-DD-HHMMSS.sqlite`) the first time the Dashboard is opened each day. **Back up now** makes one immediately. The newest 30 copies are kept and other files in that folder are never touched. A folder inside the billing data folder is refused, because it would be lost with it. The panel turns amber if the last backup is over a day old or the drive is missing.
+- Adds **Restore from a backup**: choose a dated copy, read the warning, and confirm. The backup is verified first, the current bills are saved to `backups/before-restore-*.sqlite` inside the data folder (the newest five are kept), and the app then switches to the chosen copy and reloads. Anything saved after that backup is removed from the app but remains in the safety copy.
+- Backups contain the bills and customers database only. Generated PDFs and Excel files are not copied; Excel registers are rebuilt after a restore.
+- The billing server now keeps one shared database connection per data file so a restore can close it before swapping the file.
+- The bill-entry items table now fits a 1280 pixel window without sideways scrolling, using narrower Particulars, Remarks and amount columns. Saved bills and printed layouts are unchanged.
+- Retains all 1.0.24 jewellery search, Total grams and remarks layout, and every earlier feature.
+
+The build-only installer is `release/1.0.25/Finance-Billing-Setup-1.0.25.exe`; installation requires a separate owner request.
+
+## Version 1.0.24
+
+- Replaces only the bill-entry jewellery dropdown with an offline searchable combobox over the existing catalogue. English prefixes rank first, then word prefixes, contained text and letters in order; Tamil labels and custom Tamil names are searchable too. Use arrow keys and Enter to choose, Escape to cancel a search or Tab to leave without choosing a new entry.
+- A search chooses the same catalogue value as before. It does not translate or rewrite saved particulars, historical bills or the approved bilingual catalogue. No aliases, Google service or customer-data transfer are introduced. The existing Add new jewellery review and Manage jewellery flows remain available.
+- The quantity starts empty and clears after every successful Add. Choose an item, enter a whole number from 1 to 9999, then Add. Quantity stays beside the jewellery name and Add sits directly underneath quantity. Rejected additions retain the draft and existing particulars.
+- The entry form now says Total grams. Remarks checkboxes sit side by side and wrap; their saved values are unchanged. Printed bills and PDFs keep their existing labels and layout.
+- Retains all 1.0.23 menu, theme, account, combined Excel, overdue, notice and lost-bill features.
+
+The build-only installer is `release/1.0.24/Finance-Billing-Setup-1.0.24.exe`; installation requires a separate owner request.
+
+## Version 1.0.23
+
+- Retains all 1.0.22 billing, jewellery, overdue, notice, lost-bill and combined Excel features.
+- Adds a slim grouped icon menu. Drag its right edge from 68px to 248px, or focus the divider and use the arrow keys, Home/End or Enter. Tamil has a 100px minimum to keep words intact. The width is remembered on this computer.
+- Full menu names appear on hover or keyboard focus. Settings and administrative pages keep their existing permissions and remain in the native File menu on desktop.
+- All bills, Customer Bill Lost, Notice and Overdue badges show the open account only and refresh after billing reloads. Notice keeps its monthly rules; overdue remains undelivered bills older than 365 days. Counts do not automatically roll over at midnight until the next reload.
+- Dark is the default screen theme. Use the bottom menu button to switch to light; the choice is remembered on this computer. Printed bills, letters and declarations keep their white paper layout. Dashboard content is unchanged.
+- Short Tamil menu labels are provisional until the owner approves them. The approved jewellery catalogue is unchanged. No Google translation service or new customer-data transfer is enabled.
+
+The build-only installer is `release/1.0.23/Finance-Billing-Setup-1.0.23.exe`; installation is left to the owner.
+
+## Version 1.0.22
+
+- Includes the combined work from both development threads, retaining the 1.0.21 jewellery catalogue manager and Father's name / Husband's name fields.
+- Dashboard Download Excel exports one workbook with an Account N sheet for every configured account belonging to the signed-in user, including empty configured accounts. Each sheet contains the complete account register, not just the dashboard period.
+- Dashboard Refresh and Refresh Excel regenerate all account sheets together and refresh the saved per-account registers. The combined local workbook is saved as registers/All Accounts.xlsx inside that user's billing data folder. Downloaded workbooks are snapshots; download again for updated contents. Close the saved workbook in Excel before refreshing if Windows reports that it is locked.
+- Notice Excel adds Message (English) and Message (Tamil) columns. Print letters uses the filtered Notice list, groups bills by customer, omits amounts and provides both approved messages. Notice 2 uses the print/download day in India plus 20 calendar days. Normal letters start on separate pages; unusually large histories can continue onto additional pages rather than losing content.
+- Removes the shop phone from finance bills, delivery bills, notice letters/messages and lost-bill declarations. Customer phone numbers remain. Existing cached PDFs regenerate on their next download using the v10 template.
+- Older unsigned lost-bill deliveries can be marked as signed after opening the declaration's print dialog and confirming that the customer has signed the paper. This records a confirmation timestamp, not a digital signature or a stored scan. An Excel failure does not undo the signed confirmation; retry Excel after resolving the error.
+- Overdue remains undelivered bills more than 365 days old, across all months and years. Typed Tamil and historical particulars are not automatically translated or rewritten. No Google Translate service or new online transfer is enabled.
+
+Run the Finance Billing shortcut or install `release/1.0.22/Finance-Billing-Setup-1.0.22.exe`.
 The app opens its own window and starts its loopback-only billing server automatically.
 No internet, separate Node installation, Microsoft 365 login or web hosting is needed for daily use.
 
@@ -173,6 +215,21 @@ A new bill with a phone or Aadhaar creates a customer ID, and name, address and 
 as you type. An Aadhaar saved for someone with another name stops the bill. Delivery records who took the
 jewellery and their relation. Password boxes have a Show button, and **Create new user** on the sign-in screen
 works only with the administrator's username and password.
+
+Version 1.0.19 defaults to English and keeps **View > Languages > English / Tamil**. The approved 76-name
+jewellery catalogue displays English names with Tamil in brackets, including printed bills and saved PDFs.
+Saved particulars, customer details and Excel remain English. It also includes the Customer Bill Lost tab,
+printable lost-bill declaration and signed confirmation before saving a lost-bill delivery.
+
+Version 1.0.21 uses one **Father’s name / Husband’s name** field in bills and customer details.
+**Manage jewellery** beside **Add new jewellery** can add, rename or remove supplied and custom
+choices across your business accounts. Removing or renaming choices never rewrites saved bill
+particulars, customer records, PDFs or Excel files. Removed names can be added again later.
+
+Version 1.0.20 shows all undelivered bills more than 365 days after their bill date in Overdue,
+across every month and year. Day 365 is not overdue; day 366 is. Completed and historical deliveries
+are excluded, and Notice 1 / Notice 2 keep their existing monthly rules. Free-text Tamil input now
+stays as entered without automatic English conversion; the approved jewellery catalogue is unchanged.
 
 Version 1.0.17 keeps a name box beside **Who is taking the jewellery?** and adds **Cancel delivery bill** to the
 Delivery tab. Cancelling returns the bill to awaiting delivery, removes its delivery PDF and updates Excel. The

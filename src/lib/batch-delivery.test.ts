@@ -16,7 +16,7 @@ async function loan(metal = "Gold", amount = 10000, accountSlot = 1, billDate = 
   expect(result.error).toBeNull(); return result.data.id as string;
 }
 function deliver(ids: string[], deliveryDate = "2026-11-29") {
-  return db.rpc("record_bill_deliveries", { p_owner_id: localOwnerId, p_account_slot: 1, p_delivery: { deliveryDate, deliveries: ids.map((billId, index) => ({ billId, billReceiptStatus: index === 1 ? "lost_bill" : "has_bill", collectedByRelation: "self" })) } });
+  return db.rpc("record_bill_deliveries", { p_owner_id: localOwnerId, p_account_slot: 1, p_delivery: { deliveryDate, deliveries: ids.map((billId, index) => ({ billId, billReceiptStatus: index === 1 ? "lost_bill" : "has_bill", ...(index === 1 ? { lostBillDeclarationSigned: true } : {}), collectedByRelation: "self" })) } });
 }
 afterEach(() => { db?.close(); if (directory) rmSync(directory, { recursive: true, force: true }); });
 
@@ -40,6 +40,7 @@ describe("atomic multiple bill deliveries", () => {
     expect(rows.reduce((sum: number, row: any) => sum + row.delivery_summary.total, 0)).toBe(17385);
     expect(rows[1].status).toBe("void");
     expect(rows.map((row: any) => row.delivery_bill_receipt_status)).toEqual(["has_bill", "lost_bill", "has_bill"]);
+    expect(rows.map((row: any) => Boolean(row.delivery_lost_bill_declared_at))).toEqual([false, true, false]);
     expect((await db.rpc("get_next_delivery_number", { p_owner_id: localOwnerId, p_account_slot: 1 })).data.number).toBe(4);
   });
 

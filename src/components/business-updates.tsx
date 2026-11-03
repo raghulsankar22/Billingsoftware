@@ -1,6 +1,7 @@
 "use client";
 
 import { useLanguage } from "./language-provider";
+import { formatParticulars } from "@/lib/jewellery";
 
 import { useEffect, useMemo, useState } from "react";
 import type { AccountSlot } from "@/lib/account-url";
@@ -10,12 +11,13 @@ import { formatINR } from "@/lib/money";
 import { api } from "./api";
 import { JewelInventory } from "./jewel-inventory";
 import { deliveryNumberLabel, isDelivered } from "@/lib/delivery-status";
+import { localStorageEnabled } from "@/lib/storage-mode";
 
 const labels: Record<UpdatePeriod, string> = { yesterday: "Yesterday", daily: "Today", weekly: "Weekly", monthly: "Monthly", yearly: "Yearly" };
 const periods = ["yesterday", "daily", "weekly", "monthly", "yearly"] as const;
 const displayDate = (value: string) => value.split("-").reverse().join("/");
 
-export function BusinessUpdates({ accountSlot, onBill, onDelivery, onExportExcel, onRefreshExcel, isRefreshingExcel }: { accountSlot: AccountSlot; onBill: (bill: Bill) => void; onDelivery: (bill: Bill) => void; onExportExcel: () => void; onRefreshExcel: () => void; isRefreshingExcel: boolean }) {
+export function BusinessUpdates({ accountSlot, onBill, onDelivery, onExportExcel, onRefreshExcel, isRefreshingExcel }: { accountSlot: AccountSlot; onBill: (bill: Bill) => void; onDelivery: (bill: Bill) => void; onExportExcel: () => void; onRefreshExcel: () => Promise<void>; isRefreshingExcel: boolean }) {
   const { t } = useLanguage();
   const [section, setSection] = useState<"activity" | "jewels" | "gold" | "silver">("activity");
   const [mode, setMode] = useState<UpdatePeriod>("daily");
@@ -56,7 +58,8 @@ export function BusinessUpdates({ accountSlot, onBill, onDelivery, onExportExcel
   };
 
   return <section className="panel">
-    <div className="section-heading dashboard-heading"><div><p className="eyebrow">{t("ACCOUNT")} {accountSlot}</p><h2>{t("Dashboard")}</h2><p className="dashboard-period">{section === "activity" ? `${t(labels[mode])} ${t("overview")}` : t("Jewellery held against undelivered loans")}</p></div><div className="dashboard-actions"><button className="secondary" onClick={onExportExcel}>{t("Download Excel")}</button><button className="secondary" disabled={isRefreshingExcel} onClick={onRefreshExcel}>{isRefreshingExcel ? t("Refreshing Excel…") : t("Refresh Excel")}</button><button className="secondary" disabled={busy} onClick={() => setRefresh(value => value + 1)}>{busy ? t("Loading…") : t("Refresh")}</button></div></div>
+    <div className="section-heading dashboard-heading"><div><p className="eyebrow">{t("ACCOUNT")} {accountSlot}</p><h2>{t("Dashboard")}</h2><p className="dashboard-period">{section === "activity" ? `${t(labels[mode])} ${t("overview")}` : t("Jewellery held against undelivered loans")}</p></div><div className="dashboard-actions"><button className="secondary" onClick={onExportExcel}>{t("Download Excel")}</button><button className="secondary" disabled={isRefreshingExcel} onClick={onRefreshExcel}>{isRefreshingExcel ? t("Refreshing Excel…") : t("Refresh Excel")}</button><button className="secondary" disabled={busy || isRefreshingExcel} onClick={async () => { if (localStorageEnabled) await onRefreshExcel(); setRefresh(value => value + 1); }}>{busy ? t("Loading…") : t("Refresh")}</button></div></div>
+    {localStorageEnabled && <p className="muted">Download Excel includes all configured accounts, one sheet per account. Both refresh buttons update all account sheets. Download again to replace an older downloaded copy.</p>}
     <div className="dashboard-sections" role="group" aria-label={t("Dashboard sections")}>{(["activity", "jewels", "gold", "silver"] as const).map(tab => <button type="button" key={tab} className={section === tab ? "active" : "secondary"} aria-pressed={section === tab} onClick={() => setSection(tab)}>{tab === "activity" ? t("Activity") : tab === "jewels" ? t("Jewels") : tab === "gold" ? t("Gold") : t("Silver")}</button>)}</div>
     {section === "activity" ? <>
     <p className="muted">{t("Yesterday follows India’s calendar date. Choose a date to inspect a day, week, or month, or select a calendar year.")}</p>
@@ -95,7 +98,7 @@ export function BusinessUpdates({ accountSlot, onBill, onDelivery, onExportExcel
           <td>{bill.customerName}</td>
           <td className="dashboard-loan-address">{bill.address}</td>
           <td>{[...new Set(bill.items.map(item => item.metal ?? "Not set"))].join(", ") || "—"}</td>
-          <td className="dashboard-loan-particulars">{bill.items.map((item, index) => <div key={index}>{item.particulars}</div>)}</td>
+          <td className="dashboard-loan-particulars">{bill.items.map((item, index) => <div key={index}>{formatParticulars(item.particulars)}</div>)}</td>
           <td>{bill.status === "void" ? t("Voided") : t("Issued")}{isDelivered(bill) && <small>{t("Delivered")}</small>}</td>
           <td>{formatINR(bill.totalLoanAmount)}</td>
           <td><button className="text-button" onClick={() => onBill(bill)}>{t("Open")}</button></td>

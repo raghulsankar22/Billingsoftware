@@ -70,7 +70,7 @@ export function formatRegisterSheet(sheet: ExcelJS.Worksheet) {
 
 export function billRegisterRow(bill: Bill) {
   const delivered = Boolean(bill.deliveryNo && bill.deliveryDate);
-  const deliveryRemark = (delivered && bill.deliveryBillReceiptStatus ? ` [Delivery: ${billReceiptLabels[bill.deliveryBillReceiptStatus]}]` : "") + (delivered && collectedByText(bill) ? ` [Taken by: ${collectedByText(bill)}]` : "");
+  const deliveryRemark = (delivered && bill.deliveryBillReceiptStatus ? ` [Delivery: ${billReceiptLabels[bill.deliveryBillReceiptStatus]}]` : "") + (delivered && bill.lostBillDeclaredAt ? " [Declaration signed]" : "") + (delivered && collectedByText(bill) ? ` [Taken by: ${collectedByText(bill)}]` : "");
   return [optionalCell(bill.deliveryNo), optionalCell(bill.deliveryDate), bill.billDate, bill.billNumber, bill.address, bill.customerName, `${bill.status === "void" ? "VOID — " : ""}${itemSummary(bill.items)}${deliveryRemark}`, optionalCell(bill.phone), bill.totalLoanAmount];
 }
 

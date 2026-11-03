@@ -1,7 +1,8 @@
+import ExcelJS from "exceljs";
 import { createAdminSupabase } from "./supabase";
 import { toBill } from "./bills";
-import { billRegisterRow, createRegister, formatRegisterSheet } from "./register";
-import type { Bill } from "./types";
+import { billRegisterRow, formatRegisterSheet } from "./register";
+import { registerHeaders, type Bill } from "./types";
 
 type ReportFilters = { query: string; from?: string; to?: string };
 
@@ -39,10 +40,15 @@ export async function loadReportBills(profileId: string, filters: ReportFilters)
 }
 
 export function buildReportRegister(bills: Bill[]) {
-  const workbook = createRegister(); const sheet = workbook.getWorksheet("Bills")!; const table = sheet.getTable("Bills");
-  for (const bill of bills) table.addRow(billRegisterRow(bill));
-  table.commit();
+  const workbook = new ExcelJS.Workbook();
+  addReportSheet(workbook, bills, "Bills", "Bills");
+  return workbook;
+}
+
+export function addReportSheet(workbook: ExcelJS.Workbook, bills: Bill[], sheetName: string, tableName: string) {
+  const sheet = workbook.addWorksheet(sheetName);
+  sheet.addTable({ name: tableName, ref: "A1", headerRow: true, totalsRow: false, columns: registerHeaders.map(name => ({ name })), rows: bills.map(billRegisterRow) });
   bills.forEach((bill, index) => { if (bill.status === "void") sheet.getRow(index + 2).font = { color: { argb: "FFB42318" }, strike: true }; });
   formatRegisterSheet(sheet);
-  return workbook;
+  return sheet;
 }

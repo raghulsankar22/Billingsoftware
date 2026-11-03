@@ -1,6 +1,7 @@
 "use client";
 
 import { useLanguage } from "./language-provider";
+import { formatParticulars } from "@/lib/jewellery";
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { AccountSlot } from "@/lib/account-url";
@@ -12,8 +13,10 @@ import { calculateRepayment } from "@/lib/interest";
 import { formatINR } from "@/lib/money";
 import { api } from "./api";
 import { deliveryBillHistory } from "@/lib/delivery-history";
+import { LostBillConfirm } from "./lost-bill-confirm";
+import { LostBillDeclaration, type DeclarationProfile } from "./lost-bill-declaration";
 
-export function MultipleDelivery({ accountSlot, onSaved, onReceipt, onOpen, onAlreadyDelivered }: { accountSlot: AccountSlot; onSaved: () => void; onReceipt: (bill: Bill) => void; onOpen: (bill: Bill) => void; onAlreadyDelivered: (bills: Bill[]) => void }) {
+export function MultipleDelivery({ accountSlot, profile, onSaved, onReceipt, onOpen, onAlreadyDelivered }: { accountSlot: AccountSlot; profile: DeclarationProfile; onSaved: () => void; onReceipt: (bill: Bill) => void; onOpen: (bill: Bill) => void; onAlreadyDelivered: (bills: Bill[]) => void }) {
   const { t } = useLanguage();
   const [numbers, setNumbers] = useState("");
   const [bills, setBills] = useState<Bill[]>([]);
@@ -25,6 +28,9 @@ export function MultipleDelivery({ accountSlot, onSaved, onReceipt, onOpen, onAl
   const [error, setError] = useState("");
   const [saved, setSaved] = useState(false);
   const [warnings, setWarnings] = useState<string[]>([]);
+  const [declaration, setDeclaration] = useState({ open: false, printed: false, signed: false });
+  /** The printed paper lists these bills and details, so any change needs a fresh printout. */
+  const resetDeclaration = () => setDeclaration({ open: false, printed: false, signed: false });
   const generation = useRef(0);
   useEffect(() => () => { generation.current++; }, []);
   const rows = useMemo(() => bills.map(bill => {
@@ -37,6 +43,8 @@ export function MultipleDelivery({ accountSlot, onSaved, onReceipt, onOpen, onAl
   const receiptChoicesComplete = bills.length > 0 && bills.every(bill => Boolean(receiptStatuses[bill.id]));
   const sum = (field: "principal" | "interest" | "total") => rows.reduce((paise, row) => paise + Math.round(Number(row.collection?.[field] ?? (field === "principal" ? row.bill.totalLoanAmount : 0)) * 100), 0) / 100;
   const money = (value: number | null) => value === null ? "—" : formatINR(value);
+  const lostBills = bills.filter(bill => receiptStatuses[bill.id] === "lost_bill");
+  const declarationReady = !lostBills.length || declaration.signed;
   const minDate = bills.reduce((latest, bill) => bill.billDate > latest ? bill.billDate : latest, "");
 
   async function findBills(event: React.FormEvent) {
@@ -54,6 +62,7 @@ export function MultipleDelivery({ accountSlot, onSaved, onReceipt, onOpen, onAl
       if (fromRegister.length) { setError(`${fromRegister.map(bill => `Bill #${bill.billNumber}`).join(", ")} already ${fromRegister.length === 1 ? "has a delivery" : "have deliveries"} from your old register. Use Single Delivery to add anything missing.`); return; }
       setReceiptStatuses(previous => ({ ...previous, ...Object.fromEntries(found.map(bill => [bill.id, previous[bill.id] ?? bill.deliveryBillReceiptStatus ?? ""])) }));
       setBills(existing => [...existing, ...found.filter(bill => !existing.some(row => row.id === bill.id))]);
+      resetDeclaration();
       setNumbers("");
       const delivered = deliveryBillHistory(found);
       if (delivered.length) onAlreadyDelivered(delivered);
@@ -64,41 +73,45 @@ export function MultipleDelivery({ accountSlot, onSaved, onReceipt, onOpen, onAl
     if (!complete || busy) return;
     if (!receiptChoicesComplete) { setError("Choose whether the customer has the bill or lost the bill for every delivery."); return; }
     if (!collectedByComplete(collectedBy)) { setError(collectedBy.relation ? "Enter the name of the person taking the jewellery." : "Choose who is taking the jewellery."); return; }
+    if (!declarationReady) { setError("Print the lost bill declaration and tick that the customer has signed it."); return; }
     const current = ++generation.current; setBusy("save"); setError(""); setWarnings([]);
     try {
-      const result = await api("/api/delivery/batch", accountSlot, { method: "POST", body: JSON.stringify({ deliveryDate: date, deliveries: bills.map(bill => ({ billId: bill.id, billReceiptStatus: receiptStatuses[bill.id], collectedByRelation: collectedBy.relation, ...(collectedBy.relation === "self" ? {} : { collectedByName: collectedBy.name }), itemMetals: bill.items.map((item, index) => item.metal ?? metals[bill.id]?.[index] ?? null) })) }) });
+      const result = await api("/api/delivery/batch", accountSlot, { method: "POST", body: JSON.stringify({ deliveryDate: date, deliveries: bills.map(bill => ({ billId: bill.id, billReceiptStatus: receiptStatuses[bill.id], ...(receiptStatuses[bill.id] === "lost_bill" ? { lostBillDeclarationSigned: declaration.signed } : {}), collectedByRelation: collectedBy.relation, ...(collectedBy.relation === "self" ? {} : { collectedByName: collectedBy.name }), itemMetals: bill.items.map((item, index) => item.metal ?? metals[bill.id]?.[index] ?? null) })) }) });
       if (current !== generation.current) return;
       setBills(result.bills); setWarnings(result.warnings ?? []); setSaved(true); onSaved();
     } catch (failure) { if (current === generation.current) setError(failure instanceof Error ? failure.message : "Unable to save these deliveries."); }
     finally { if (current === generation.current) setBusy(null); }
   }
-  function reset() { setBills([]); setNumbers(""); setDate(billingToday()); setMetals({}); setReceiptStatuses({}); setCollectedBy({ relation: "", name: "" }); setSaved(false); setWarnings([]); setError(""); }
+  function reset() { setBills([]); setNumbers(""); setDate(billingToday()); setMetals({}); setReceiptStatuses({}); setCollectedBy({ relation: "", name: "" }); setSaved(false); setWarnings([]); setError(""); resetDeclaration(); }
   function removeBill(id: string) {
     setBills(current => current.filter(row => row.id !== id));
+    resetDeclaration();
     setReceiptStatuses(current => Object.fromEntries(Object.entries(current).filter(([billId]) => billId !== id)));
   }
 
   return <section className="panel">
     <div className="section-heading"><div><p className="eyebrow">{t("ACCOUNT")} {accountSlot} {t("· MULTIPLE DELIVERY")}</p><h2>{saved ? t("Deliveries saved") : t("Deliver several bills together")}</h2><p className="muted">{t("Each bill gets its own delivery number and receipt. Review the combined amount to collect below.")}</p></div>{saved && <button className="secondary" onClick={reset}>{t("Start another delivery")}</button>}</div>
     {!saved && <form className="delivery-search" onSubmit={findBills}><label htmlFor="multiple-bill-numbers">{t("Bill numbers")}<input id="multiple-bill-numbers" placeholder={t("e.g. 1, 2, 3")} value={numbers} disabled={Boolean(busy)} onChange={event => setNumbers(event.target.value)} required /></label><button disabled={Boolean(busy)}>{busy === "lookup" ? t("Finding…") : t("Add bills")}</button></form>}
-    <label className="overview-date">{t("Delivery date")}<input type="date" value={date} min={minDate || undefined} disabled={Boolean(busy) || saved} onChange={event => { setDate(event.target.value); setError(""); }} required /></label>
-    {!saved && bills.length > 0 && <CollectedByFields value={collectedBy} disabled={Boolean(busy)} onChange={value => { setCollectedBy(value); setError(""); }} />}
+    <label className="overview-date">{t("Delivery date")}<input type="date" value={date} min={minDate || undefined} disabled={Boolean(busy) || saved} onChange={event => { setDate(event.target.value); resetDeclaration(); setError(""); }} required /></label>
+    {!saved && bills.length > 0 && <CollectedByFields value={collectedBy} disabled={Boolean(busy)} onChange={value => { setCollectedBy(value); resetDeclaration(); setError(""); }} />}
     {error && <p className="error" role="alert">{t(error)}</p>}
     {saved && <p className="excel-notice" role="status">{bills.length} {t("delivery bill")}{bills.length === 1 ? "" : t("s")} {t("saved. Open each receipt below to print or download its PDF.")}</p>}
     {warnings.map((message, index) => <p className="overview-warning" key={index}>{t(message)}</p>)}
     {rows.length > 0 ? <>
       <div className="item-table-wrap"><table className="history-table batch-delivery-table"><thead><tr><th>{t("Bill / customer")}</th><th>{t("Particulars")}</th><th>{t("Delivery remarks")}</th><th className="batch-money">{t("Principal")}</th><th className="batch-money">{t("Interest to collect")}</th><th className="batch-money">{t("Total to collect")}</th><th /></tr></thead><tbody>{rows.map(({ bill, collection, error: calculationError }) => <tr key={bill.id}>
         <td><b>#{bill.billNumber} · {bill.customerName}</b><small>{bill.billDate}{bill.status === "void" ? t(" · Voided") : ""}</small>{bill.deliveryNo && <small>{t("Delivery #")}{bill.deliveryNo} · {bill.deliveryDate}{!saved && t(" · saving updates this delivery")}</small>}</td>
-        <td>{bill.items.map((item, index) => <div className="batch-jewellery" key={index}>{item.metal ? `${t(item.metal)}: ` : ""}{item.particulars}{!item.metal && !saved && <select aria-label={t(`Metal for bill ${bill.billNumber} item ${index + 1}`)} value={metals[bill.id]?.[index] ?? ""} disabled={Boolean(busy)} onChange={event => {
+        <td>{bill.items.map((item, index) => <div className="batch-jewellery" key={index}>{item.metal ? `${t(item.metal)}: ` : ""}{formatParticulars(item.particulars)}{!item.metal && !saved && <select aria-label={t(`Metal for bill ${bill.billNumber} item ${index + 1}`)} value={metals[bill.id]?.[index] ?? ""} disabled={Boolean(busy)} onChange={event => {
           const chosen = event.target.value === "Gold" || event.target.value === "Silver" ? event.target.value : null;
           setMetals(previous => ({ ...previous, [bill.id]: bill.items.map((entry, itemIndex) => itemIndex === index ? chosen : previous[bill.id]?.[itemIndex] ?? entry.metal ?? null) }));
         }}><option value="">{t("Choose metal")}</option><option value="Gold">{t("Gold")}</option><option value="Silver">{t("Silver")}</option></select>}</div>)}{calculationError && <p className="error">{t(calculationError)}</p>}{collection?.missingMetal && <p className="error">{t("Choose Gold or Silver to calculate interest.")}</p>}</td>
-        <td>{saved ? bill.deliveryBillReceiptStatus ? <>{t(billReceiptLabels[bill.deliveryBillReceiptStatus])}{collectedByText(bill) && <small>{t("Taken by")}: {collectedByText(bill)}</small>}</> : t("Not recorded") : <BillReceiptSelect billNumber={bill.billNumber} value={receiptStatuses[bill.id] ?? ""} disabled={Boolean(busy)} onChange={value => { setReceiptStatuses(current => ({ ...current, [bill.id]: value })); setError(""); }} />}</td>
+        <td>{saved ? bill.deliveryBillReceiptStatus ? <>{t(billReceiptLabels[bill.deliveryBillReceiptStatus])}{collectedByText(bill) && <small>{t("Taken by")}: {collectedByText(bill)}</small>}</> : t("Not recorded") : <BillReceiptSelect billNumber={bill.billNumber} value={receiptStatuses[bill.id] ?? ""} disabled={Boolean(busy)} onChange={value => { setReceiptStatuses(current => ({ ...current, [bill.id]: value })); resetDeclaration(); setError(""); }} />}</td>
         <td className="batch-money">{formatINR(collection?.principal ?? bill.totalLoanAmount)}</td><td className="batch-money">{money(collection?.interest ?? null)}</td><td className="batch-money">{money(collection?.total ?? null)}</td>
         <td><div className="batch-actions"><button type="button" className="text-button" onClick={() => onOpen(bill)}>{t("Open bill")}</button>{saved ? <button type="button" className="secondary" onClick={() => onReceipt(bill)}>{t("Open receipt #")}{bill.deliveryNo}</button> : <button type="button" className="text-button danger-text" disabled={Boolean(busy)} onClick={() => removeBill(bill.id)}>{t("Remove bill #")}{bill.billNumber}</button>}</div></td>
       </tr>)}</tbody></table></div>
       <section className="repayment-summary" aria-label={t("Combined delivery amounts")}><h3>{bills.length} {t("bill")}{bills.length === 1 ? "" : t("s")} {t("· Combined amount to collect")}</h3><dl><div><dt>{t("Principal")}</dt><dd>{formatINR(sum("principal"))}</dd></div><div><dt>{t("Interest to collect now")}</dt><dd>{money(complete ? sum("interest") : null)}</dd></div><div className="collection-total"><dt>{t("Total to collect now")}</dt><dd>{money(complete ? sum("total") : null)}</dd></div></dl></section>
-      {!saved && <>{!receiptChoicesComplete && <p className="muted">{t("Choose whether the customer has the bill or lost the bill for every delivery.")}</p>}<button disabled={!complete || !receiptChoicesComplete || !collectedByComplete(collectedBy) || Boolean(busy)} onClick={() => void save()}>{busy === "save" ? t("Saving deliveries…") : t(`Save ${bills.length} deliver${bills.length === 1 ? "y" : "ies"}`)}</button></>}
+      {!saved && lostBills.length > 0 && <LostBillConfirm printed={declaration.printed} signed={declaration.signed} disabled={Boolean(busy)} onPrint={() => { if (!collectedByComplete(collectedBy)) { setError(collectedBy.relation ? "Enter the name of the person taking the jewellery." : "Choose who is taking the jewellery."); return; } setError(""); setDeclaration(current => ({ ...current, open: true, printed: true })); }} onSigned={signed => { setDeclaration(current => ({ ...current, signed })); setError(""); }} />}
+      {!saved && <>{!receiptChoicesComplete && <p className="muted">{t("Choose whether the customer has the bill or lost the bill for every delivery.")}</p>}<button disabled={!complete || !receiptChoicesComplete || !collectedByComplete(collectedBy) || !declarationReady || Boolean(busy)} onClick={() => void save()}>{busy === "save" ? t("Saving deliveries…") : t(`Save ${bills.length} deliver${bills.length === 1 ? "y" : "ies"}`)}</button></>}
+      {!saved && declaration.open && <LostBillDeclaration bills={lostBills} profile={profile} pending={{ deliveryDate: date, collectedBy }} onClose={() => setDeclaration(current => ({ ...current, open: false }))} />}
     </> : <p className="empty">{t("Add one or more bill numbers to see the principal, interest and total.")}</p>}
   </section>;
 }

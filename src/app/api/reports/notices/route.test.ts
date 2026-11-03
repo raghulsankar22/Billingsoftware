@@ -9,6 +9,8 @@ vi.mock("@/lib/excel-report", () => ({ loadReportBills: mocks.bills }));
 vi.mock("@/lib/accounts", async () => import("../../../../lib/accounts"));
 vi.mock("@/lib/notice-report", async () => import("../../../../lib/notice-report"));
 vi.mock("@/lib/notices", async () => import("../../../../lib/notices"));
+vi.mock("@/lib/notice-messages", async () => import("../../../../lib/notice-messages"));
+vi.mock("@/lib/business-updates", () => ({ billingToday: () => "2026-11-02" }));
 
 const bill = (id: string, billNumber: number, billDate: string, patch: Partial<Bill> = {}): Bill => ({
   id, billNumber, billDate, status: "issued", customerCode: "C000001", customerName: "Example Customer", fatherName: "Parent", address: "Example Street", phone: "0123456789",
@@ -19,7 +21,7 @@ const request = (parameters: Record<string, string> = {}) => new Request(`http:/
 beforeEach(() => {
   vi.resetAllMocks();
   mocks.user.mockResolvedValue({ id: "owner" });
-  mocks.profile.mockResolvedValue({ id: "profile-4" });
+  mocks.profile.mockResolvedValue({ id: "profile-4", business_name: "Sample Finance", phone: "9000000000" });
   mocks.bills.mockResolvedValue([
     bill("oct", 1, "2025-10-01"),
     bill("sep", 2, "2025-09-30", { status: "void", phone: "", customerCode: "C000002" }),
@@ -48,6 +50,16 @@ describe("notice Excel download", () => {
     expect(sheet.getCell("J2").value).toContain("Pending delivery");
     expect(sheet.getCell("K2").value).toBe(10000);
     expect(sheet.getCell("K2").numFmt).toContain("₹");
+    expect(sheet.getCell("L1").value).toBe("Message (English)");
+    expect(sheet.getCell("M1").value).toBe("Message (Tamil)");
+    const date = stage === 1 ? "01/10/2025" : "30/09/2025";
+    expect(sheet.getCell("L2").value).toBe(stage === 1
+      ? `Dear Example Customer, your jewellery pledged at Sample Finance under Bill No. 1 dated ${date} has completed one year. Kindly come soon, pay the amount and take back your jewellery. – Sample Finance`
+      : `Dear Example Customer, this is the second and final notice. Your jewellery pledged at Sample Finance under Bill No. 2 dated ${date} has passed one year and one month. If it is not taken back by 22/11/2026, it will be sent for auction as per rules. Kindly come soon, pay the amount and take back your jewellery. – Sample Finance`);
+    // The shop's own phone number is private and never goes into a message.
+    for (const cell of ["L2", "M2"]) expect(String(sheet.getCell(cell).value)).not.toContain("9000000000");
+    expect(sheet.getCell("M2").value).toContain(stage === 1 ? "ஒரு வருடம் நிறைவடைந்துவிட்டது" : "22/11/2026-க்குள்");
+    expect(sheet.getCell("M2").value).toContain(`${date} அன்று Sample Finance-ல் சீட்டு எண் ${stage}`);
   });
   it("uses the same customer filter as the visible list and supports empty downloads", async () => {
     const response = await GET(request({ q: "C000002" }));

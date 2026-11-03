@@ -1,6 +1,7 @@
 "use client";
 
 import { useLanguage } from "./language-provider";
+import { formatParticulars } from "@/lib/jewellery";
 
 import { useMemo } from "react";
 import type { Bill } from "@/lib/types";
@@ -33,7 +34,7 @@ export function JewelInventory({ bills, metal, busy, error, onBill }: { bills: B
     {stock.unknownMetalRows > 0 && <p className="overview-warning">{stock.unknownMetalRows} {t("undelivered pledge")} {stock.unknownMetalRows === 1 ? t("row has") : t("rows have")} {t("no metal recorded. These appear under Jewels and are excluded from Gold and Silver totals.")}</p>}
     {missingWeights > 0 && <p className="overview-warning">{missingWeights} {t("imported pledge")} {missingWeights === 1 ? t("row has") : t("rows have")} {t("no weight recorded. Total weight includes only known weights.")}</p>}
     <div className="item-table-wrap"><table className="history-table"><thead><tr><th>{t("Bill")}</th><th>{t("Customer")}</th><th>{t("Metal")}</th><th>{t("Particulars")}</th><th>{t("Pieces")}</th><th>{t("Gram")}</th><th>{t("Loan amount")}</th><th /></tr></thead><tbody>
-      {stock.lines.length ? stock.lines.map(line => <tr key={`${line.bill.id}-${line.index}`}><td><b>#{line.bill.billNumber}</b><small>{line.bill.billDate.split("-").reverse().join("/")}</small>{line.bill.status === "void" && <small>{t("Voided · Not delivered")}</small>}</td><td><b>{line.bill.customerName}</b>{line.bill.customerCode && <small>{line.bill.customerCode}</small>}{line.bill.phone && <small>{line.bill.phone}</small>}</td><td>{t(line.item.metal ?? "Not recorded")}</td><td>{line.item.particulars}</td><td>{line.quantity ?? t("Not recorded")}</td><td>{line.item.grams === null ? t("Not recorded") : grams(line.item.grams)}</td><td>{formatINR(line.item.loanAmount)}</td><td><button type="button" className="text-button" onClick={() => onBill(line.bill)}>{t("Open bill")}</button></td></tr>) : <tr><td colSpan={8} className="empty">{metal ? t(`No undelivered ${metal.toLowerCase()} jewellery.`) : t("No undelivered jewellery stock.")}</td></tr>}
+      {stock.lines.length ? stock.lines.map(line => <tr key={`${line.bill.id}-${line.index}`}><td><b>#{line.bill.billNumber}</b><small>{line.bill.billDate.split("-").reverse().join("/")}</small>{line.bill.status === "void" && <small>{t("Voided · Not delivered")}</small>}</td><td><b>{line.bill.customerName}</b>{line.bill.customerCode && <small>{line.bill.customerCode}</small>}{line.bill.phone && <small>{line.bill.phone}</small>}</td><td>{t(line.item.metal ?? "Not recorded")}</td><td>{formatParticulars(line.item.particulars)}</td><td>{line.quantity ?? t("Not recorded")}</td><td>{line.item.grams === null ? t("Not recorded") : grams(line.item.grams)}</td><td>{formatINR(line.item.loanAmount)}</td><td><button type="button" className="text-button" onClick={() => onBill(line.bill)}>{t("Open bill")}</button></td></tr>) : <tr><td colSpan={8} className="empty">{metal ? t(`No undelivered ${metal.toLowerCase()} jewellery.`) : t("No undelivered jewellery stock.")}</td></tr>}
     </tbody></table></div>
     <p className="muted collection-note">{t("Stock remains here until delivery is recorded. Each metal's amount and known weight are taken from its pledge rows; date filters in Activity do not limit this stock list.")}</p>
   </>;

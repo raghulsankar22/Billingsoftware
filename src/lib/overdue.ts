@@ -2,17 +2,16 @@ import { billingPeriod, type PeriodRange } from "./business-updates";
 import type { Bill } from "./types";
 import { isDelivered } from "./delivery-status";
 
-/** A monthly cohort: October 2026 reviews all of October 2025. */
-export function overduePeriod(reviewMonth: string): PeriodRange {
-  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(reviewMonth) || Number(reviewMonth.slice(0, 4)) < 2) {
-    throw new Error("Choose a valid review month and year.");
-  }
-  const previousYear = String(Number(reviewMonth.slice(0, 4)) - 1).padStart(4, "0");
-  return billingPeriod("monthly", `${previousYear}-${reviewMonth.slice(5)}-01`);
+export function overduePeriod(asOfDate: string): PeriodRange {
+  billingPeriod("daily", asOfDate);
+  const cutoff = new Date(asOfDate + "T00:00:00Z");
+  cutoff.setUTCDate(cutoff.getUTCDate() - 366);
+  if (cutoff.getUTCFullYear() < 1) throw new Error("Choose a valid date after year 1.");
+  return { from: "0001-01-01", to: cutoff.toISOString().slice(0, 10) };
 }
 
-export function overdueBillHistory(bills: readonly Bill[], reviewMonth: string, search = ""): Bill[] {
-  return pendingBillHistory(bills, overduePeriod(reviewMonth), search);
+export function overdueBillHistory(bills: readonly Bill[], asOfDate: string, search = ""): Bill[] {
+  return pendingBillHistory(bills, overduePeriod(asOfDate), search);
 }
 
 export function pendingBillHistory(bills: readonly Bill[], range: PeriodRange, search = ""): Bill[] {
