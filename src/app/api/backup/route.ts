@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "../../../lib/auth";
-import { backupStatus, chooseBackupFolder, runBackup } from "../../../lib/backups";
-import { createLocalDatabase, localDataDirectory } from "../../../lib/local-database";
+import { backupStatus, chooseBackupFolder, runCompleteBackup } from "../../../lib/backups";
+import { baseDataDirectory, currentLocalUser } from "../../../lib/local-session-context";
 import { withLocalSession } from "../../../lib/local-request";
 import { localStorageEnabled } from "../../../lib/storage-mode";
 import { validationMessage } from "../../../lib/validation";
@@ -14,26 +14,25 @@ async function available(request: Request) {
 }
 
 export const GET = withLocalSession(async (request: Request) => {
-  try { await available(request); return NextResponse.json(backupStatus(localDataDirectory()), { headers }); } catch (error) { return failure(error); }
+  try { await available(request); return NextResponse.json({ ...backupStatus(baseDataDirectory()), administrator: currentLocalUser()?.administrator === true }, { headers }); } catch (error) { return failure(error); }
 });
 
-/** Saves the chosen folder and makes the first backup straight away. */
 export const PUT = withLocalSession(async (request: Request) => {
   try {
     await available(request);
-    const directory = localDataDirectory();
+    if (!currentLocalUser()?.administrator) return NextResponse.json({ error: "Administrator sign-in is required to change the complete backup folder." }, { status: 403, headers });
+    const directory = baseDataDirectory();
     const body = await request.json().catch(() => ({}));
     chooseBackupFolder(directory, body?.folder);
-    return NextResponse.json(await runBackup(directory, createLocalDatabase(directory)), { headers });
+    return NextResponse.json(await runCompleteBackup(directory), { headers });
   } catch (error) { return failure(error); }
 });
 
-/** `{ "auto": true }` backs up only when a day has passed; otherwise it always backs up. */
 export const POST = withLocalSession(async (request: Request) => {
   try {
     await available(request);
-    const directory = localDataDirectory();
     const body = await request.json().catch(() => ({}));
-    return NextResponse.json(await runBackup(directory, createLocalDatabase(directory), { onlyIfDue: body?.auto === true }), { headers });
+    if (body?.auto === true && !backupStatus(baseDataDirectory()).due) return NextResponse.json(backupStatus(baseDataDirectory()), { headers });
+    return NextResponse.json(await runCompleteBackup(baseDataDirectory(), { onlyIfDue: body?.auto === true }), { headers });
   } catch (error) { return failure(error); }
 });

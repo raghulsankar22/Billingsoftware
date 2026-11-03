@@ -342,26 +342,8 @@ await api('/api/jewellery', 'PATCH', { originalName: 'Runtime Edited Ring', name
 await api('/api/jewellery', 'POST', { name: 'Chain' });
 assert.ok((await api('/api/jewellery')).items.includes('Ring'));
 assert.ok((await api('/api/jewellery')).items.includes('Chain'));
-// Backup and restore: copy the ledger to a folder outside the data folder, change it, then go back.
-const backupFolder = await fs.mkdtemp(path.join(os.tmpdir(), 'billing-backup-verify-'));
-try {
-  assert.equal((await api('/api/backup')).folder, null);
-  assert.equal((await fetch(base + '/api/backup', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ folder: 'relative/folder' }) })).status, 400);
-  const firstBackup = await api('/api/backup', 'PUT', { folder: backupFolder });
-  assert.equal(firstBackup.copies, 1);
-  assert.equal(firstBackup.due, false);
-  const billsAtBackup = (await api('/api/bills')).bills;
-  await api('/api/jewellery', 'POST', { name: 'Verify After Backup' });
-  assert.ok((await api('/api/jewellery')).items.includes('Verify After Backup'));
-  const offered = (await api('/api/backup-restore')).backups;
-  assert.equal(offered.length, 1);
-  const restored = await api('/api/backup-restore', 'POST', { file: offered[0].file });
-  assert.match(restored.safetyCopy, /^before-restore-/);
-  assert.ok(!(await api('/api/jewellery')).items.includes('Verify After Backup'), 'Restore must bring back the backed-up catalogue');
-  assert.deepEqual((await api('/api/bills')).bills, billsAtBackup);
-  assert.equal((await fetch(base + '/api/backup-restore', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ file: '../billing.sqlite' }) })).status, 400);
-  await api('/api/jewellery', 'POST', { name: 'Verify Saves After Restore' });
-  assert.ok((await api('/api/jewellery')).items.includes('Verify Saves After Restore'));
-  await api('/api/jewellery', 'DELETE', { name: 'Verify Saves After Restore' });
-} finally { await fs.rm(backupFolder, { recursive: true, force: true }); }
-console.log('Local HTTP flow passed: jewellery rename/delete without changing saved bills, shared-phone confirmation and selection, delivery date validation, sample register preview/import and duplicate rejection, backup and restore, shared customers and IDs, all-account search, prior-year bill filtering, account numbering/Excel, PDFs, atomic multi-delivery, interest and safe Excel retries.');
+assert.equal((await api('/api/backup')).folder, null);
+assert.equal((await fetch(base + '/api/backup', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ folder: 'relative/folder' }) })).status, 403);
+assert.equal((await fetch(base + '/api/backup-restore')).status, 403);
+assert.equal((await fetch(base + '/api/backup-restore', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ file: '../billing.sqlite' }) })).status, 403);
+console.log('Local HTTP flow passed: jewellery rename/delete without changing saved bills, shared-phone confirmation and selection, delivery date validation, sample register preview/import and duplicate rejection, administrator-only recovery guards, shared customers and IDs, all-account search, prior-year bill filtering, account numbering/Excel, PDFs, atomic multi-delivery, interest and safe Excel retries.');

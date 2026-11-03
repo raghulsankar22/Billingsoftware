@@ -14,6 +14,7 @@ import { scopedDataDirectory } from "./local-session-context";
 import { createLocalIssuerStore } from "./sync-local-issuer";
 import { createSyncOutbox } from "./sync-outbox";
 import { parseSyncBill } from "./sync-bill";
+import { createBillAudit } from "./bill-audit";
 
 type Row = Record<string, any>;
 type Result = { data: any; error: Error | null; count?: number | null };
@@ -23,6 +24,17 @@ const tables = new Set(["business_profiles", "bills", "bill_items"]);
 const connectionRegistry = globalThis as typeof globalThis & { __billingConnections?: Map<string, DatabaseSync> };
 const connections = (connectionRegistry.__billingConnections ??= new Map<string, DatabaseSync>());
 export const localOwnerId = "local-owner";
+export function closeLocalDatabasesUnderRoot(directory: string) {
+  const root = resolve(directory);
+  const prefix = process.platform === "win32" ? root.toLowerCase() + "\\" : root + "/";
+  for (const [filename, database] of connections) {
+    const candidate = process.platform === "win32" ? filename.toLowerCase() : filename;
+    if (candidate.startsWith(prefix)) {
+      database.close();
+      connections.delete(filename);
+    }
+  }
+}
 export function localDataDirectory() { return scopedDataDirectory(); }
 function failure(error: unknown) { return { data: null, error: error instanceof Error ? error : new Error(String(error)), count: null }; }
 
@@ -97,9 +109,10 @@ export function createLocalDatabase(directory = localDataDirectory()) {
     return database.prepare("SELECT body FROM records WHERE table_name=?").all(table).map(row => JSON.parse(String(row.body)));
   };
   const save = (table: string, row: Row) => database.prepare("INSERT INTO records(table_name,id,body) VALUES(?,?,?) ON CONFLICT(table_name,id) DO UPDATE SET body=excluded.body").run(table, row.id, JSON.stringify(row));
-  const transaction = <T>(operation: () => T): T => {
+  const audit = createBillAudit(database);
+  const transaction = <T>(operation: () => T, auditOperation?: string): T => {
     database.exec("BEGIN IMMEDIATE");
-    try { const result = operation(); database.exec("COMMIT"); return result; }
+    try { const before = audit.snapshot(auditOperation); const result = operation(); audit.record(before, auditOperation); database.exec("COMMIT"); return result; }
     catch (error) { database.exec("ROLLBACK"); throw error; }
   };
   const slot = (value: unknown) => { const n = value === undefined ? 1 : value; if (!isAccountSlot(n)) throw new Error("Choose a valid business account."); return n; };
@@ -402,7 +415,7 @@ export function createLocalDatabase(directory = localDataDirectory()) {
             const changed = { ...row, ...patch, ...(patch.status === "void" ? { voided_at: patch.voided_at || new Date().toISOString() } : {}) };
             save(this.table, changed); return changed;
           });
-        });
+        }, this.patch.status === "void" ? "void_bill" : undefined);
         result.sort((a, b) => { for (const order of this.orders) { if (a[order.key] !== b[order.key]) return (a[order.key] < b[order.key] ? -1 : 1) * (order.ascending ? 1 : -1); } return 0; });
         const canonicalize = this.table === "bills" ? billCanonicalizer(transaction(customerIdentities)) : (row: Row) => row;
         const itemsByBill = new Map<string, Row[]>();
@@ -430,6 +443,11 @@ export function createLocalDatabase(directory = localDataDirectory()) {
     return resolve(root, "bill-pdfs", path);
   }
   return {
+    history: (account: number, options: { billId?: string; billNumber?: number; offset?: number } = {}) => {
+      const profile = rows("business_profiles").find(row => row.owner_id === localOwnerId && row.account_slot === slot(account));
+      if (!profile) throw new Error("Business profile is required.");
+      return audit.list(profile.id, options);
+    },
     sync: {
       counters: (profileId: string) => createLocalIssuerStore(database).counters(profileId),
       saveAssignment: (profileId: string, deviceId: string, epoch: number, counters: { nextBillNumber: number; nextDeliveryNumber: number }) => createLocalIssuerStore(database).saveAssignment(profileId, deviceId, epoch, counters),
@@ -657,7 +675,7 @@ export function createLocalDatabase(directory = localDataDirectory()) {
           const created = issue(ownerId, { ...parameters.p_bill, accountSlot: profile.account_slot }); const replacement = rows("bills").find(row => row.id === created.id)!; save("bills", { ...replacement, replacement_for_id: original.id }); return created;
         }
         throw new Error(`Unsupported local operation: ${name}`);
-      }); return { data, error: null }; } catch (error) { return failure(error); }
+      }, name); return { data, error: null }; } catch (error) { return failure(error); }
     },
     storage: { from: (bucket: string) => ({
       upload: async (path: string, bytes: Uint8Array, _options?: unknown) => {

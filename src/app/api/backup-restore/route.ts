@@ -1,33 +1,43 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "../../../lib/auth";
-import { listBackups, restoreBackup } from "../../../lib/backups";
-import { createLocalDatabase, localDataDirectory } from "../../../lib/local-database";
-import { withLocalSession } from "../../../lib/local-request";
-import { syncAllAccountRegisters } from "../../../lib/register-sync";
+import { backupStatus, listBackups, previewBackup, restoreInstallation } from "../../../lib/backups";
+import { baseDataDirectory, currentLocalUser } from "../../../lib/local-session-context";
+import { requestToken, sessionCookie, withLocalSession } from "../../../lib/local-request";
 import { localStorageEnabled } from "../../../lib/storage-mode";
 import { validationMessage } from "../../../lib/validation";
 
 const headers = { "cache-control": "no-store" };
-function failure(error: unknown) { return NextResponse.json({ error: validationMessage(error, "The backup could not be restored.") }, { status: 400, headers }); }
+function failure(error: unknown) { return NextResponse.json({ error: validationMessage(error, "The backup could not be restored.") }, { status: error instanceof Error && error.message === "Administrator sign-in is required." ? 403 : 400, headers }); }
 async function available(request: Request) {
   if (!localStorageEnabled) throw new Error("Restore is available only in the offline app.");
-  return requireUser(request);
+  await requireUser(request);
+  if (!currentLocalUser()?.administrator) throw new Error("Administrator sign-in is required.");
 }
 
-/** The dated backups found in the chosen folder, newest first. */
 export const GET = withLocalSession(async (request: Request) => {
-  try { await available(request); return NextResponse.json({ backups: listBackups(localDataDirectory()) }, { headers }); } catch (error) { return failure(error); }
+  try {
+    await available(request);
+    const root = baseDataDirectory();
+    const file = new URL(request.url).searchParams.get("file");
+    const folder = backupStatus(root).folder;
+    if (file) {
+      if (!folder) throw new Error("Choose a backup folder first.");
+      return NextResponse.json({ preview: previewBackup(folder, file) }, { headers });
+    }
+    return NextResponse.json({ backups: listBackups(root) }, { headers });
+  } catch (error) { return failure(error); }
 });
 
-/** Replaces the current bills with the chosen backup. The current bills are kept as a safety copy first. */
 export const POST = withLocalSession(async (request: Request) => {
   try {
-    const user = await available(request);
-    const directory = localDataDirectory();
+    await available(request);
+    const root = baseDataDirectory();
+    const folder = backupStatus(root).folder;
+    if (!folder) throw new Error("Choose a backup folder first.");
     const body = await request.json().catch(() => ({}));
-    const result = await restoreBackup(directory, createLocalDatabase(directory), body?.file);
-    let warning = "";
-    try { await syncAllAccountRegisters(user.id); } catch { warning = "Bills were restored, but Excel could not be refreshed. Use Refresh Excel on the Dashboard."; }
-    return NextResponse.json({ ...result, warning }, { headers });
+    const result = await restoreInstallation(root, folder, body?.file, { token: requestToken(request), password: body?.currentPassword });
+    const response = NextResponse.json({ ...result, warning: "Recovery completed. Close and reopen the app, then sign in using the restored login details." }, { headers });
+    response.cookies.set(sessionCookie, "", { httpOnly: true, sameSite: "strict", path: "/", maxAge: 0 });
+    return response;
   } catch (error) { return failure(error); }
 });

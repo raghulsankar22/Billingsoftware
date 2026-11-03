@@ -216,3 +216,4 @@ html[data-theme="light"] .dashboard-sections button[aria-pressed="true"]{backgro
 :where(html[data-theme="light"]) .backup-folder input{background:#fff;border-color:#b9c8d6}
 .backup-restore{display:grid;gap:8px;justify-items:start;border-top:1px solid var(--line);padding-top:10px}.backup-restore h4{margin:0}.backup-list{list-style:none;margin:0;padding:0;display:grid;gap:6px;max-height:220px;overflow-y:auto;width:100%}.backup-list label{display:flex;gap:8px;align-items:center;font-weight:400}.backup-list input{width:auto;margin:0}.backup-confirm{border:1px solid #d9a441;border-radius:8px;padding:12px;display:grid;gap:8px;max-width:640px}.backup-confirm p{margin:0}
 .backup-confirm button.danger{background:#b42318;color:#fff;border:1px solid #f97066;font-weight:700}
+:where(.history-record-id) { display: block; font-family: monospace; font-size: 0.72rem; overflow-wrap: anywhere; max-width: 15rem; }

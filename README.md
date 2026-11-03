@@ -6,6 +6,10 @@ It runs as a **Windows desktop app that works fully offline**. Data stays on the
 
 ## What it does
 
+Version 1.0.26 adds complete offline backup/recovery, unfinished new-bill drafts,
+and read-only bill-change history. See [Recovery and history](docs/recovery-and-history.md)
+for coverage, safeguards and important limits. Updating the installer does not restore a backup.
+
 | Area | Features |
 | --- | --- |
 | **Loan bills** | Automatic bill numbers, gold and silver items, weight, assessed value (loan + 10%), jewellery picker with quantities, condition remarks, edit, void and delete |

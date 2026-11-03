@@ -1,9 +1,10 @@
-const { app, BrowserWindow, Menu, dialog, shell } = require('electron');
+const { app, BrowserWindow, Menu, dialog, shell, ipcMain } = require('electron');
 const path = require('node:path');
 const { resolveDataDirectory } = require('./data-location.cjs');
 const { ensureBillingServer } = require('./server.cjs');
 const { isAppUrl } = require('./security.cjs');
 const { createUpdateAction } = require('./updates.cjs');
+const { chooseBackupFolderForSender } = require('./backup-folder.cjs');
 
 let window;
 let server;
@@ -37,9 +38,10 @@ else {
     window = new BrowserWindow({
       title: 'Finance Billing', width: 1320, height: 900, minWidth: 760, minHeight: 580, show: false,
       backgroundColor: '#0b1420', icon: path.join(__dirname, 'assets', 'icon.png'),
-      webPreferences: { nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true, safeDialogs: true, devTools: !app.isPackaged },
+      webPreferences: { preload: path.join(__dirname, 'preload.cjs'), nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true, safeDialogs: true, devTools: !app.isPackaged },
     });
     const contents = window.webContents;
+    ipcMain.handle('billing:choose-backup-folder', (event, ...args) => chooseBackupFolderForSender({ event, args, window, origin: server.origin, dialog }));
     contents.setWindowOpenHandler(() => ({ action: 'deny' }));
     contents.on('will-navigate', (event, url) => { if (!isAppUrl(url, server.origin)) event.preventDefault(); });
     contents.on('will-redirect', (event, url) => { if (!isAppUrl(url, server.origin)) event.preventDefault(); });

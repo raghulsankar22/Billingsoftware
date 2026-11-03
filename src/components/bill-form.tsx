@@ -16,13 +16,16 @@ import { EnglishRecordField } from "./english-record-field";
 import { JewelleryRemarks } from "./jewellery-remarks";
 import { JewelleryCombobox } from "./jewellery-combobox";
 import { JewelleryManager } from "./jewellery-manager";
+import { billDraftKey } from "@/lib/bill-drafts";
+import { useBillDraft } from "./use-bill-draft";
+import { changeReasons } from "@/lib/bill-history-types";
 const blankItem = (): BillItemInput => ({ particulars: "", remarks: "", grams: 0, assessedValue: 0, loanAmount: 0 });
 const today = () => {
   const date = new Date();
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 };
 
-export function BillForm({ onCreated, editingSource, accountSlot }: { onCreated: (bill: Bill) => void; editingSource?: Bill | null; accountSlot: AccountSlot }) {
+export function BillForm({ onCreated, editingSource, accountSlot, draftUserId }: { onCreated: (bill: Bill) => void; editingSource?: Bill | null; accountSlot: AccountSlot; draftUserId?: string }) {
   const { t } = useLanguage();
   const [form, setForm] = useState<BillInput>(() => editingSource ? {
     billDate: editingSource.billDate, customerName: editingSource.customerName,
@@ -32,6 +35,7 @@ export function BillForm({ onCreated, editingSource, accountSlot }: { onCreated:
     items: editingSource.items.map((item) => ({ ...item })),
   } : { billDate: today(), customerName: "", fatherName: "", address: "", phone: "", governmentId: "", customerId: "", deliveryNo: "", deliveryDate: "", items: [blankItem()] });
   const [busy, setBusy] = useState(false); const [error, setError] = useState("");
+  const [changeReason, setChangeReason] = useState("");
   const [customerLookup, setCustomerLookup] = useState<{ field: "phone" | "aadhaar"; value: string } | null>(null);
   const [customerNotice, setCustomerNotice] = useState("");
   const [customerCode, setCustomerCode] = useState(editingSource?.customerCode ?? "");
@@ -58,6 +62,7 @@ export function BillForm({ onCreated, editingSource, accountSlot }: { onCreated:
   const [jewelleryError, setJewelleryError] = useState("");
   const [jewelleryNotice, setJewelleryNotice] = useState("");
   const [jewelleryDrafts, setJewelleryDrafts] = useState<Record<number, { name: string; quantity: string; error: string; query?: string | null }>>({});
+  const draft = useBillDraft(localStorageEnabled && !editingSource && draftUserId ? billDraftKey(draftUserId, accountSlot) : null, form, jewelleryDrafts);
   const particularsFields = useRef<(HTMLInputElement | null)[]>([]);
   const catalogueGeneration = useRef(0);
   useEffect(() => {
@@ -172,21 +177,27 @@ export function BillForm({ onCreated, editingSource, accountSlot }: { onCreated:
     event.preventDefault();
     if (!(event.currentTarget as HTMLFormElement).reportValidity()) return;
     if (lookingUpCustomer) return;
+    if (localStorageEnabled && editingSource && !Object.hasOwn(changeReasons, changeReason)) { setError("Choose a reason for this correction."); return; }
     if (localStorageEnabled && form.governmentId && form.governmentId !== editingSource?.governmentId && !/^\d{12}$/.test(form.governmentId.replace(/[\s-]/g, ""))) { setError("Enter a 12-digit Aadhaar number, or leave it empty."); return; }
     if (newJewellery) { setJewelleryError("Save or cancel the new jewellery before saving the bill."); return; }
     if (localStorageEnabled && Object.values(jewelleryDrafts).some(draft => draft.name)) { setError("Click Add beside each selected jewellery to include it in Particulars before saving the bill."); return; }
     setBusy(true); setError("");
-    try { const path = editingSource ? `/api/bills/${editingSource.id}${localStorageEnabled ? "" : "/replace"}` : "/api/bills"; const { bill } = await api(path, accountSlot, { method: editingSource && localStorageEnabled ? "PATCH" : "POST", body: JSON.stringify({ ...form, ...(differentPerson ? { allowSharedPhone: true } : {}), ...(localStorageEnabled ? { governmentId: editingSource && form.governmentId === editingSource.governmentId ? form.governmentId : (form.governmentId ?? "").replace(/[\s-]/g, "") } : {}) }) }); onCreated(bill); filledCustomer.current = null; setDifferentPerson(false); setCustomerLookup(null); setCustomerNotice(""); setJewelleryDrafts({}); setForm({ billDate: today(), customerName: "", fatherName: "", address: "", phone: "", governmentId: "", deliveryNo: "", deliveryDate: "", items: [blankItem()] }); }
+    try { const path = editingSource ? `/api/bills/${editingSource.id}${localStorageEnabled ? "" : "/replace"}` : "/api/bills"; const { bill } = await api(path, accountSlot, { method: editingSource && localStorageEnabled ? "PATCH" : "POST", headers: changeReason ? { "x-billing-change-reason": changeReason } : {}, body: JSON.stringify({ ...form, ...(differentPerson ? { allowSharedPhone: true } : {}), ...(localStorageEnabled ? { governmentId: editingSource && form.governmentId === editingSource.governmentId ? form.governmentId : (form.governmentId ?? "").replace(/[\s-]/g, "") } : {}) }) }); draft.clear(); onCreated(bill); filledCustomer.current = null; setDifferentPerson(false); setCustomerLookup(null); setCustomerNotice(""); setJewelleryDrafts({}); setForm({ billDate: today(), customerName: "", fatherName: "", address: "", phone: "", governmentId: "", deliveryNo: "", deliveryDate: "", items: [blankItem()] }); }
     catch (failure) {
       setError(failure instanceof Error ? failure.message : "Unable to issue bill.");
       // Show who already has this phone, so staff can pick them or say it's someone else.
       if (failure instanceof Error && failure.message.includes(sharedPhoneQuestion)) setCustomerLookup({ field: "phone", value: form.phone });
     } finally { setBusy(false); }
   }
+  if (!draft.ready) return <section className="panel"><p role="status">{t("Checking for an unfinished bill…")}</p></section>;
+  if (draft.pending) return <section className="panel" aria-label={t("Unfinished bill")}><h2>{t("Resume unfinished bill?")}</h2><p>{t("A draft was saved on this computer at")} {new Date(draft.pending.savedAt).toLocaleString()}. {t("No bill number has been issued. Check the date and details before saving.")}</p><div className="form-actions"><button type="button" onClick={() => { const savedDraft = draft.resume(); if (!savedDraft) return; setForm({ ...savedDraft.form, customerId: "", deliveryNo: "", deliveryDate: "" }); setJewelleryDrafts(savedDraft.jewellery); }}>{t("Resume draft")}</button><button type="button" className="secondary" onClick={() => { if (window.confirm(t("Discard this unfinished bill?"))) draft.clear(); }}>{t("Discard draft")}</button></div><p className="muted">{t("Drafts are kept only in this browser, separately for each signed-in user and account. They are not issued bills or Excel records.")}</p></section>;
   return <section className="panel">
+    {draft.warning && <p className="error" role="alert">{t(draft.warning)}</p>}
+    {draft.saved && <p className="muted" role="status">{t("Unfinished bill saved on this computer. Not issued yet.")}</p>}
     <form onSubmit={submit}>
       <div className="section-heading bill-form-heading"><div><p className="eyebrow">{editingSource ? `${t("ACCOUNT")} ${accountSlot} · ${t(localStorageEnabled ? "Edit bill" : "Replace bill")} #${editingSource.billNumber}` : `${t("ACCOUNT")} ${accountSlot} · ${t("New bill")}`}</p><h2>{t("Customer and pledge details")}</h2>{editingSource && <p>{localStorageEnabled ? t("Saving updates this bill without changing its number.") : t("Saving voids the original and issues a new bill number.")}</p>}{keepsBlanks && <p className="muted">{t("Imported from your old register. Details you leave blank stay \"Not recorded\".")}</p>}</div><label className="bill-date-field">{t("Bill date")}<input type="date" value={form.billDate} onChange={(e) => set("billDate", e.target.value)} required /></label></div>
       {localStorageEnabled && <p className="muted customer-lookup-help">{t("Enter a saved customer's Aadhaar to fill their details automatically, or their mobile number to choose them.")}</p>}
+      {localStorageEnabled && editingSource && <label>{t("Reason for correction")}<select required value={changeReason} disabled={busy} onChange={event => setChangeReason(event.target.value)}><option value="">{t("Choose a reason")}</option>{Object.entries(changeReasons).map(([value, label]) => <option key={value} value={value}>{t(label)}</option>)}</select></label>}
       <div className="form-grid customer-details-grid">
         <EnglishRecordField label="Customer name" value={form.customerName} onChange={value => set("customerName", value)} required disabled={busy} maxLength={120} />
         <EnglishRecordField label="Father's name / Husband's name" value={form.fatherName} onChange={value => set("fatherName", value)} required={!keepsBlanks} disabled={busy} maxLength={120} />
@@ -202,7 +213,7 @@ export function BillForm({ onCreated, editingSource, accountSlot }: { onCreated:
         {localStorageEnabled && <td><div className="metal-choice" role="group" aria-label={`${t("Metal for item")} ${index + 1}`}>{(["Gold", "Silver"] as const).map((metal) => <label key={metal} className={row.metal === metal ? "selected" : ""}><input type="radio" name={`metal-${index}`} value={metal} checked={row.metal === metal} onChange={() => setMetal(index, metal)} required />{t(metal)}</label>)}</div></td>}
         <td>{localStorageEnabled ? <div className="jewellery-picker">
           <EnglishRecordField label="Particulars" hideLabel multiline maxLength={180} value={row.particulars} required disabled={busy} onChange={value => item(index, "particulars", value)} />
-          <div className="jewellery-entry-controls"><div className="jewellery-name-field"><span aria-hidden="true">{t("Jewellery")}</span><JewelleryCombobox inputRef={element => { particularsFields.current[index] = element; }} ariaLabel={`${t("Jewellery to add for item")} ${index + 1}`} value={jewelleryDrafts[index]?.name ?? ""} options={jewellery} disabled={busy || newJewellery !== null || !catalogueLoaded}
+          <div className="jewellery-entry-controls"><div className="jewellery-name-field"><span aria-hidden="true">{t("Jewellery")}</span><JewelleryCombobox inputRef={element => { particularsFields.current[index] = element; }} ariaLabel={`${t("Jewellery to add for item")} ${index + 1}`} value={jewelleryDrafts[index]?.name ?? ""} query={jewelleryDrafts[index]?.query ?? null} options={jewellery} disabled={busy || newJewellery !== null || !catalogueLoaded}
             onSelect={name => setJewelleryDraft(index, { name })} onQueryChange={query => setJewelleryDraft(index, { query })} onAddNew={typed => startJewellery(index, typed)} /></div><label>{t("Qty")}<input type="number" aria-label={`${t("Jewellery quantity for item")} ${index + 1}`} min="1" max="9999" step="1" value={jewelleryDrafts[index]?.quantity ?? ""} disabled={busy || newJewellery !== null || !jewelleryDrafts[index]?.name} onChange={event => setJewelleryDraft(index, { quantity: event.target.value })} onKeyDown={event => { if (event.key === "Enter") { event.preventDefault(); addToParticulars(index); } }} /></label><button type="button" aria-label={`${t("Add jewellery to particulars for item")} ${index + 1}`} disabled={busy || newJewellery !== null} onClick={() => addToParticulars(index)}>{t("Add")}</button></div>
           <small className="muted">{t("Choose jewellery and quantity, then Add. Repeat for more items. Gram and amounts are totals for this row.")}</small>
           {jewelleryDrafts[index]?.error && <p className="error" role="alert">{t(jewelleryDrafts[index].error)}</p>}

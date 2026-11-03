@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import ExcelJS from 'exceljs';
-import { mkdir, mkdtemp } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { createServer } from 'node:net';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -55,7 +55,33 @@ try {
   assert.equal((await request('/api/local-auth', 'POST', { action: 'change-password', currentPassword: 'password two', newPassword: 'new password' }, fatherCookie)).response.status, 200);
   assert.equal((await request('/api/profile?account=1', 'GET', undefined, fatherCookie)).response.status, 401);
   assert.equal((await request('/api/local-auth', 'POST', { action: 'login', username: 'father', password: 'new password' })).response.status, 200);
-  console.log('Packaged offline server verified: sign-in, isolated business accounts and password changes.');
+  const backupFolder = await mkdtemp(path.join(root, 'tmp/desktop-backup-verification-'));
+  if (path.dirname(backupFolder) !== path.join(root, 'tmp') || !path.basename(backupFolder).startsWith('desktop-backup-verification-')) throw new Error('Invalid backup verification directory');
+  try {
+    assert.equal((await request('/api/backup', 'PUT', { folder: backupFolder }, ownerCookie)).response.status, 200);
+    const offered = await request('/api/backup-restore', 'GET', undefined, ownerCookie);
+    assert.equal(offered.response.status, 200); assert.equal(offered.data.backups.length, 1);
+    const file = offered.data.backups[0].file;
+    const preview = await request('/api/backup-restore?file=' + encodeURIComponent(file), 'GET', undefined, ownerCookie);
+    assert.equal(preview.response.status, 200); assert.equal(preview.data.preview.format, 'complete');
+    assert.equal(preview.data.preview.userCount, 3); assert.equal(preview.data.preview.billCount, 2); assert.equal(preview.data.preview.ledgerCount, 2);
+    const history = await request('/api/bill-history?account=1', 'GET', undefined, ownerCookie);
+    assert.equal(history.response.status, 200); assert.equal(history.data.total, 1);
+    assert.equal(history.data.entries[0].actor, 'owner'); assert.ok(!JSON.stringify(history.data).includes(sampleBill.customerName));
+    assert.equal((await request('/api/jewellery', 'POST', { name: 'After Backup Only' }, ownerCookie)).response.status, 200);
+    assert.equal((await request('/api/backup-restore', 'POST', { file, currentPassword: 'wrong' }, ownerCookie)).response.status, 400);
+    const restored = await request('/api/backup-restore', 'POST', { file, currentPassword: 'password one' }, ownerCookie);
+    assert.equal(restored.response.status, 200); assert.equal(restored.data.restartRequired, true); assert.match(restored.data.safetyCopy, /^before-restore-/);
+    assert.equal((await request('/api/profile', 'GET', undefined, ownerCookie)).response.status, 401);
+    const reopened = await request('/api/local-auth', 'POST', { action: 'login', username: 'owner', password: 'password one' });
+    assert.equal(reopened.response.status, 200); const restoredCookie = session(reopened);
+    assert.ok(!(await request('/api/jewellery', 'GET', undefined, restoredCookie)).data.items.includes('After Backup Only'));
+    const restoredHistory = await request('/api/bill-history?account=1', 'GET', undefined, restoredCookie);
+    assert.equal(restoredHistory.data.entries[0].action, 'Backup restored');
+    assert.equal((await request('/api/bills?account=1', 'GET', undefined, restoredCookie)).data.bills.length, 1);
+    assert.equal((await request('/api/local-auth', 'POST', { action: 'login', username: 'father', password: 'new password' })).response.status, 200);
+  } finally { await rm(backupFolder, { recursive: true, force: true }); }
+  console.log('Packaged offline server verified: sign-in, isolated accounts, password changes, history and complete administrator backup/recovery.');
 } finally {
   server.stop();
   for (let attempt = 0; attempt < 40; attempt++) {

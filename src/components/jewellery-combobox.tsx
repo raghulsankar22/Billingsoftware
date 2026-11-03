@@ -7,6 +7,7 @@ import { useLanguage } from "./language-provider";
 
 type Props = {
   value: string;
+  query: string | null;
   options: readonly string[];
   ariaLabel: string;
   disabled: boolean;
@@ -18,10 +19,9 @@ type Props = {
 
 const addNew = "\u0001add-new";
 
-export function JewelleryCombobox({ value, options, ariaLabel, disabled, inputRef, onSelect, onQueryChange, onAddNew }: Props) {
+export function JewelleryCombobox({ value, query, options, ariaLabel, disabled, inputRef, onSelect, onQueryChange, onAddNew }: Props) {
   const { t } = useLanguage();
   const listId = useId();
-  const [query, setQuery] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
   const list = useRef<HTMLUListElement>(null);
@@ -35,7 +35,7 @@ export function JewelleryCombobox({ value, options, ariaLabel, disabled, inputRe
     if (open) list.current?.querySelector<HTMLElement>(`[data-index="${highlighted}"]`)?.scrollIntoView({ block: "nearest" });
   }, [highlighted, open, query, options]);
 
-  const close = () => { setOpen(false); setQuery(null); onQueryChange(null); };
+  const close = () => { setOpen(false); onQueryChange(null); };
   const choose = (choice: string) => {
     if (!choices.includes(choice)) return;
     if (choice === addNew) { const text = typed; close(); onAddNew(text); return; }
@@ -48,7 +48,7 @@ export function JewelleryCombobox({ value, options, ariaLabel, disabled, inputRe
       placeholder={t("Type to search jewellery")} value={shown} disabled={disabled}
       onFocus={event => event.currentTarget.select()}
       onClick={() => { setActive(0); setOpen(true); }}
-      onChange={event => { setQuery(event.target.value); onQueryChange(event.target.value); setActive(0); setOpen(true); }}
+      onChange={event => { onQueryChange(event.target.value); setActive(0); setOpen(true); }}
       onBlur={() => setOpen(false)}
       onKeyDown={event => {
         if (event.nativeEvent.isComposing || event.keyCode === 229) { if (event.key === "Enter") event.preventDefault(); return; }

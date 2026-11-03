@@ -3,10 +3,11 @@ import { baseDataDirectory, multiUserEnabled } from "@/lib/local-session-context
 import { createLocalUsers } from "@/lib/local-users";
 import { localRequestAllowed, requestToken, sessionCookie } from "@/lib/local-request";
 import { localStorageEnabled } from "@/lib/storage-mode";
+import { BackupMaintenanceError, withBackupOperation } from "@/lib/backup-maintenance";
 
 const headers = { "cache-control": "no-store" };
 const denied = () => NextResponse.json({ error: "Open billing directly on this computer." }, { status: 403, headers });
-export async function GET(request: Request) {
+async function get(request: Request) {
   if (!localStorageEnabled || !localRequestAllowed(request)) return denied();
   if (!multiUserEnabled()) return NextResponse.json({ enabled: false }, { headers });
   const users = createLocalUsers(baseDataDirectory());
@@ -15,7 +16,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ enabled: true, needsSetup: users.needsSetup(), user }, { headers });
   } finally { users.close(); }
 }
-export async function POST(request: Request) {
+async function post(request: Request) {
   if (!localStorageEnabled || !multiUserEnabled() || !localRequestAllowed(request)) return denied();
   const users = createLocalUsers(baseDataDirectory());
   try {
@@ -56,3 +57,13 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Unable to complete sign-in." }, { status: 400, headers });
   } finally { users.close(); }
 }
+
+async function guarded(request: Request, handler: (request: Request) => Promise<Response>) {
+  try { return await withBackupOperation(baseDataDirectory(), () => handler(request)); }
+  catch (error) {
+    if (!(error instanceof BackupMaintenanceError)) throw error;
+    return NextResponse.json({ error: error.message }, { status: 503, headers });
+  }
+}
+export const GET = (request: Request) => guarded(request, get);
+export const POST = (request: Request) => guarded(request, post);

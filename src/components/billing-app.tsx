@@ -19,6 +19,10 @@ import { BillDelivery } from "./bill-delivery";
 import { DeliveryBills } from "./delivery-bills";
 import { CustomerBillLost } from "./customer-bill-lost";
 import { BackupPanel } from "./backup-panel";
+import { AutoBackup } from "./auto-backup";
+import { BillHistory } from "./bill-history";
+import type { ChangeReason } from "@/lib/bill-history-types";
+import { BillChangeReasonDialog } from "./bill-change-reason-dialog";
 import { BusinessUpdates } from "./business-updates";
 import { Customers } from "./customers";
 import { NoticeBills, OverdueBills } from "./overdue-bills";
@@ -81,6 +85,8 @@ export function BillingApp() {
   const [isRefreshingExcel, setIsRefreshingExcel] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [editingSource, setEditingSource] = useState<Bill | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [reasonRequest, setReasonRequest] = useState<{ resolve: (reason: ChangeReason | null) => void } | null>(null);
   const [addingAccount, setAddingAccount] = useState(false);
   const [inDesktopApp, setInDesktopApp] = useState(false);
   const loadGeneration = useRef(0);
@@ -230,10 +236,14 @@ export function BillingApp() {
     }
   }
 
+  function askChangeReason(): Promise<ChangeReason | null> {
+    return new Promise(resolve => setReasonRequest({ resolve }));
+  }
   async function voidBill(id: string) {
     if (!window.confirm(t("Void this bill? It will remain in history and cannot be edited."))) return;
+    const reason = localStorageEnabled ? await askChangeReason() : "correction"; if (!reason) return;
     try {
-      await api(`/api/bills/${id}/void`, accountSlot, { method: "POST" });
+      await api(`/api/bills/${id}/void`, accountSlot, { method: "POST", headers: { "x-billing-change-reason": reason } });
       await load(query, accountSlot);
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : "Unable to void bill.");
@@ -241,9 +251,10 @@ export function BillingApp() {
   }
 
   async function deleteBill(bill: Bill) {
-    if (!window.confirm(t(`Permanently delete bill #${bill.billNumber}? It will be removed from history, its PDF and the Excel register. This cannot be undone. If this is the latest bill, the next bill will use #${bill.billNumber} again.`))) return;
+    if (!window.confirm(t(`Permanently delete bill #${bill.billNumber}? It will be removed from the bill list, its PDF and the Excel register. A read-only change-history entry will remain. This cannot be undone. If this is the latest bill, the next bill will use #${bill.billNumber} again.`))) return;
+    const reason = localStorageEnabled ? await askChangeReason() : "correction"; if (!reason) return;
     try {
-      const result = await api(`/api/bills/${bill.id}`, accountSlot, { method: "DELETE" });
+      const result = await api(`/api/bills/${bill.id}`, accountSlot, { method: "DELETE", headers: { "x-billing-change-reason": reason } });
       if (selected?.id === bill.id) setSelected(null);
       if (overviewBill?.id === bill.id) setOverviewBill(null);
       if (deliveryDocumentBill?.id === bill.id) setDeliveryDocumentBill(null);
@@ -291,6 +302,8 @@ export function BillingApp() {
   const accountLoaded = loadedSlot === accountSlot;
 
   return <main className="app-shell">
+    {localStorageEnabled && <AutoBackup onError={setError} />}
+    {reasonRequest && <BillChangeReasonDialog onDone={reason => { reasonRequest.resolve(reason); setReasonRequest(null); }} />}
     <header className="topbar">
       <div className="topbar-brand">
         <div className="app-brand-title">
@@ -335,7 +348,7 @@ export function BillingApp() {
       </section>}
       {!accountLoaded && isLoading && <section className="panel setup-callout"><p>{t("Loading Account")} {accountSlot}…</p></section>}
       {view === "settings" && accountLoaded && <ProfileForm key={accountSlot} profile={profile} accountSlot={accountSlot} onSaved={() => void load(query, accountSlot)} />}
-      {view === "new" && profile && accountLoaded && <BillForm key={`${accountSlot}-${editingSource?.id ?? "new"}`} accountSlot={accountSlot} editingSource={editingSource} onCreated={issueSuccess} />}
+      {view === "new" && profile && accountLoaded && <BillForm key={`${accountSlot}-${editingSource?.id ?? "new"}`} accountSlot={accountSlot} draftUserId={multiUser ? localUser?.id : "local-owner"} editingSource={editingSource} onCreated={issueSuccess} />}
       {view === "customers" && accountLoaded && <Customers key={accountSlot} accountSlot={accountSlot} />}
       {view === "delivery" && profile && accountLoaded && <BillDelivery key={accountSlot} accountSlot={accountSlot} profile={profile} onSaved={(bill) => { setDeliveryDocumentBill(bill); void load(query, accountSlot); }} onBatchSaved={() => void load(query, accountSlot)} onOpen={setSelected} onOverview={setOverviewBill} onReceipt={setDeliveryDocumentBill} />}
       {view === "lost-bills" && profile && accountLoaded && <CustomerBillLost key={accountSlot} accountSlot={accountSlot} profile={profile} onReceipt={setDeliveryDocumentBill} onOriginal={setSelected} />}
@@ -347,6 +360,8 @@ export function BillingApp() {
       {view === "search" && accountLoaded && <AllAccountSearch accountSlot={accountSlot} />}
       {view === "import" && profile && accountLoaded && <ImportPreview key={accountSlot} accountSlot={accountSlot} onImported={() => void load(query, accountSlot)} />}
       {view === "bills" && accountLoaded && profile && <section className="panel">
+        {localStorageEnabled && <div className="form-actions"><button type="button" className="secondary" onClick={() => setHistoryOpen(value => !value)}>{t("Bill change history")}</button></div>}
+        {localStorageEnabled && historyOpen && <BillHistory key={accountSlot} accountSlot={accountSlot} refreshVersion={navCountsVersion} onClose={() => setHistoryOpen(false)} />}
         <div className="section-heading history-heading">
           <div><p className="eyebrow">{t("ACCOUNT")} {accountSlot} {t("HISTORY")}</p><h2>{t("All bills")}</h2></div>
           <form className="search" onSubmit={(event) => { event.preventDefault(); void load(query, accountSlot); }}>

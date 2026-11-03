@@ -243,3 +243,8 @@ installer. Editing the website alone does not update the installed desktop app.
 The installer is not digitally signed. SHA-256 detects a changed or incomplete installer;
 it does not authenticate its publisher. Only choose update files from your own builds.
 Distribution with a verified publisher identity requires a Windows code-signing certificate.
+
+Version 1.0.26 adds complete offline backup/recovery, isolated unfinished new-bill
+drafts and protected bill-change history. See [Recovery and history](recovery-and-history.md)
+before using Restore: it replaces all users' data and passwords, keeps a safety
+package, and requires everyone to sign in again after restarting.

@@ -98,6 +98,17 @@ export function createLocalUsers(directory: string) {
       return { token, user: rowToUser(row) };
     },
     session: active,
+    async reauthenticateAdministrator(token: unknown, password: unknown) {
+      const user = requireAdmin(token);
+      checkLock(user.username);
+      const row = db.prepare("SELECT password_hash FROM users WHERE id=?").get(user.id);
+      if (!row || !await verifyLocalPassword(password, row.password_hash)) { recordFailure(user.username); throw new Error("Current password is incorrect."); }
+      requireAdmin(token);
+      const current = db.prepare("SELECT password_hash FROM users WHERE id=?").get(user.id);
+      if (current?.password_hash !== row.password_hash) throw new Error("Your password changed. Sign in again.");
+      db.prepare("DELETE FROM login_attempts WHERE username=? COLLATE NOCASE").run(user.username);
+      return user;
+    },
     logout(token: string) { db.prepare("DELETE FROM sessions WHERE token_hash=?").run(tokenHash(token)); },
     list(adminToken: string) { requireAdmin(adminToken); return db.prepare("SELECT * FROM users ORDER BY created_at,id").all().map(rowToUser); },
     async changePassword(token: string, currentPassword: unknown, newPassword: unknown) {

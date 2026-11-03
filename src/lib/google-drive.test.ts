@@ -8,7 +8,7 @@ const mocks = vi.hoisted(() => ({ db: vi.fn(), load: vi.fn() }));
 vi.mock("./supabase", () => ({ createAdminSupabase: mocks.db }));
 vi.mock("./excel-report", async (original) => ({ ...await original<typeof import("./excel-report")>(), loadReportBills: mocks.load }));
 
-const bill: Bill = { id: "bill", billNumber: 101, status: "issued", billDate: "2026-10-03", customerName: "Authoritative customer", fatherName: "Father", address: "Kanchipuram", phone: "1234567890", items: [{ particulars: "Gold", grams: 2, assessedValue: 4000, loanAmount: 3000 }], totalAssessedValue: 4000, totalLoanAmount: 3000, amountInWords: "Three thousand", excelSyncStatus: "pending", createdAt: "2026-10-03" };
+const bill: Bill = { id: "bill", billNumber: 101, status: "issued", billDate: "2026-10-03", customerName: "Authoritative customer", fatherName: "Father", address: "Example Town", phone: "1234567890", items: [{ particulars: "Gold", grams: 2, assessedValue: 4000, loanAmount: 3000 }], totalAssessedValue: 4000, totalLoanAmount: 3000, amountInWords: "Three thousand", excelSyncStatus: "pending", createdAt: "2026-10-03" };
 let rpc: ReturnType<typeof vi.fn>;
 let updates: Record<string, unknown>[];
 let events: string[];

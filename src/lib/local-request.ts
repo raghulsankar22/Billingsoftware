@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { baseDataDirectory, multiUserEnabled, runAsLocalUser } from "./local-session-context";
 import { createLocalUsers } from "./local-users";
 import { localStorageEnabled } from "./storage-mode";
+import { BackupMaintenanceError, withBackupOperation } from "./backup-maintenance";
+import { withBillAuditReason } from "./bill-audit";
 
 export const sessionCookie = "billing_session";
 export function localRequestAllowed(request: Request) {
@@ -17,13 +19,21 @@ export function requestToken(request: Request) {
 }
 export function withLocalSession<T extends (request: Request, ...args: any[]) => Promise<Response>>(handler: T): T {
   const wrapped = async (request: Request, ...args: any[]) => {
-    if (!localStorageEnabled || !multiUserEnabled()) return handler(request, ...args);
-    if (!localRequestAllowed(request)) return NextResponse.json({ error: "Open billing directly on this computer." }, { status: 403 });
-    const users = createLocalUsers(baseDataDirectory());
-    let user;
-    try { user = users.session(requestToken(request)); } finally { users.close(); }
-    if (!user) return NextResponse.json({ error: "Sign in is required." }, { status: 401, headers: { "cache-control": "no-store" } });
-    return runAsLocalUser(user, () => handler(request, ...args));
+    if (!localStorageEnabled) return handler(request, ...args);
+    try {
+      return await withBackupOperation(baseDataDirectory(), async () => {
+        if (!multiUserEnabled()) return withBillAuditReason(request.headers.get("x-billing-change-reason"), () => handler(request, ...args));
+        if (!localRequestAllowed(request)) return NextResponse.json({ error: "Open billing directly on this computer." }, { status: 403 });
+        const users = createLocalUsers(baseDataDirectory());
+        let user;
+        try { user = users.session(requestToken(request)); } finally { users.close(); }
+        if (!user) return NextResponse.json({ error: "Sign in is required." }, { status: 401, headers: { "cache-control": "no-store" } });
+        return runAsLocalUser(user, () => withBillAuditReason(request.headers.get("x-billing-change-reason"), () => handler(request, ...args)));
+      });
+    } catch (error) {
+      if (!(error instanceof BackupMaintenanceError)) throw error;
+      return NextResponse.json({ error: error.message }, { status: 503, headers: { "cache-control": "no-store" } });
+    }
   };
   return wrapped as T;
 }

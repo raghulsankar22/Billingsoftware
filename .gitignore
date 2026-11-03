@@ -14,3 +14,20 @@ mattpocock-skills-source/
 release/
 tmp/
 .vercel/
+
+# Private records, exports, credentials and recovery packages stay on this computer.
+.env
+.env.*
+!.env.example
+*.sqlite
+*.sqlite-*
+*.db
+*.db-*
+*.xlsx
+*.xls
+*.xlsm
+*.csv
+*.pdf
+*.billing-backup/
+*.pem
+*.key
