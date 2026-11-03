@@ -15,6 +15,8 @@ import { createLocalIssuerStore } from "./sync-local-issuer";
 import { createSyncOutbox } from "./sync-outbox";
 import { parseSyncBill } from "./sync-bill";
 import { createBillAudit } from "./bill-audit";
+import { createCashBook } from "./cashbook";
+import { BillIssuanceConflict } from "./bill-issuance";
 
 type Row = Record<string, any>;
 type Result = { data: any; error: Error | null; count?: number | null };
@@ -54,6 +56,7 @@ export function createLocalDatabase(directory = localDataDirectory()) {
     connections.set(filename, db);
   }
   const database = db;
+  database.exec("CREATE TABLE IF NOT EXISTS local_bill_requests (operation_id TEXT PRIMARY KEY, profile_id TEXT NOT NULL, request_hash TEXT NOT NULL, bill_id TEXT NOT NULL)");
   database.exec("CREATE TABLE IF NOT EXISTS jewellery_items (name_key TEXT PRIMARY KEY, name TEXT NOT NULL); CREATE TABLE IF NOT EXISTS jewellery_hidden_items (name_key TEXT PRIMARY KEY)");
   // Older desktop releases insert without customer_number. Allocate it in a
   // trigger shared by every writer, and serialize schema inspection/backfill.
@@ -217,6 +220,7 @@ export function createLocalDatabase(directory = localDataDirectory()) {
   const refuseIfSyncManaged = (profileId: string) => {
     if (database.prepare("SELECT 1 FROM sync_local_issuers WHERE profile_id=?").get(profileId)) throw new Error("This account uses online sync, and this change isn't supported through sync yet.");
   };
+  const cashBook = createCashBook(database, refuseIfSyncManaged);
   const saveCustomer = (account: number, input: CustomerInput, id?: string, options: { allowSharedPhone?: boolean } = {}): Customer => {
     const profileId = customerProfile(account);
     const identities = customerIdentities();
@@ -297,6 +301,7 @@ export function createLocalDatabase(directory = localDataDirectory()) {
     const { bill, profile } = billOwner(ownerId, billId);
     if (slot(account) !== profile.account_slot) throw new Error("Bill not found in this account.");
     refuseIfSyncManaged(profile.id);
+    cashBook.assertBillChangeAllowed(bill.id, "collection");
     if (!["issued", "void"].includes(bill.status)) throw new Error("Delivery cannot be recorded for this bill status.");
     const input = deliverySchema.parse(delivery);
     // A register delivery really happened: never replace what it recorded or invent interest for it.
@@ -337,6 +342,7 @@ export function createLocalDatabase(directory = localDataDirectory()) {
     const { bill, profile } = billOwner(ownerId, billId);
     if (slot(account) !== profile.account_slot) throw new Error("Bill not found in this account.");
     refuseIfSyncManaged(profile.id);
+    cashBook.assertBillChangeAllowed(bill.id, "collection");
     if (!bill.delivery_no && !bill.delivery_date) throw new Error("This bill has no delivery to cancel.");
     if (bill.historical_delivery === true) throw new Error("This delivery came from your old register, so it can't be cancelled here. Use Edit bill to correct it.");
     const now = new Date().toISOString();
@@ -360,7 +366,11 @@ export function createLocalDatabase(directory = localDataDirectory()) {
     const total = (key: "assessedValue" | "loanAmount") => input.items.some(item => item[key] === null) ? null : input.items.reduce((sum, item) => sum + Math.round(Number(item[key]) * 100), 0) / 100;
     const stillMissing = keepsBlanks && (!input.fatherName || input.items.some(item => item.grams === null || item.assessedValue === null));
     const deliverySummary = input.deliveryNo && input.deliveryDate ? calculateRepayment(input.items, input.billDate, input.deliveryDate) : null;
-    save("bills", { ...original, ...link, historical_missing_details: stillMissing, bill_date: input.billDate, delivery_no: input.deliveryNo || null, delivery_date: input.deliveryDate || null, delivery_summary: original.historical_delivery ? original.delivery_summary ?? null : deliverySummary, customer_name: input.customerName, father_name: input.fatherName || null, address: input.address, phone: input.phone, government_id: input.governmentId === undefined ? original.government_id ?? null : input.governmentId || null, total_assessed_value: total("assessedValue"), total_loan_amount: total("loanAmount"), excel_sync_status: "pending", excel_sync_error: null, pdf_storage_path: null, pdf_error: null, delivery_pdf_storage_path: null, delivery_pdf_error: null, updated_at: new Date().toISOString() });
+    const savedFinancialItems = rows("bill_items").filter(item => item.bill_id === original.id).sort((left, right) => left.sort_order - right.sort_order).map(item => [item.metal, item.grams, item.assessed_value, item.loan_amount]);
+    const financialItems = input.items.map(item => [item.metal, item.grams, item.assessedValue, item.loanAmount]);
+    const financialDetailsChanged = input.billDate !== original.bill_date || (input.deliveryNo || null) !== (original.delivery_no || null) || (input.deliveryDate || null) !== (original.delivery_date || null) || JSON.stringify(financialItems) !== JSON.stringify(savedFinancialItems);
+    if (financialDetailsChanged) cashBook.assertBillChangeAllowed(original.id);
+    save("bills", { ...original, ...link, historical_missing_details: stillMissing, bill_date: input.billDate, delivery_no: input.deliveryNo || null, delivery_date: input.deliveryDate || null, delivery_summary: original.historical_delivery || !financialDetailsChanged ? original.delivery_summary ?? null : deliverySummary, customer_name: input.customerName, father_name: input.fatherName || null, address: input.address, phone: input.phone, government_id: input.governmentId === undefined ? original.government_id ?? null : input.governmentId || null, total_assessed_value: total("assessedValue"), total_loan_amount: total("loanAmount"), excel_sync_status: "pending", excel_sync_error: null, pdf_storage_path: null, pdf_error: null, delivery_pdf_storage_path: null, delivery_pdf_error: null, updated_at: new Date().toISOString() });
     database.prepare("DELETE FROM records WHERE table_name='bill_items' AND json_extract(body,'$.bill_id')=?").run(original.id);
     input.items.forEach((item, index) => save("bill_items", { id: randomUUID(), bill_id: original.id, metal: item.metal, particulars: item.particulars, remarks: item.remarks, grams: item.grams, assessed_value: item.assessedValue, loan_amount: item.loanAmount, sort_order: index }));
     return { id: original.id, previousPdfPath: original.pdf_storage_path, previousDeliveryPdfPath: original.delivery_pdf_storage_path };
@@ -406,6 +416,7 @@ export function createLocalDatabase(directory = localDataDirectory()) {
           result = result.map(row => {
             if (patch.status === "void" && row.status !== "issued") throw new Error("Only issued bills can be voided.");
             if (patch.status === "void") refuseIfSyncManaged(row.profile_id);
+            if (patch.status === "void") cashBook.assertBillChangeAllowed(row.id);
             for (const key of ["pdf_storage_path", "delivery_pdf_storage_path"]) if (patch[key] != null) {
               pdfPath("bill-pdfs", patch[key]);
               const prefix = `${row.profile_id}/${row.id}`;
@@ -443,6 +454,7 @@ export function createLocalDatabase(directory = localDataDirectory()) {
     return resolve(root, "bill-pdfs", path);
   }
   return {
+    cashBook,
     history: (account: number, options: { billId?: string; billNumber?: number; offset?: number } = {}) => {
       const profile = rows("business_profiles").find(row => row.owner_id === localOwnerId && row.account_slot === slot(account));
       if (!profile) throw new Error("Business profile is required.");
@@ -560,7 +572,25 @@ export function createLocalDatabase(directory = localDataDirectory()) {
           const licenseNumber = input.licenseNumber === undefined ? previous?.license_number ?? null : input.licenseNumber.trim() || null;
           const profile = { id: previous?.id ?? randomUUID(), owner_id: ownerId, account_slot: account, business_name: input.businessName, address: input.address, phone: input.phone, logo_url: input.logoUrl || null, license_number: licenseNumber, next_bill_number: previous && hasBills(previous.id) ? previous.next_bill_number : 1, next_delivery_number: previous && hasBills(previous.id) ? nextDeliveryNumber(previous) : 1, created_at: previous?.created_at ?? now, updated_at: now }; save("business_profiles", profile); return profile;
         }
-        if (name === "create_bill") return issue(ownerId, withNewCustomer(parameters.p_bill));
+        if (name === "create_bill") {
+          if (parameters.p_operation_id === undefined) return issue(ownerId, withNewCustomer(parameters.p_bill));
+          const operationId = z.string().uuid().parse(parameters.p_operation_id);
+          const account = slot(parameters.p_bill?.accountSlot);
+          const input = billSchema.parse(parameters.p_bill);
+          const profile = rows("business_profiles").find(row => row.owner_id === ownerId && row.account_slot === account);
+          if (!profile) throw new Error("Business profile is required.");
+          const requestHash = createHash("sha256").update(JSON.stringify({ account, input })).digest("hex");
+          const previous = database.prepare("SELECT * FROM local_bill_requests WHERE operation_id=?").get(operationId);
+          if (previous) {
+            if (previous.profile_id !== profile.id || previous.request_hash !== requestHash) throw new BillIssuanceConflict("A different bill request already uses this operation ID. Retry the original request instead.");
+            const saved = rows("bills").find(row => row.id === previous.bill_id && row.profile_id === profile.id);
+            if (!saved) throw new BillIssuanceConflict("The bill saved by this request was subsequently deleted. It will not be issued again. Check All bills and change history.");
+            return { id: saved.id };
+          }
+          const created = issue(ownerId, withNewCustomer({ ...input, accountSlot: account }));
+          database.prepare("INSERT INTO local_bill_requests(operation_id,profile_id,request_hash,bill_id) VALUES(?,?,?,?)").run(operationId, profile.id, requestHash, created.id);
+          return created;
+        }
         if (name === "create_bill_with_sync") {
           const operationId = z.string().uuid().parse(parameters.p_operation_id);
           const deviceId = z.string().uuid().parse(parameters.p_device_id);
@@ -657,7 +687,9 @@ export function createLocalDatabase(directory = localDataDirectory()) {
         }
         if (name === "delete_bill") {
           const { bill, profile } = billOwner(ownerId, parameters.p_bill_id);
+          if (parameters.p_account_slot !== undefined && slot(parameters.p_account_slot) !== profile.account_slot) throw new Error("Bill not found in this account.");
           refuseIfSyncManaged(profile.id);
+          cashBook.assertBillChangeAllowed(bill.id);
           const reuseNumber = bill.bill_number === profile.next_bill_number - 1;
           database.prepare("DELETE FROM records WHERE table_name='bill_items' AND json_extract(body,'$.bill_id')=?").run(bill.id);
           for (const replacement of rows("bills").filter(row => row.replacement_for_id === bill.id)) save("bills", { ...replacement, replacement_for_id: null });
@@ -669,6 +701,7 @@ export function createLocalDatabase(directory = localDataDirectory()) {
         if (name === "replace_bill") {
           const original = rows("bills").find(row => row.id === parameters.p_original_id); const profile = rows("business_profiles").find(row => row.id === original?.profile_id && row.owner_id === ownerId);
           if (!original || !profile) throw new Error("Original bill not found");
+          cashBook.assertBillChangeAllowed(original.id);
           if (original.status !== "issued") throw new Error("Only issued bills can be replaced");
           if (parameters.p_bill.accountSlot !== undefined && slot(parameters.p_bill.accountSlot) !== profile.account_slot) throw new Error("A replacement must remain in the original account");
           save("bills", { ...original, status: "void", voided_at: new Date().toISOString(), excel_sync_status: "pending", excel_sync_error: null });

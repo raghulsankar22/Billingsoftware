@@ -47,18 +47,23 @@ async function DELETEHandler(request: Request, context: Context) {
       ...[existing.pdf_storage_path, existing.delivery_pdf_storage_path].filter((path): path is string => typeof path === "string" && path.length > 0),
       ...await localBillPdfPaths(profile.id, id),
     ])];
-    if (pdfPaths.length) {
-      const { error: removeError } = await db.storage.from("bill-pdfs").remove(pdfPaths);
-      if (removeError) throw removeError;
-    }
-    const { data: deleted, error: deleteError } = await db.rpc("delete_bill", { p_owner_id: user.id, p_bill_id: id });
+    const { data: deleted, error: deleteError } = await db.rpc("delete_bill", { p_owner_id: user.id, p_bill_id: id, p_account_slot: accountSlot(request) });
     if (deleteError) throw deleteError;
+    const warnings: string[] = [];
+    if (pdfPaths.length) {
+      try {
+        const { error: removeError } = await db.storage.from("bill-pdfs").remove(pdfPaths);
+        if (removeError) throw removeError;
+      } catch (error) { warnings.push(`Bill deleted, but PDF cleanup needs a retry: ${error instanceof Error ? error.message : "cleanup failed"}`); }
+    }
+    let registerSyncStatus = "synced";
     try {
       await syncAccountRegister(profile.id);
-      return NextResponse.json({ ok: true, nextBillNumber: deleted.nextBillNumber, registerSyncStatus: "synced" });
     } catch (syncError) {
-      return NextResponse.json({ ok: true, nextBillNumber: deleted.nextBillNumber, registerSyncStatus: "failed", warning: `Bill deleted, but Excel needs a retry: ${syncError instanceof Error ? syncError.message : "sync failed"}` });
+      registerSyncStatus = "failed";
+      warnings.push(`Bill deleted, but Excel needs a retry: ${syncError instanceof Error ? syncError.message : "sync failed"}`);
     }
+    return NextResponse.json({ ok: true, nextBillNumber: deleted.nextBillNumber, registerSyncStatus, ...(warnings.length ? { warning: warnings.join(" ") } : {}) });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Unable to delete bill" }, { status: 400 });
   }

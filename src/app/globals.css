@@ -189,6 +189,16 @@ html[data-theme="light"] .dashboard-sections button[aria-pressed="true"]{backgro
 
 
 .jewellery-picker{width:310px;min-width:280px}
+.bill-entry-table th,.bill-entry-table td{padding:8px;vertical-align:top}
+.bill-entry-table .jewellery-picker{width:clamp(210px,24vw,310px);min-width:210px}
+.bill-entry-table .jewellery-remarks{width:180px;min-width:160px;padding:10px;gap:7px 12px}
+.bill-entry-table .metal-choice{min-width:74px;padding:10px;gap:10px;border:1px solid #4a607b;border-radius:7px}
+.bill-entry-table .metal-choice label,.bill-entry-table .metal-choice label.selected{justify-content:flex-start;border:0;padding:0;background:transparent;color:var(--ink);font-weight:400}
+.bill-entry-table .metal-choice input[type=checkbox]{width:16px;min-width:16px;height:16px;accent-color:#6fa9df}
+.particulars-quantity{display:grid;gap:8px;min-width:64px;max-width:76px}
+.item-table .particulars-quantity input{width:100%;min-width:0;padding:10px 5px}
+.particulars-quantity button{width:100%;padding:9px 5px;font-size:13px}
+.particulars-quantity .error{font-size:12px;line-height:1.4;margin:0;overflow-wrap:anywhere}
 .jewellery-entry-controls{grid-template-columns:minmax(0,1fr) 72px;grid-template-areas:"name qty" "name add";align-items:start;row-gap:6px}
 .jewellery-entry-controls>.jewellery-name-field{grid-area:name;display:grid;gap:5px;font-size:12px;font-weight:700;min-width:0}
 .jewellery-entry-controls>label{grid-area:qty}
@@ -217,3 +227,77 @@ html[data-theme="light"] .dashboard-sections button[aria-pressed="true"]{backgro
 .backup-restore{display:grid;gap:8px;justify-items:start;border-top:1px solid var(--line);padding-top:10px}.backup-restore h4{margin:0}.backup-list{list-style:none;margin:0;padding:0;display:grid;gap:6px;max-height:220px;overflow-y:auto;width:100%}.backup-list label{display:flex;gap:8px;align-items:center;font-weight:400}.backup-list input{width:auto;margin:0}.backup-confirm{border:1px solid #d9a441;border-radius:8px;padding:12px;display:grid;gap:8px;max-width:640px}.backup-confirm p{margin:0}
 .backup-confirm button.danger{background:#b42318;color:#fff;border:1px solid #f97066;font-weight:700}
 :where(.history-record-id) { display: block; font-family: monospace; font-size: 0.72rem; overflow-wrap: anywhere; max-width: 15rem; }
+
+.cashbook { --cashbook-field: #0e1a2a; --cashbook-warning: #e8bc65; min-width: 0; }
+:where(html[data-theme="light"]) .cashbook { --cashbook-field: #fff; --cashbook-warning: #805514; }
+.cashbook h2 { margin: 0; font-size: 1.45rem; line-height: 1.4; }
+.cashbook h3 { margin: 0 0 12px; font-size: 1.1rem; line-height: 1.5; }
+.cashbook p { line-height: 1.6; max-width: 78ch; }
+.cashbook .cashbook-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; flex-wrap: wrap; margin-bottom: 24px; }
+.cashbook .cashbook-heading > div { min-width: 0; }
+.cashbook .cashbook-controls { display: flex; align-items: flex-end; gap: 14px; flex-wrap: wrap; }
+.cashbook label { display: grid; gap: 7px; min-width: 0; font-size: 0.875rem; font-weight: 700; line-height: 1.5; }
+.cashbook :is(input, select, textarea) { width: 100%; min-width: 0; max-width: 100%; padding: 10px; border: 1px solid var(--line); border-radius: 7px; background: var(--cashbook-field); color: var(--ink); font: inherit; }
+.cashbook textarea { resize: vertical; }
+.cashbook input[readonly] { color: var(--muted); }
+.cashbook :is(button, input, select, textarea, .cashbook-table-wrap):focus-visible { outline: 3px solid var(--blue); outline-offset: 3px; }
+.cashbook button { min-height: 42px; white-space: normal; }
+.cashbook :is(button, input, select, textarea):disabled { opacity: 0.65; cursor: not-allowed; }
+.cashbook .cashbook-check { display: flex; align-items: flex-start; gap: 9px; font-weight: 400; }
+.cashbook .cashbook-check input { flex: 0 0 18px; width: 18px; height: 18px; margin: 2px 0 0; padding: 0; accent-color: var(--blue); }
+.cashbook .cashbook-help { color: var(--muted); font-size: 0.85rem; font-weight: 400; line-height: 1.6; }
+.cashbook .cashbook-account-status { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px 24px; margin-bottom: 20px; font-size: 0.85rem; color: var(--muted); }
+.cashbook .cashbook-account-status strong { color: var(--ink); }
+.cashbook .cashbook-account { margin-top: 32px; padding-top: 24px; border-top: 2px solid var(--line); }
+.cashbook .cashbook-summary { margin: 22px 0; padding: 18px 0; border-block: 1px solid var(--line); }
+.cashbook .cashbook-balances { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); margin: 16px 0 22px; gap: 16px; }
+.cashbook :is(.cashbook-balances, .cashbook-totals) dt { color: var(--muted); font-size: 0.8rem; line-height: 1.5; }
+.cashbook :is(.cashbook-balances, .cashbook-totals) dd { margin: 5px 0 0; color: var(--ink); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.cashbook .cashbook-balances dd { font-size: 1.2rem; font-weight: 700; }
+.cashbook .cashbook-totals { display: flex; flex-wrap: wrap; gap: 16px 32px; margin: 20px 0 0; }
+.cashbook .cashbook-totals dd { font-weight: 700; }
+.cashbook .cashbook-table-wrap { max-width: 100%; overflow-x: auto; overscroll-behavior-x: contain; }
+.cashbook .cashbook-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; font-variant-numeric: tabular-nums; }
+.cashbook .cashbook-table caption { text-align: left; color: var(--muted); padding: 0 0 10px; font-size: 0.8rem; }
+.cashbook .cashbook-table :is(th, td) { padding: 12px; border-bottom: 1px solid var(--line); text-align: right; vertical-align: top; }
+.cashbook .cashbook-table thead th { background: var(--sky); font-weight: 700; }
+.cashbook .cashbook-table :is(th, td):first-child { text-align: left; }
+.cashbook .cashbook-table small { display: block; margin-top: 5px; color: var(--muted); }
+.cashbook .cashbook-journal { margin-top: 30px; }
+.cashbook .cashbook-journal-table { min-width: 1150px; }
+.cashbook .cashbook-journal-table :is(th, td) { text-align: left; }
+.cashbook .cashbook-journal-table td:nth-child(n+5):nth-child(-n+8) { text-align: right; white-space: nowrap; }
+.cashbook .cashbook-journal-table td:nth-child(3) { min-width: 140px; }
+.cashbook .cashbook-note { white-space: pre-wrap; overflow-wrap: anywhere; min-width: 130px; max-width: 320px; }
+.cashbook .cashbook-workspace { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 28px; align-items: start; margin-top: 28px; }
+.cashbook .cashbook-form { min-width: 0; padding: 20px; border: 1px solid var(--line); border-radius: 9px; }
+.cashbook .cashbook-form fieldset { display: grid; gap: 16px; margin: 0; padding: 0; border: 0; min-width: 0; }
+.cashbook .cashbook-form fieldset > p { margin: 0; }
+.cashbook .cashbook-form button[type="submit"] { justify-self: start; }
+.cashbook .cashbook-field-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.cashbook .cashbook-bill-details { display: grid; gap: 5px; padding: 12px 14px; border-left: 3px solid var(--blue); background: var(--sky); font-size: 0.875rem; overflow-wrap: anywhere; }
+.cashbook .cashbook-receipt { padding-block: 12px; border-block: 1px solid var(--line); font-variant-numeric: tabular-nums; }
+.cashbook .cashbook-receipt strong { display: block; margin-top: 4px; font-size: 1.15rem; }
+.cashbook .cashbook-closing { border-top: 3px solid var(--blue); }
+.cashbook .cashbook-opening { max-width: 640px; margin-top: 22px; }
+.cashbook .cashbook-reversal { margin-top: 24px; border-color: var(--cashbook-warning); max-width: 720px; }
+.cashbook .cashbook-actions { display: flex; flex-wrap: wrap; gap: 12px; }
+.cashbook :is(.cashbook-error, .cashbook-warning, .cashbook-success) { padding: 12px 14px; border: 1px solid currentColor; border-radius: 7px; line-height: 1.6; overflow-wrap: anywhere; }
+.cashbook .cashbook-error { color: var(--danger); }
+.cashbook .cashbook-warning { color: var(--cashbook-warning); }
+.cashbook .cashbook-success { color: var(--success); }
+.cashbook .cashbook-warning p { margin-top: 0; }
+.cashbook .cashbook-sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
+@media (max-width: 900px) {
+  .cashbook .cashbook-workspace { grid-template-columns: minmax(0, 1fr); }
+  .cashbook .cashbook-balances { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 520px) {
+  .cashbook.panel { padding: 16px; }
+  .cashbook .cashbook-controls { width: 100%; align-items: stretch; }
+  .cashbook .cashbook-controls > label { width: 100%; }
+  .cashbook .cashbook-field-pair { grid-template-columns: minmax(0, 1fr); }
+  .cashbook .cashbook-form { padding: 14px; }
+  .cashbook .cashbook-balances dd { font-size: 1.05rem; }
+}
+.bill-entry-fields{border:0;margin:0;padding:0;min-width:0}

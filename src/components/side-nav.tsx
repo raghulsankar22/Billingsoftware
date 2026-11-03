@@ -10,7 +10,7 @@ import type { Bill } from "@/lib/types";
 import { api } from "./api";
 import { useLanguage } from "./language-provider";
 
-export type NavView = "bills" | "new" | "customers" | "delivery" | "lost-bills" | "delivery-bills" | "dashboard" | "notice" | "overdue" | "search" | "settings" | "users" | "my-account" | "import";
+export type NavView = "bills" | "new" | "customers" | "delivery" | "lost-bills" | "delivery-bills" | "dashboard" | "notice" | "overdue" | "search" | "settings" | "users" | "my-account" | "import" | "cashbook";
 export type NavAccess = { localStorage: boolean; inDesktopApp: boolean; signedInUser: boolean; administrator: boolean };
 
 type Item = { view: NavView; icon: string; label: string; short: string; count?: keyof NavCounts; alert?: boolean; show: boolean };
@@ -24,6 +24,7 @@ export function navGroups(access: NavAccess): { heading: string; items: Item[] }
       { view: "dashboard", icon: "📊", label: "Dashboard", short: "Home", show: local },
       { view: "delivery", icon: "📦", label: "Delivery", short: "Delivery", show: local },
       { view: "customers", icon: "👥", label: "Customers", short: "Customers", show: local },
+      { view: "cashbook", icon: "₹", label: "Payments / Daily Closing", short: "Payments", show: local },
     ] },
     { heading: "Records", items: [
       { view: "bills", icon: "📚", label: "All bills", short: "Bills", count: "bills", show: true },

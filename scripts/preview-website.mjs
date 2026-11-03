@@ -16,6 +16,13 @@ if (port === 3103 || process.env.BILLING_TAMIL_PREVIEW === '1') {
   process.env.BILLING_TAMIL_PREVIEW = '1';
 }
 
+if (port === 3110 || process.env.BILLING_CASHBOOK_PREVIEW === '1') {
+  if (port !== 3110) throw new Error('Cash-book demo must use port 3110.');
+  const { verifyCashBookPreviewDirectory } = await import('./cashbook-preview-safety.mjs');
+  verifyCashBookPreviewDirectory(root, process.env.LOCAL_DATA_DIR);
+  process.env.BILLING_CASHBOOK_PREVIEW = '1';
+}
+
 // Next writes this preview's private build folder into these tracked files when it starts.
 const tracked = ['next-env.d.ts', 'tsconfig.json'].map(name => path.join(root, name));
 const originals = tracked.map(file => readFileSync(file));

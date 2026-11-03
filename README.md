@@ -6,6 +6,14 @@ It runs as a **Windows desktop app that works fully offline**. Data stays on the
 
 ## What it does
 
+Version 1.0.28 combines jewellery search with Particulars, places Qty beside it,
+and keeps Add below Qty. Gold/Silver use single-selection checkbox-style choices.
+The duplicate Add account button is removed; account creation stays in the dropdown.
+
+Version 1.0.27 adds explicit payment recording and Daily Closing, with separate Cash, UPI
+and Bank totals. Existing bills are not automatically treated as paid. Set a starting
+cash balance for each account before recording money. See [Payments and Daily Closing](docs/cashbook.md).
+
 Version 1.0.26 adds complete offline backup/recovery, unfinished new-bill drafts,
 and read-only bill-change history. See [Recovery and history](docs/recovery-and-history.md)
 for coverage, safeguards and important limits. Updating the installer does not restore a backup.

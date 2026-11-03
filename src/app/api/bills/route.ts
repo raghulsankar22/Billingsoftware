@@ -10,6 +10,8 @@ import { persistBillPdf } from "@/lib/bill-pdf-storage";
 import { loadBillHistory } from "@/lib/bill-history";
 import { localStorageEnabled } from "@/lib/storage-mode";
 import { legacyIssuanceBlocked } from "@/lib/cloud-mode";
+import { z } from "zod";
+import { billOperationHeader, BillIssuanceConflict } from "../../../lib/bill-issuance";
 
 async function GETHandler(request: Request) {
   try {
@@ -22,17 +24,21 @@ async function GETHandler(request: Request) {
 }
 
 async function POSTHandler(request: Request) {
+  let issuanceCommitted = false;
   try {
     if (legacyIssuanceBlocked(localStorageEnabled)) return NextResponse.json({ error: "Online bill creation is not available until synchronization is ready." }, { status: 503 });
     const user = await requireUser(request);
     const profile = await requireOwnerProfile(user.id, accountSlot(request));
-    if (!profile) return NextResponse.json({ error: "Create your business profile before issuing a bill." }, { status: 422 });
+    if (!profile) return NextResponse.json({ error: "Create your business profile before issuing a bill.", issuanceCommitted: false }, { status: 422 });
+    const header = request.headers.get(billOperationHeader);
+    const operationId = localStorageEnabled && header !== null ? z.string().uuid().parse(header) : undefined;
     const input = billSchema.parse(await request.json());
     const total = totals(input);
     const payload = { ...input, accountSlot: accountSlot(request), totalAssessedValue: total.assessedValue, totalLoanAmount: total.loanAmount, items: input.items.map((item, sortOrder) => ({ ...item, sortOrder })) };
     const supabase = createAdminSupabase();
-    const { data: result, error: createError } = await supabase.rpc("create_bill", { p_owner_id: user.id, p_bill: payload });
+    const { data: result, error: createError } = await supabase.rpc("create_bill", { p_owner_id: user.id, p_bill: payload, ...(operationId ? { p_operation_id: operationId } : {}) });
     if (createError) throw createError;
+    issuanceCommitted = true;
     const { data, error } = await supabase.from("bills").select("*, bill_items(*)").eq("id", result.id).single();
     if (error) throw error;
     const bill = toBill({ ...data, items: data.bill_items });
@@ -50,7 +56,10 @@ async function POSTHandler(request: Request) {
       bill.excelSyncStatus = "failed";
     }
     return NextResponse.json({ bill }, { status: 201 });
-  } catch (error) { return NextResponse.json({ error: error instanceof Error ? error.message : "Unable to create bill" }, { status: 400 }); }
+  } catch (error) {
+    if (error instanceof BillIssuanceConflict) return NextResponse.json({ error: error.message, issuanceCommitted: error.issuanceCommitted }, { status: error.status });
+    return NextResponse.json({ error: error instanceof Error ? error.message : "Unable to create bill", issuanceCommitted }, { status: issuanceCommitted ? 503 : 400 });
+  }
 }
 
 export const GET = withLocalSession(GETHandler);

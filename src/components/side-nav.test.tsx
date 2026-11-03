@@ -17,7 +17,7 @@ const desktop: NavAccess = { localStorage: true, inDesktopApp: true, signedInUse
 
 describe("slim side menu", () => {
   it("keeps settings pages in the desktop File menu, as before", () => {
-    expect(views(desktop)).toEqual(["dashboard", "delivery", "customers", "bills", "delivery-bills", "lost-bills", "notice", "overdue", "search"]);
+    expect(views(desktop)).toEqual(["dashboard", "delivery", "customers", "cashbook", "bills", "delivery-bills", "lost-bills", "notice", "overdue", "search"]);
   });
   it("still shows settings pages on the website, by permission", () => {
     expect(views({ ...desktop, inDesktopApp: false })).toEqual(expect.arrayContaining(["import", "my-account", "users", "settings"]));

@@ -25,6 +25,7 @@ import type { ChangeReason } from "@/lib/bill-history-types";
 import { BillChangeReasonDialog } from "./bill-change-reason-dialog";
 import { BusinessUpdates } from "./business-updates";
 import { Customers } from "./customers";
+import { CashBook } from "./cashbook";
 import { NoticeBills, OverdueBills } from "./overdue-bills";
 import { AllAccountSearch } from "./all-account-search";
 import { ProfileForm } from "./profile-form";
@@ -86,7 +87,9 @@ export function BillingApp() {
   const [isLoading, setIsLoading] = useState(false);
   const [editingSource, setEditingSource] = useState<Bill | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
-  const [reasonRequest, setReasonRequest] = useState<{ resolve: (reason: ChangeReason | null) => void } | null>(null);
+  const [deleteRequest, setDeleteRequest] = useState<Bill | null>(null);
+  const [deletingBill, setDeletingBill] = useState<string | null>(null);
+  const deleteInFlight = useRef(false);
   const [addingAccount, setAddingAccount] = useState(false);
   const [inDesktopApp, setInDesktopApp] = useState(false);
   const loadGeneration = useRef(0);
@@ -236,23 +239,9 @@ export function BillingApp() {
     }
   }
 
-  function askChangeReason(): Promise<ChangeReason | null> {
-    return new Promise(resolve => setReasonRequest({ resolve }));
-  }
-  async function voidBill(id: string) {
-    if (!window.confirm(t("Void this bill? It will remain in history and cannot be edited."))) return;
-    const reason = localStorageEnabled ? await askChangeReason() : "correction"; if (!reason) return;
-    try {
-      await api(`/api/bills/${id}/void`, accountSlot, { method: "POST", headers: { "x-billing-change-reason": reason } });
-      await load(query, accountSlot);
-    } catch (failure) {
-      setError(failure instanceof Error ? failure.message : "Unable to void bill.");
-    }
-  }
-
-  async function deleteBill(bill: Bill) {
-    if (!window.confirm(t(`Permanently delete bill #${bill.billNumber}? It will be removed from the bill list, its PDF and the Excel register. A read-only change-history entry will remain. This cannot be undone. If this is the latest bill, the next bill will use #${bill.billNumber} again.`))) return;
-    const reason = localStorageEnabled ? await askChangeReason() : "correction"; if (!reason) return;
+  async function deleteBill(bill: Bill, reason: ChangeReason) {
+    if (deleteInFlight.current) return;
+    deleteInFlight.current = true; setDeletingBill(bill.id); setError(""); setExcelNotice("");
     try {
       const result = await api(`/api/bills/${bill.id}`, accountSlot, { method: "DELETE", headers: { "x-billing-change-reason": reason } });
       if (selected?.id === bill.id) setSelected(null);
@@ -263,7 +252,7 @@ export function BillingApp() {
       setExcelNotice(`Bill #${bill.billNumber} deleted. The next bill will be #${result.nextBillNumber}.`);
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : "Unable to delete bill.");
-    }
+    } finally { deleteInFlight.current = false; setDeletingBill(null); }
   }
 
   async function refreshExcel() {
@@ -303,7 +292,7 @@ export function BillingApp() {
 
   return <main className="app-shell">
     {localStorageEnabled && <AutoBackup onError={setError} />}
-    {reasonRequest && <BillChangeReasonDialog onDone={reason => { reasonRequest.resolve(reason); setReasonRequest(null); }} />}
+    {deleteRequest && <BillChangeReasonDialog title={`Delete bill #${deleteRequest.billNumber}?`} description="This permanently removes the bill from the list, its PDFs and the Excel register. Read-only change history remains. This cannot be undone. The latest bill number may be reused. Bills with confirmed payments cannot be deleted until those payments are reversed in Payments / Daily Closing." confirmLabel="Delete bill permanently" onDone={reason => { const bill = deleteRequest; setDeleteRequest(null); if (reason) void deleteBill(bill, reason); }} />}
     <header className="topbar">
       <div className="topbar-brand">
         <div className="app-brand-title">
@@ -315,12 +304,11 @@ export function BillingApp() {
         </div>
         <div className="account-picker">
           <label htmlFor="business-account">{t("Business account")}</label>
-          <select id="business-account" value={accountSlot} onChange={(event) => selectAccount(event.target.value)}>
+          <select id="business-account" value={accountSlot} disabled={Boolean(deleteRequest || deletingBill)} onChange={(event) => selectAccount(event.target.value)}>
             {accountSlots(profiles).map((slot) => <option key={slot} value={slot}>{accountLabel(slot, profiles, t)}</option>)}
             {extendedAccounts && <option value={addAccountOption}>{t("+ Add new account…")}</option>}
           </select>
           <span>{extendedAccounts ? t("Separate profiles, bill histories and Excel registers for every account") : t("One login · three separate business profiles and bill histories")}</span>
-          {extendedAccounts && <button type="button" className="account-add-button" onClick={() => setAddingAccount(true)}>{t("+ Add new account")}</button>}
         </div>
       </div>
       <div className="topbar-controls">
@@ -350,6 +338,7 @@ export function BillingApp() {
       {view === "settings" && accountLoaded && <ProfileForm key={accountSlot} profile={profile} accountSlot={accountSlot} onSaved={() => void load(query, accountSlot)} />}
       {view === "new" && profile && accountLoaded && <BillForm key={`${accountSlot}-${editingSource?.id ?? "new"}`} accountSlot={accountSlot} draftUserId={multiUser ? localUser?.id : "local-owner"} editingSource={editingSource} onCreated={issueSuccess} />}
       {view === "customers" && accountLoaded && <Customers key={accountSlot} accountSlot={accountSlot} />}
+      {view === "cashbook" && profile && accountLoaded && localStorageEnabled && <CashBook key={accountSlot} accountSlot={accountSlot} />}
       {view === "delivery" && profile && accountLoaded && <BillDelivery key={accountSlot} accountSlot={accountSlot} profile={profile} onSaved={(bill) => { setDeliveryDocumentBill(bill); void load(query, accountSlot); }} onBatchSaved={() => void load(query, accountSlot)} onOpen={setSelected} onOverview={setOverviewBill} onReceipt={setDeliveryDocumentBill} />}
       {view === "lost-bills" && profile && accountLoaded && <CustomerBillLost key={accountSlot} accountSlot={accountSlot} profile={profile} onReceipt={setDeliveryDocumentBill} onOriginal={setSelected} />}
       {view === "delivery-bills" && profile && accountLoaded && <DeliveryBills key={accountSlot} accountSlot={accountSlot} onOpen={setDeliveryDocumentBill} onOriginal={setSelected} />}
@@ -381,8 +370,8 @@ export function BillingApp() {
             <td className="row-actions">
               <button className="text-button" onClick={() => setOverviewBill(bill)}>{t("Overview")}</button>
               <button className="text-button" onClick={() => setSelected(bill)}>{t("Open")}</button>
-              {bill.status === "issued" && <><button className="text-button" onClick={() => { setEditingSource(bill); setView("new"); }}>{localStorageEnabled ? t("Edit") : t("Replace")}</button><button className="text-button danger-text" onClick={() => void voidBill(bill.id)}>{t("Void")}</button></>}
-              {localStorageEnabled && <button className="text-button danger-text" onClick={() => void deleteBill(bill)}>{t("Delete")}</button>}
+              {bill.status === "issued" && <button className="text-button" onClick={() => { setEditingSource(bill); setView("new"); }}>{localStorageEnabled ? t("Edit") : t("Replace")}</button>}
+              {localStorageEnabled && <button className="text-button danger-text" disabled={Boolean(deletingBill)} onClick={() => setDeleteRequest(bill)}>{deletingBill === bill.id ? t("Deleting…") : t("Delete")}</button>}
             </td>
           </tr>) : <tr><td colSpan={7} className="empty">{t("No bills found.")}</td></tr>}</tbody>
         </table></div>

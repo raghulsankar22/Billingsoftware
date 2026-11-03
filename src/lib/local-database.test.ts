@@ -16,6 +16,28 @@ async function issue(db: ReturnType<typeof open>, input: Record<string, unknown>
 afterEach(() => { for (const { directory, db } of opened.splice(0)) { db.close(); rmSync(directory, { recursive: true, force: true }); } });
 
 describe("durable local ledger", () => {
+  it("returns one issued bill after a lost-response retry, including after reopening the ledger", async () => {
+    let db = open(); const business = await profile(db); const operationId = randomUUID();
+    const params = { p_owner_id: localOwnerId, p_operation_id: operationId, p_bill: { ...bill, accountSlot: 1 } };
+    const first = await db.rpc("create_bill", params);
+    expect(first.error).toBeNull();
+    const entry = opened[0]; db.close(); entry.db = db = createLocalDatabase(entry.directory);
+    const retry = await db.rpc("create_bill", params);
+    expect(retry.error).toBeNull(); expect(retry.data.id).toBe(first.data.id);
+    expect((await db.from("bills").select().eq("profile_id", business.id)).data).toHaveLength(1);
+    expect((await db.from("business_profiles").select().eq("id", business.id).single()).data.next_bill_number).toBe(2);
+    expect(db.history(1).entries.filter(entry => entry.action === "Created")).toHaveLength(1);
+  });
+  it("refuses reused issuance keys for changed requests, another account, or a deleted bill", async () => {
+    const db = open(); await profile(db); await profile(db, 2); const operationId = randomUUID();
+    const params = { p_owner_id: localOwnerId, p_operation_id: operationId, p_bill: { ...bill, accountSlot: 1 } };
+    const first = await db.rpc("create_bill", params);
+    expect((await db.rpc("create_bill", { ...params, p_bill: { ...params.p_bill, customerName: "Changed" } })).error?.message).toContain("different bill request");
+    expect((await db.rpc("create_bill", { ...params, p_bill: { ...params.p_bill, accountSlot: 2 } })).error?.message).toContain("different bill request");
+    expect((await db.rpc("delete_bill", { p_owner_id: localOwnerId, p_bill_id: first.data.id })).error).toBeNull();
+    expect((await db.rpc("create_bill", params)).error?.message).toContain("deleted");
+    expect((await db.from("bills").select()).data).toHaveLength(0);
+  });
   it("atomically queues edits with their previous revision and handles retries safely", async () => {
     const db = open(); const business = await profile(db);
     const device = randomUUID(), createId = randomUUID(), editId = randomUUID();

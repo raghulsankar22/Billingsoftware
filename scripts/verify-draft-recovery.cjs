@@ -23,6 +23,41 @@ async function runChecks(phase) {
   const draft = () => JSON.parse(localStorage.getItem(key));
   const remount = async (user, account) => { harness.mount(user, account); await settle(); };
   await settle();
+  if (phase === 'lost-response' || phase === 'retry-reload') {
+    if (phase === 'retry-reload') {
+      assert(button('Resume draft') && !button('Discard draft'), 'An unresolved saved request cannot be silently discarded');
+      assert(document.body.textContent.includes('A save was attempted'), 'Recovery does not falsely claim no bill was issued');
+      button('Resume draft').click(); await settle();
+      const id = sessionStorage.getItem('fixture-last-operation');
+      assert(draft().submission.id === id && field('Customer name').matches(':disabled'), 'Recovered request keeps its original ID and locked details');
+      const frozen = draft().submission.body;
+      document.querySelector('form').requestSubmit(); document.querySelector('form').requestSubmit(); await settle();
+      assert(harness.requests.length === 1, 'Repeated submit events produce one request');
+      assert(harness.requests[0].id === id && harness.requests[0].body === frozen, 'Retry after reload sends byte-identical details and the original ID');
+      assert(sessionStorage.getItem('fixture-issued-' + id) === frozen && harness.saves === 1, 'Lost response recovery returns the originally saved bill');
+      assert(!localStorage.getItem(key), 'Confirmed retry clears the pending request');
+      await remount();
+      assert(!button('Resume draft') && !document.querySelector('fieldset').disabled, 'The next bill starts unlocked with no unresolved request');
+      return checks;
+    }
+    localStorage.clear(); await remount();
+    await fill(field('Customer name'), 'Retry Customer');
+    await fill(field("Father's name / Husband's name"), 'Retry Parent');
+    await fill(field('Address'), '123 Retry Street');
+    await fill(document.querySelector('[role="combobox"]'), 'Ring 1');
+    document.querySelector('input[type="checkbox"][value="Gold"]').click(); await settle();
+    await fill(document.querySelector('[aria-label="Total grams for item 1"]'), '2');
+    await fill(document.querySelector('[aria-label="Loan amount in rupees for item 1"]'), '100');
+    harness.requests.length = 0; harness.loseResponse = true;
+    document.querySelector('form').requestSubmit(); document.querySelector('form').requestSubmit(); await settle();
+    assert(harness.requests.length === 1, 'A double submit starts only one bill save');
+    const request = harness.requests[0]; sessionStorage.setItem('fixture-last-operation', request.id);
+    assert(draft().submission.id === request.id && draft().submission.body === request.body, 'The exact request is durable before a response is received');
+    assert(sessionStorage.getItem('fixture-issued-' + request.id) === request.body, 'Fixture simulates a committed bill with a lost response');
+    assert(button('Retry save') && document.body.textContent.includes('Fixture response lost after save'), 'Unknown outcome offers Retry save instead of a new bill');
+    assert(field('Customer name').matches(':disabled') && document.querySelector('[role="combobox"]').matches(':disabled'), 'Pending requests cannot be edited into a second bill');
+    return checks;
+  }
   if (phase === 'save') {
     localStorage.clear(); await remount();
     assert(!localStorage.getItem(key), 'An empty form creates no draft');
@@ -32,17 +67,24 @@ async function runChecks(phase) {
     const combo = document.querySelector('[role="combobox"]');
     await fill(combo, 'Ring');
     const option = document.querySelector('[role="option"]'); option.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true })); option.click(); await settle();
-    await fill(document.querySelector('.jewellery-entry-controls input[type="number"]'), '3');
+    await fill(document.querySelector('.particulars-quantity input[type="number"]'), '3');
     await fill(combo, 'hrm');
     assert(draft().form.customerName === 'சங்கர்' && draft().form.address === 'மதுரை', 'Native text is preserved exactly');
-    assert(draft().jewellery[0].quantity === '3' && draft().jewellery[0].query === 'hrm', 'Pending selection, query and quantity are preserved');
+    assert(draft().jewellery[0].quantity === '3' && draft().form.items[0].particulars === 'Hrm' && draft().jewellery[0].name === '', 'Pending typed particulars and quantity are preserved');
     assert(harness.saves === 0, 'Draft saving does not issue bills');
     return checks;
   }
   assert(button('Resume draft') && !field('Customer name'), 'Reload offers explicit resume instead of silently applying text');
   button('Resume draft').click(); await settle();
   assert(field('Customer name').value === 'சங்கர்', 'Reload resumes native text');
-  assert(document.querySelector('[role="combobox"]').value === 'hrm' && document.querySelector('.jewellery-entry-controls input[type="number"]').value === '3', 'Reload resumes pending jewellery');
+  assert(document.querySelector('[role="combobox"]').value === 'Hrm' && document.querySelector('.particulars-quantity input[type="number"]').value === '3', 'Reload resumes pending jewellery');
+  await fill(document.querySelector('[role="combobox"]'), 'Ring 1, Ha');
+  const pendingOption = document.querySelector('[role="option"]'); pendingOption.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true })); pendingOption.click(); await settle();
+  assert(draft().jewellery[0].prefix === 'Ring 1' && draft().form.items[0].particulars === 'Ring 1, Haram', 'A selected suggestion persists its completion prefix');
+  await remount(); button('Resume draft').click(); await settle();
+  assert(document.querySelector('[role="combobox"]').value === 'Ring 1, Haram' && document.querySelector('.particulars-quantity input').value === '3', 'A pending selected name and quantity survive reload');
+  document.querySelector('.particulars-quantity button').click(); await settle();
+  assert(document.querySelector('[role="combobox"]').value === 'Ring 1, Haram 3', 'Resumed selection completes once without duplicate jewellery');
   await remount('other-user', 1); assert(!button('Resume draft') && field('Customer name').value === '', 'Other users do not see this draft');
   await remount('test-owner', 2); assert(!button('Resume draft') && field('Customer name').value === '', 'Other accounts do not see this draft');
   await remount(); button('Resume draft').click(); await settle();
@@ -55,7 +97,7 @@ async function runChecks(phase) {
   await fill(field("Father's name / Husband's name"), 'Sample Parent');
   await fill(field('Address'), 'Sample Street');
   await fill(document.querySelector('.jewellery-picker textarea'), 'Ring 1');
-  document.querySelector('input[type="radio"][value="Gold"]').click(); await settle();
+  document.querySelector('input[type="checkbox"][value="Gold"]').click(); await settle();
   await fill(document.querySelector('[aria-label="Total grams for item 1"]'), '2');
   await fill(document.querySelector('[aria-label="Loan amount in rupees for item 1"]'), '100');
   harness.fail = true;
@@ -105,6 +147,9 @@ async function main() {
     let checks = await window.webContents.executeJavaScript('(' + runChecks.toString() + ')("save")');
     await window.loadFile(file);
     checks += await window.webContents.executeJavaScript('(' + runChecks.toString() + ')("recover")');
+    checks += await window.webContents.executeJavaScript('(' + runChecks.toString() + ')("lost-response")');
+    await window.loadFile(file);
+    checks += await window.webContents.executeJavaScript('(' + runChecks.toString() + ')("retry-reload")');
     console.log('Draft recovery UI: ' + checks + ' checks passed. Mocked requests only; no real billing data.');
   } finally { window.destroy(); app.quit(); }
 }

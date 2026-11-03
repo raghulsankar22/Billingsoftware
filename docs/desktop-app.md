@@ -1,5 +1,33 @@
 # Windows desktop app
 
+## Version 1.0.29
+
+- Saving a new bill is now safe to retry. Each submission carries a one-time operation ID that is kept with the unfinished draft, so if the app freezes or the reply is lost, pressing Save again returns the same bill instead of issuing a second one or using another bill number. Reusing an ID with different bill details is refused, and a bill that was already issued is reported as issued rather than as a failure.
+- The All bills tab no longer has a Void button. Bills already marked void keep their Voided label, and Edit, Open, Overview and Delete are unchanged.
+- Delete now removes the bill from the ledger first and then cleans up its PDFs. Before, a locked or missing PDF made Delete fail and left the bill in place. If PDF or Excel cleanup fails afterwards, the bill is still deleted and a warning explains which clean-up needs a retry. Delete stays limited to the signed-in account and keeps its payment protections.
+- Retains every 1.0.28 feature.
+
+The build-only installer is `release/1.0.29/Finance-Billing-Setup-1.0.29.exe`. Building does not install it or change live data.
+
+## Version 1.0.28
+
+- Jewellery suggestions now appear inside the Particulars box, with no separate search field. Select a suggestion, enter Qty and click Add; the saved description format is unchanged.
+- The entry columns are Metal, Particulars, Qty, Remarks, Total grams, Loan amount and Assessed amount. Add new jewellery and Manage jewellery stay below Particulars; Add stays below Qty.
+- Gold and Silver use checkbox-style choices, with exactly one metal per row. Existing free text, Tamil input, quantities, calculations and printed bills are unchanged.
+- Add new account remains in the Business account dropdown; the duplicate button beneath it is removed.
+- Includes the Payments / Daily Closing, backup, draft recovery and history features from 1.0.27.
+
+The build-only installer is `release/1.0.28/Finance-Billing-Setup-1.0.28.exe`. Building does not install it or change live data.
+
+## Version 1.0.27
+
+- Adds Payments / Daily Closing for explicit confirmed money movements, with separate Cash, UPI and Bank totals per account and a read-only combined view.
+- Each account starts from an operator-entered opening cash balance. Existing bills and deliveries are never backfilled as payments.
+- Counted cash and explained differences are retained; closing locks the date and earlier dates. Corrections use reversals on open dates.
+- Retains complete backup/recovery, drafts and protected history from 1.0.26. Loan registers, printed bills and interest calculations are unchanged. See [Payments and Daily Closing](cashbook.md) for rules and limits.
+
+The build-only installer is `release/1.0.27/Finance-Billing-Setup-1.0.27.exe`. Building does not install it or change live data.
+
 ## Version 1.0.25
 
 - Adds a **Data backup** panel at the top of the Dashboard. Type the full path of a folder on a USB drive or another disk once; the app then saves a verified, dated copy of the bills and customers database (`billing-backup-YYYY-MM-DD-HHMMSS.sqlite`) the first time the Dashboard is opened each day. **Back up now** makes one immediately. The newest 30 copies are kept and other files in that folder are never touched. A folder inside the billing data folder is refused, because it would be lost with it. The panel turns amber if the last backup is over a day old or the drive is missing.

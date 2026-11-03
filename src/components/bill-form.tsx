@@ -10,14 +10,16 @@ import { capitalizeWords, holdCaret } from "@/lib/text-case";
 import { assessedValueForLoan, formatINR } from "@/lib/money";
 import { api } from "./api";
 import { localStorageEnabled } from "@/lib/storage-mode";
-import { appendJewelleryParticulars, jewelleryNameSchema } from "@/lib/jewellery";
+import { jewelleryNameSchema } from "@/lib/jewellery";
+import { completeParticulars, particularsEntry, resumeParticularsDraft, selectedParticulars } from "@/lib/particulars-entry";
 import { ZodError } from "zod";
 import { EnglishRecordField } from "./english-record-field";
 import { JewelleryRemarks } from "./jewellery-remarks";
-import { JewelleryCombobox } from "./jewellery-combobox";
+import { ParticularsCombobox } from "./particulars-combobox";
 import { JewelleryManager } from "./jewellery-manager";
-import { billDraftKey } from "@/lib/bill-drafts";
+import { billDraftKey, type JewelleryDrafts } from "@/lib/bill-drafts";
 import { useBillDraft } from "./use-bill-draft";
+import { billOperationHeader } from "@/lib/bill-issuance";
 import { changeReasons } from "@/lib/bill-history-types";
 const blankItem = (): BillItemInput => ({ particulars: "", remarks: "", grams: 0, assessedValue: 0, loanAmount: 0 });
 const today = () => {
@@ -35,6 +37,7 @@ export function BillForm({ onCreated, editingSource, accountSlot, draftUserId }:
     items: editingSource.items.map((item) => ({ ...item })),
   } : { billDate: today(), customerName: "", fatherName: "", address: "", phone: "", governmentId: "", customerId: "", deliveryNo: "", deliveryDate: "", items: [blankItem()] });
   const [busy, setBusy] = useState(false); const [error, setError] = useState("");
+  const submitting = useRef(false);
   const [changeReason, setChangeReason] = useState("");
   const [customerLookup, setCustomerLookup] = useState<{ field: "phone" | "aadhaar"; value: string } | null>(null);
   const [customerNotice, setCustomerNotice] = useState("");
@@ -61,9 +64,10 @@ export function BillForm({ onCreated, editingSource, accountSlot, draftUserId }:
   const [savingJewellery, setSavingJewellery] = useState(false);
   const [jewelleryError, setJewelleryError] = useState("");
   const [jewelleryNotice, setJewelleryNotice] = useState("");
-  const [jewelleryDrafts, setJewelleryDrafts] = useState<Record<number, { name: string; quantity: string; error: string; query?: string | null }>>({});
+  const [jewelleryDrafts, setJewelleryDrafts] = useState<JewelleryDrafts>({});
   const draft = useBillDraft(localStorageEnabled && !editingSource && draftUserId ? billDraftKey(draftUserId, accountSlot) : null, form, jewelleryDrafts);
-  const particularsFields = useRef<(HTMLInputElement | null)[]>([]);
+  const particularsFields = useRef<(HTMLTextAreaElement | null)[]>([]);
+  const quantityFields = useRef<(HTMLInputElement | null)[]>([]);
   const catalogueGeneration = useRef(0);
   useEffect(() => {
     if (!localStorageEnabled || !customerLookup) { setCustomerNotice(""); setLookingUpCustomer(false); return; }
@@ -124,19 +128,28 @@ export function BillForm({ onCreated, editingSource, accountSlot, draftUserId }:
   const keepsBlanks = editingSource?.historicalMissingDetails === true;
   const item = (index: number, key: keyof BillItemInput, value: string) => { if (key === "particulars") holdCaret(); setForm((current) => ({ ...current, items: current.items.map((row, rowIndex) => rowIndex === index ? { ...row, [key]: key === "particulars" ? capitalizeWords(value) : key === "remarks" ? value : keepsBlanks && value === "" && key !== "loanAmount" ? null : Number(value), ...(key === "loanAmount" && !keepsBlanks ? { assessedValue: assessedValueForLoan(Number(value)) } : {}) } : row) })); };
   const setMetal = (index: number, metal: "Gold" | "Silver") => setForm((current) => ({ ...current, items: current.items.map((row, rowIndex) => rowIndex === index ? { ...row, metal } : row) }));
-  function setJewelleryDraft(index: number, patch: { name?: string; quantity?: string; error?: string; query?: string | null }) {
+  function setJewelleryDraft(index: number, patch: Partial<JewelleryDrafts[number]>) {
     setJewelleryDrafts(current => {
       const draft = current[index] ?? { name: "", quantity: "", error: "" };
       return { ...current, [index]: { ...draft, error: "", ...patch } };
     });
+  }
+  function selectJewellery(index: number, name: string, prefix: string) {
+    try {
+      item(index, "particulars", selectedParticulars(prefix, name));
+      setJewelleryDraft(index, { name, prefix, query: null });
+      window.requestAnimationFrame(() => quantityFields.current[index]?.focus());
+    } catch (failure) {
+      setJewelleryDraft(index, { error: failure instanceof Error ? failure.message : "Unable to add jewellery." });
+    }
   }
   function addToParticulars(index: number) {
     const draft = jewelleryDrafts[index];
     if (!draft?.name || draft.query != null) { setJewelleryDraft(index, { error: "Select jewellery to add." }); return; }
     if (!draft.quantity.trim()) { setJewelleryDraft(index, { error: "Enter the quantity." }); return; }
     try {
-      item(index, "particulars", appendJewelleryParticulars(form.items[index].particulars, draft.name, draft.quantity));
-      setJewelleryDraft(index, { name: "", quantity: "" }); setError("");
+      item(index, "particulars", completeParticulars(form.items[index].particulars, draft.name, draft.quantity, draft.prefix));
+      setJewelleryDraft(index, { name: "", quantity: "", prefix: undefined }); setError("");
       window.requestAnimationFrame(() => particularsFields.current[index]?.focus());
     } catch (failure) {
       setJewelleryDraft(index, { error: failure instanceof ZodError ? failure.issues[0].message : failure instanceof Error ? failure.message : "Unable to add jewellery." });
@@ -166,35 +179,45 @@ export function BillForm({ onCreated, editingSource, accountSlot, draftUserId }:
       const result = await api("/api/jewellery", accountSlot, { method: "POST", body: JSON.stringify({ name: parsed.data }) });
       catalogueGeneration.current++;
       setJewellery(result.items); setCatalogueLoaded(true); setCatalogueError("");
-      setJewelleryDraft(newJewellery.index, { name: result.name });
+      selectJewellery(newJewellery.index, result.name, particularsEntry(form.items[newJewellery.index].particulars).prefix);
       const index = newJewellery.index;
       setNewJewellery(null); setJewelleryNotice(`${result.name} saved. Enter its quantity and click Add to include it in Particulars.`);
-      window.requestAnimationFrame(() => particularsFields.current[index]?.focus());
+      window.requestAnimationFrame(() => quantityFields.current[index]?.focus());
     } catch (failure) { setJewelleryError(failure instanceof Error ? failure.message : "Unable to save jewellery. Please try again."); }
     finally { setSavingJewellery(false); }
   }
   async function submit(event: React.FormEvent) {
     event.preventDefault();
+    if (submitting.current) return;
     if (!(event.currentTarget as HTMLFormElement).reportValidity()) return;
     if (lookingUpCustomer) return;
     if (localStorageEnabled && editingSource && !Object.hasOwn(changeReasons, changeReason)) { setError("Choose a reason for this correction."); return; }
     if (localStorageEnabled && form.governmentId && form.governmentId !== editingSource?.governmentId && !/^\d{12}$/.test(form.governmentId.replace(/[\s-]/g, ""))) { setError("Enter a 12-digit Aadhaar number, or leave it empty."); return; }
     if (newJewellery) { setJewelleryError("Save or cancel the new jewellery before saving the bill."); return; }
     if (localStorageEnabled && Object.values(jewelleryDrafts).some(draft => draft.name)) { setError("Click Add beside each selected jewellery to include it in Particulars before saving the bill."); return; }
-    setBusy(true); setError("");
-    try { const path = editingSource ? `/api/bills/${editingSource.id}${localStorageEnabled ? "" : "/replace"}` : "/api/bills"; const { bill } = await api(path, accountSlot, { method: editingSource && localStorageEnabled ? "PATCH" : "POST", headers: changeReason ? { "x-billing-change-reason": changeReason } : {}, body: JSON.stringify({ ...form, ...(differentPerson ? { allowSharedPhone: true } : {}), ...(localStorageEnabled ? { governmentId: editingSource && form.governmentId === editingSource.governmentId ? form.governmentId : (form.governmentId ?? "").replace(/[\s-]/g, "") } : {}) }) }); draft.clear(); onCreated(bill); filledCustomer.current = null; setDifferentPerson(false); setCustomerLookup(null); setCustomerNotice(""); setJewelleryDrafts({}); setForm({ billDate: today(), customerName: "", fatherName: "", address: "", phone: "", governmentId: "", deliveryNo: "", deliveryDate: "", items: [blankItem()] }); }
+    submitting.current = true; setBusy(true); setError("");
+    try {
+      const path = editingSource ? `/api/bills/${editingSource.id}${localStorageEnabled ? "" : "/replace"}` : "/api/bills";
+      const body = JSON.stringify({ ...form, ...(differentPerson ? { allowSharedPhone: true } : {}), ...(localStorageEnabled ? { governmentId: editingSource && form.governmentId === editingSource.governmentId ? form.governmentId : (form.governmentId ?? "").replace(/[\s-]/g, "") } : {}) });
+      const request = localStorageEnabled && !editingSource ? draft.prepareSubmission(body) : null;
+      const { bill } = await api(path, accountSlot, { method: editingSource && localStorageEnabled ? "PATCH" : "POST", headers: { ...(changeReason ? { "x-billing-change-reason": changeReason } : {}), ...(request ? { [billOperationHeader]: request.id } : {}) }, body: request?.body ?? body });
+      draft.clear(); filledCustomer.current = null; setDifferentPerson(false); setCustomerLookup(null); setCustomerNotice(""); setJewelleryDrafts({}); setForm({ billDate: today(), customerName: "", fatherName: "", address: "", phone: "", governmentId: "", deliveryNo: "", deliveryDate: "", items: [blankItem()] }); onCreated(bill);
+    }
     catch (failure) {
+      if (failure && typeof failure === "object" && "payload" in failure && failure.payload && typeof failure.payload === "object" && "issuanceCommitted" in failure.payload && failure.payload.issuanceCommitted === false) draft.rejectSubmission();
       setError(failure instanceof Error ? failure.message : "Unable to issue bill.");
       // Show who already has this phone, so staff can pick them or say it's someone else.
       if (failure instanceof Error && failure.message.includes(sharedPhoneQuestion)) setCustomerLookup({ field: "phone", value: form.phone });
-    } finally { setBusy(false); }
+    } finally { submitting.current = false; setBusy(false); }
   }
   if (!draft.ready) return <section className="panel"><p role="status">{t("Checking for an unfinished bill…")}</p></section>;
-  if (draft.pending) return <section className="panel" aria-label={t("Unfinished bill")}><h2>{t("Resume unfinished bill?")}</h2><p>{t("A draft was saved on this computer at")} {new Date(draft.pending.savedAt).toLocaleString()}. {t("No bill number has been issued. Check the date and details before saving.")}</p><div className="form-actions"><button type="button" onClick={() => { const savedDraft = draft.resume(); if (!savedDraft) return; setForm({ ...savedDraft.form, customerId: "", deliveryNo: "", deliveryDate: "" }); setJewelleryDrafts(savedDraft.jewellery); }}>{t("Resume draft")}</button><button type="button" className="secondary" onClick={() => { if (window.confirm(t("Discard this unfinished bill?"))) draft.clear(); }}>{t("Discard draft")}</button></div><p className="muted">{t("Drafts are kept only in this browser, separately for each signed-in user and account. They are not issued bills or Excel records.")}</p></section>;
+  if (draft.pending) return <section className="panel" aria-label={t("Unfinished bill")}><h2>{t("Resume unfinished bill?")}</h2><p>{t("A draft was saved on this computer at")} {new Date(draft.pending.savedAt).toLocaleString()}. {t(draft.pending.submission ? "A save was attempted. Resume and retry to recover the same bill without issuing another number." : "No bill number has been issued. Check the date and details before saving.")}</p><div className="form-actions"><button type="button" onClick={() => { const savedDraft = draft.resume(); if (!savedDraft) return; if (savedDraft.submission) { setForm(JSON.parse(savedDraft.submission.body)); setJewelleryDrafts({}); } else { const resumed = resumeParticularsDraft(savedDraft.form, savedDraft.jewellery); setForm({ ...resumed.form, customerId: "", deliveryNo: "", deliveryDate: "" }); setJewelleryDrafts(resumed.jewellery); } }}>{t("Resume draft")}</button>{!draft.pending.submission && <button type="button" className="secondary" onClick={() => { if (window.confirm(t("Discard this unfinished bill?"))) draft.clear(); }}>{t("Discard draft")}</button>}</div><p className="muted">{t("Drafts and safe-save requests are kept only in this browser, separately for each signed-in user and account.")}</p></section>;
   return <section className="panel">
     {draft.warning && <p className="error" role="alert">{t(draft.warning)}</p>}
-    {draft.saved && <p className="muted" role="status">{t("Unfinished bill saved on this computer. Not issued yet.")}</p>}
+    {draft.saved && !draft.submission && <p className="muted" role="status">{t("Unfinished bill saved on this computer. Not issued yet.")}</p>}
+    {draft.submission && <p className="notice" role="status">{t("This save has not been confirmed. Retry save sends the same details and recovers the same bill if it was already issued. Details stay locked until the result is known.")}</p>}
     <form onSubmit={submit}>
+      <fieldset className="bill-entry-fields" disabled={busy || Boolean(draft.submission)}>
       <div className="section-heading bill-form-heading"><div><p className="eyebrow">{editingSource ? `${t("ACCOUNT")} ${accountSlot} · ${t(localStorageEnabled ? "Edit bill" : "Replace bill")} #${editingSource.billNumber}` : `${t("ACCOUNT")} ${accountSlot} · ${t("New bill")}`}</p><h2>{t("Customer and pledge details")}</h2>{editingSource && <p>{localStorageEnabled ? t("Saving updates this bill without changing its number.") : t("Saving voids the original and issues a new bill number.")}</p>}{keepsBlanks && <p className="muted">{t("Imported from your old register. Details you leave blank stay \"Not recorded\".")}</p>}</div><label className="bill-date-field">{t("Bill date")}<input type="date" value={form.billDate} onChange={(e) => set("billDate", e.target.value)} required /></label></div>
       {localStorageEnabled && <p className="muted customer-lookup-help">{t("Enter a saved customer's Aadhaar to fill their details automatically, or their mobile number to choose them.")}</p>}
       {localStorageEnabled && editingSource && <label>{t("Reason for correction")}<select required value={changeReason} disabled={busy} onChange={event => setChangeReason(event.target.value)}><option value="">{t("Choose a reason")}</option>{Object.entries(changeReasons).map(([value, label]) => <option key={value} value={value}>{t(label)}</option>)}</select></label>}
@@ -209,14 +232,11 @@ export function BillForm({ onCreated, editingSource, accountSlot, draftUserId }:
       {customerNotice && <p className="notice customer-lookup-notice" role="status">{t(customerNotice)}</p>}
       {phoneChoices.length > 0 && <div className="form-actions" role="group" aria-label={t("Choose saved customer")}>{phoneChoices.map(customer => <button type="button" className="secondary" key={customer.id} disabled={busy} onClick={() => fillCustomer(customer)}>{t("Use")} {customer.name}{t(", father / husband:")} {customer.fatherName} ({customer.customerCode})</button>)}<button type="button" className="secondary" disabled={busy} onClick={() => { setPhoneChoices([]); setDifferentPerson(true); setCustomerNotice("Enter this customer's details below."); }}>{t("A different person")}</button></div>}
       {catalogueError && <p className="error" role="alert">{catalogueError} <button type="button" className="text-button" onClick={() => setCatalogueRefresh(value => value + 1)}>{t("Retry jewellery list")}</button></p>}
-      <div className="item-table-wrap"><table className="item-table"><thead><tr>{localStorageEnabled && <th>{t("Metal")}</th>}<th>{t("Particulars")}</th>{localStorageEnabled && <th>{t("Remarks")} <span className="muted">{t("(optional)")}</span></th>}<th>{t("Total grams")}</th><th>{t("Loan amount (₹)")}</th><th>{t("Assessed value (₹)")}</th><th /></tr></thead><tbody>{form.items.map((row, index) => <tr key={index}>
-        {localStorageEnabled && <td><div className="metal-choice" role="group" aria-label={`${t("Metal for item")} ${index + 1}`}>{(["Gold", "Silver"] as const).map((metal) => <label key={metal} className={row.metal === metal ? "selected" : ""}><input type="radio" name={`metal-${index}`} value={metal} checked={row.metal === metal} onChange={() => setMetal(index, metal)} required />{t(metal)}</label>)}</div></td>}
+      <div className="item-table-wrap"><table className="item-table bill-entry-table"><thead><tr>{localStorageEnabled && <th>{t("Metal")}</th>}<th>{t("Particulars")}</th>{localStorageEnabled && <><th>{t("Qty")}</th><th>{t("Remarks")} <span className="muted">{t("(optional)")}</span></th></>}<th>{t("Total grams")}</th><th>{t("Loan amount (₹)")}</th><th>{t("Assessed amount (₹)")}</th><th /></tr></thead><tbody>{form.items.map((row, index) => <tr key={index}>
+        {localStorageEnabled && <td><div className="metal-choice" role="group" aria-label={`${t("Metal for item")} ${index + 1}`}>{(["Gold", "Silver"] as const).map((metal) => <label key={metal} className={row.metal === metal ? "selected" : ""}><input type="checkbox" value={metal} checked={row.metal === metal} onChange={() => setMetal(index, metal)} required={!row.metal && metal === "Gold"} disabled={busy} />{t(metal)}</label>)}</div></td>}
         <td>{localStorageEnabled ? <div className="jewellery-picker">
-          <EnglishRecordField label="Particulars" hideLabel multiline maxLength={180} value={row.particulars} required disabled={busy} onChange={value => item(index, "particulars", value)} />
-          <div className="jewellery-entry-controls"><div className="jewellery-name-field"><span aria-hidden="true">{t("Jewellery")}</span><JewelleryCombobox inputRef={element => { particularsFields.current[index] = element; }} ariaLabel={`${t("Jewellery to add for item")} ${index + 1}`} value={jewelleryDrafts[index]?.name ?? ""} query={jewelleryDrafts[index]?.query ?? null} options={jewellery} disabled={busy || newJewellery !== null || !catalogueLoaded}
-            onSelect={name => setJewelleryDraft(index, { name })} onQueryChange={query => setJewelleryDraft(index, { query })} onAddNew={typed => startJewellery(index, typed)} /></div><label>{t("Qty")}<input type="number" aria-label={`${t("Jewellery quantity for item")} ${index + 1}`} min="1" max="9999" step="1" value={jewelleryDrafts[index]?.quantity ?? ""} disabled={busy || newJewellery !== null || !jewelleryDrafts[index]?.name} onChange={event => setJewelleryDraft(index, { quantity: event.target.value })} onKeyDown={event => { if (event.key === "Enter") { event.preventDefault(); addToParticulars(index); } }} /></label><button type="button" aria-label={`${t("Add jewellery to particulars for item")} ${index + 1}`} disabled={busy || newJewellery !== null} onClick={() => addToParticulars(index)}>{t("Add")}</button></div>
-          <small className="muted">{t("Choose jewellery and quantity, then Add. Repeat for more items. Gram and amounts are totals for this row.")}</small>
-          {jewelleryDrafts[index]?.error && <p className="error" role="alert">{t(jewelleryDrafts[index].error)}</p>}
+          <ParticularsCombobox inputRef={element => { particularsFields.current[index] = element; }} ariaLabel={`${t("Particulars for item")} ${index + 1}`} value={row.particulars} options={jewellery} disabled={busy || newJewellery !== null} catalogueReady={catalogueLoaded}
+            onChange={value => { item(index, "particulars", value); setJewelleryDraft(index, { name: "", prefix: undefined, query: null }); }} onSelect={(name, prefix) => selectJewellery(index, name, prefix)} onAddNew={typed => startJewellery(index, typed)} />
           <div className="jewellery-add-actions"><button type="button" className="text-button jewellery-add-button" disabled={busy || newJewellery !== null || !catalogueLoaded} onClick={() => startJewellery(index)}>{t("+ Add new jewellery")}</button><button type="button" className="text-button" disabled={busy || newJewellery !== null || !catalogueLoaded} onClick={() => setManagingJewellery(true)}>{t("Manage jewellery")}</button></div>
           {newJewellery?.index === index && <div className="jewellery-add" role="group" aria-label={`${t("Add jewellery for item")} ${index + 1}`}>
             <EnglishRecordField label="New jewellery name" id={`new-jewellery-${index}`} autoFocus value={newJewellery.name} disabled={savingJewellery} maxLength={180} onChange={value => { setNewJewellery({ index, name: value }); setJewelleryError(""); }} />
@@ -224,14 +244,15 @@ export function BillForm({ onCreated, editingSource, accountSlot, draftUserId }:
             {jewelleryError && <p className="error" id={`jewellery-error-${index}`} role="alert">{t(jewelleryError)}</p>}
           </div>}
         </div> : <input aria-label={`${t("Particulars for item")} ${index + 1}`} value={row.particulars} onChange={event => item(index, "particulars", event.target.value)} required />}</td>
-        {localStorageEnabled && <td><JewelleryRemarks index={index} value={row.remarks} disabled={busy} onChange={value => item(index, "remarks", value)} /></td>}
+        {localStorageEnabled && <><td><div className="particulars-quantity"><input ref={element => { quantityFields.current[index] = element; }} type="number" aria-label={`${t("Jewellery quantity for item")} ${index + 1}`} min="1" max="9999" step="1" value={jewelleryDrafts[index]?.quantity ?? ""} disabled={busy || newJewellery !== null || !jewelleryDrafts[index]?.name} onChange={event => setJewelleryDraft(index, { quantity: event.target.value })} onKeyDown={event => { if (event.key === "Enter") { event.preventDefault(); addToParticulars(index); } }} /><button type="button" aria-label={`${t("Add jewellery to particulars for item")} ${index + 1}`} disabled={busy || newJewellery !== null} onClick={() => addToParticulars(index)}>{t("Add")}</button>{jewelleryDrafts[index]?.error && <p className="error" role="alert">{t(jewelleryDrafts[index].error)}</p>}</div></td><td><JewelleryRemarks index={index} value={row.remarks} disabled={busy} onChange={value => item(index, "remarks", value)} /></td></>}
         <td><input type="number" aria-label={`${t("Total grams for item")} ${index + 1}`} step="0.001" min="0" value={row.grams || ""} onChange={(e) => item(index, "grams", e.target.value)} required={!keepsBlanks} /></td>
         <td><div className="currency-input"><span aria-hidden="true">₹</span><input type="number" inputMode="decimal" aria-label={`${t("Loan amount in rupees for item")} ${index + 1}`} step="0.01" min="0" value={row.loanAmount || ""} onChange={(e) => item(index, "loanAmount", e.target.value)} required /></div></td>
         <td><div className="currency-input"><span aria-hidden="true">₹</span><input type="number" inputMode="decimal" aria-label={`${t("Assessed value in rupees for item")} ${index + 1}`} step="0.01" min="0" value={row.assessedValue || ""} readOnly={!keepsBlanks} onChange={event => item(index, "assessedValue", event.target.value)} required={!keepsBlanks} /></div><small className="assessed-note muted">{keepsBlanks ? t("Leave blank if not recorded") : row.assessedValue === assessedValueForLoan(row.loanAmount) ? t("Loan + 10%") : t("Saved assessed value")}</small></td>
         <td>{form.items.length > 1 && <button type="button" className="icon-button danger" aria-label={t("Remove item")} disabled={busy || newJewellery !== null} onClick={() => removeItem(index)}>×</button>}</td>
       </tr>)}</tbody></table></div>
       {jewelleryNotice && <p className="notice" role="status">{t(jewelleryNotice)}</p>}
-      <div className="total-bar"><span>{t("Loan total")} <strong>{formatINR(totals.loan)}</strong></span><span>{t("Assessed total")} <strong>{formatINR(totals.value)}</strong></span><button disabled={busy || lookingUpCustomer || newJewellery !== null}>{busy ? t("Saving…") : editingSource ? localStorageEnabled ? t("Save changes") : t("Issue replacement") : t("Issue bill")}</button></div>{error && <p className="error">{t(error)}</p>}
+      </fieldset>
+      <div className="total-bar"><span>{t("Loan total")} <strong>{formatINR(totals.loan)}</strong></span><span>{t("Assessed total")} <strong>{formatINR(totals.value)}</strong></span><button disabled={busy || lookingUpCustomer || newJewellery !== null}>{busy ? t("Saving…") : draft.submission ? t("Retry save") : editingSource ? localStorageEnabled ? t("Save changes") : t("Issue replacement") : t("Issue bill")}</button></div>{error && <p className="error" role="alert">{t(error)}</p>}
     </form>
     {managingJewellery && <JewelleryManager accountSlot={accountSlot} items={jewellery} onClose={() => setManagingJewellery(false)} onChange={items => {
       catalogueGeneration.current++;

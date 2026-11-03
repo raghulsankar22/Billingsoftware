@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { hasBillDraftContent, makeBillDraft, parseBillDraft, type BillDraft, type JewelleryDrafts } from "@/lib/bill-drafts";
+import { hasBillDraftContent, makeBillDraft, parseBillDraft, type BillDraft, type BillSubmission, type JewelleryDrafts } from "@/lib/bill-drafts";
 import type { BillInput } from "@/lib/types";
 
 export function useBillDraft(key: string | null, form: BillInput, jewellery: JewelleryDrafts) {
@@ -9,6 +9,8 @@ export function useBillDraft(key: string | null, form: BillInput, jewellery: Jew
   const [ready, setReady] = useState(false);
   const [warning, setWarning] = useState("");
   const [saved, setSaved] = useState(false);
+  const [submission, setSubmission] = useState<BillSubmission | null>(null);
+  const submissionRef = useRef<BillSubmission | null>(null);
   const latest = useRef({ form, jewellery });
   const identifier = useRef("");
   const active = useRef(false);
@@ -17,24 +19,25 @@ export function useBillDraft(key: string | null, form: BillInput, jewellery: Jew
   const expected = useRef<string | null>(null);
   useEffect(() => { latest.current = { form, jewellery }; }, [form, jewellery]);
   const persist = useCallback(() => {
-    if (!key || !active.current || conflict.current) return;
+    if (!key || !active.current || conflict.current) return false;
     const current = latest.current;
-    if (JSON.stringify(current) === cleared.current) return;
+    if (!submissionRef.current && JSON.stringify(current) === cleared.current) return false;
     try {
       const existing = window.localStorage.getItem(key);
       if (existing !== expected.current) {
-        conflict.current = true; setSaved(false); setWarning("Another window has saved a draft for this account. This window will not overwrite it. Save your bill or keep this window open."); return;
+        conflict.current = true; setSaved(false); setWarning("Another window has saved a draft for this account. This window will not overwrite it. Reopen New bill and resume the saved draft before issuing it."); return false;
       }
-      if (!hasBillDraftContent(current.form, current.jewellery)) { window.localStorage.removeItem(key); expected.current = null; setSaved(false); return; }
-      const serialized = JSON.stringify(makeBillDraft(identifier.current, current.form, current.jewellery));
+      if (!submissionRef.current && !hasBillDraftContent(current.form, current.jewellery)) { window.localStorage.removeItem(key); expected.current = null; setSaved(false); return false; }
+      const serialized = JSON.stringify(makeBillDraft(identifier.current, current.form, current.jewellery, submissionRef.current ?? undefined));
       window.localStorage.setItem(key, serialized);
       expected.current = serialized;
       setSaved(true); setWarning("");
-    } catch { setSaved(false); setWarning("Draft recovery is unavailable. Keep this window open until you save the bill."); }
+      return true;
+    } catch { setSaved(false); setWarning("Draft recovery is unavailable. Keep this window open until you save the bill."); return false; }
   }, [key]);
   useEffect(() => {
     if (!key) return;
-    try { expected.current = window.localStorage.getItem(key); const draft = parseBillDraft(expected.current); identifier.current = draft?.id ?? crypto.randomUUID(); setPending(draft); active.current = !draft; }
+    try { expected.current = window.localStorage.getItem(key); const draft = parseBillDraft(expected.current); identifier.current = draft?.id ?? crypto.randomUUID(); submissionRef.current = draft?.submission ?? null; setSubmission(submissionRef.current); setPending(draft); active.current = !draft; }
     catch { setWarning("Draft recovery is unavailable. Keep this window open until you save the bill."); active.current = false; }
     setReady(true);
     const flush = () => persist();
@@ -46,8 +49,20 @@ export function useBillDraft(key: string | null, form: BillInput, jewellery: Jew
   const clear = () => {
     cleared.current = JSON.stringify(latest.current);
     if (key) { try { if (window.localStorage.getItem(key) === expected.current) { window.localStorage.removeItem(key); expected.current = null; } } catch { setWarning("The saved draft could not be removed from this browser."); } }
+    submissionRef.current = null; setSubmission(null); identifier.current = crypto.randomUUID();
     setPending(null); setSaved(false); active.current = true;
   };
+  const prepareSubmission = (body: string): BillSubmission => {
+    if (submissionRef.current) return submissionRef.current;
+    const request = { id: identifier.current || crypto.randomUUID(), body };
+    submissionRef.current = request;
+    if (!persist()) { submissionRef.current = null; throw new Error("The safe-save request could not be stored on this computer. No bill was sent. Reopen New bill and resume the saved draft, or check browser storage."); }
+    setSubmission(request);
+    return request;
+  };
+  const rejectSubmission = () => {
+    submissionRef.current = null; setSubmission(null); identifier.current = crypto.randomUUID(); persist();
+  };
   const resume = () => { const draft = pending; setPending(null); active.current = true; return draft; };
-  return { pending, ready: !key || ready, warning, saved, clear, resume };
+  return { pending, ready: !key || ready, warning, saved, submission, prepareSubmission, rejectSubmission, clear, resume };
 }

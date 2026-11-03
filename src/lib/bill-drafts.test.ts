@@ -4,6 +4,13 @@ import { billDraftKey, hasBillDraftContent, makeBillDraft, parseBillDraft } from
 
 const input = { billDate: "2026-11-03", customerName: "முத்து", fatherName: "Parent", address: "தமிழ் முகவரி", phone: "1234567890", governmentId: "123456789012", customerId: randomUUID(), deliveryNo: "must-not-resume", deliveryDate: "2026-12-01", items: [{ metal: "Gold" as const, particulars: "மோதிரம்", remarks: "Dent", grams: 2, assessedValue: 110, loanAmount: 100 }] };
 describe("unfinished new bill drafts", () => {
+  it("retains the exact frozen request and its retry ID until issuance is resolved", () => {
+    const submission = { id: randomUUID(), body: JSON.stringify(input) };
+    const parsed = parseBillDraft(JSON.stringify(makeBillDraft(randomUUID(), input, {}, submission)));
+    expect(parsed?.submission).toEqual(submission);
+    expect(JSON.parse(parsed!.submission!.body).customerId).toBe(input.customerId);
+    expect(parseBillDraft(JSON.stringify({ ...parsed, submission: { ...submission, id: "bad" } }))).toBeNull();
+  });
   it("isolates users and business accounts", () => {
     expect(new Set([billDraftKey("user-one", 1), billDraftKey("user-one", 2), billDraftKey("user-two", 1)]).size).toBe(3);
   });
@@ -21,5 +28,9 @@ describe("unfinished new bill drafts", () => {
     const empty = { billDate: "2026-11-03", customerName: "", fatherName: "", address: "", phone: "", items: [{ particulars: "", grams: 0, assessedValue: 0, loanAmount: 0 }] };
     expect(hasBillDraftContent(empty, {})).toBe(false); expect(hasBillDraftContent(empty, { 0: { name: "", quantity: "2", error: "" } })).toBe(true);
     expect(makeBillDraft(randomUUID(), input, {})).not.toHaveProperty("billNumber");
+  });
+  it("keeps the selected Particulars prefix for safe completion after resuming", () => {
+    const draft = makeBillDraft(randomUUID(), input, { 0: { name: "Haram", quantity: "2", error: "", prefix: "Ring 2" } });
+    expect(parseBillDraft(JSON.stringify(draft))?.jewellery[0].prefix).toBe("Ring 2");
   });
 });

@@ -15,6 +15,7 @@ export const backupIntervalMs = 24 * 60 * 60 * 1000;
 const settingsName = "backup-settings.json";
 const filePattern = /^billing-backup-\d{4}-\d{2}-\d{2}-\d{6}\.sqlite$/;
 const folderHelp = "Enter the full path of the backup folder, for example D:\\Billing Backups.";
+const backupTarget = (folder: string, name: string) => resolve(folder, name);
 
 export type BackupStatus = { folder: string | null; lastBackupAt: string | null; lastFile: string | null; lastError: string | null; due: boolean; copies: number };
 type Settings = { folder: string | null; lastBackupAt: string | null; lastFile: string | null; lastError: string | null };
@@ -85,7 +86,7 @@ export async function runBackup(directory: string, db: Snapshotter, options: { o
   if (!settings.folder) throw new Error("Choose a backup folder first.");
   if (options.onlyIfDue && !backupStatus(directory, now).due) return backupStatus(directory, now);
   const name = `billing-backup-${stamp(now)}.sqlite`;
-  const partial = resolve(settings.folder, `${name}.partial`);
+  const partial = backupTarget(settings.folder, `${name}.partial`);
   try {
     if (!existsSync(settings.folder)) mkdirSync(settings.folder, { recursive: true });
     await db.snapshot(partial);
@@ -96,7 +97,7 @@ export async function runBackup(directory: string, db: Snapshotter, options: { o
       const rows = check.prepare("PRAGMA integrity_check").all() as { integrity_check: string }[];
       if (rows.length !== 1 || rows[0].integrity_check !== "ok") throw new Error("The backup copy failed its integrity check.");
     } finally { check.close(); }
-    renameSync(partial, resolve(settings.folder, name));
+    renameSync(partial, backupTarget(settings.folder, name));
     for (const old of copies(settings.folder).filter(name => filePattern.test(name)).slice(0, -backupKeepCount)) rmSync(containedPath(settings.folder, old), { force: true });
     writeSettings(directory, { ...settings, lastBackupAt: now.toISOString(), lastFile: name, lastError: null });
   } catch (error) {
@@ -123,7 +124,7 @@ export function listBackups(directory: string): BackupCopy[] {
     }
     const parts = /^billing-backup-(\d{4})-(\d{2})-(\d{2})-(\d{2})(\d{2})(\d{2})\.sqlite$/.exec(file)!.slice(1).map(Number);
     const taken = new Date(parts[0], parts[1] - 1, parts[2], parts[3], parts[4], parts[5]);
-    try { result.push({ file, takenAt: taken.toISOString(), size: statSync(resolve(folder, file)).size }); } catch { /* removed since listing */ }
+    try { result.push({ file, takenAt: taken.toISOString(), size: statSync(containedPath(folder, file)).size }); } catch { /* removed since listing */ }
   }
   return result;
 }

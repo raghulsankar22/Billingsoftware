@@ -1,4 +1,5 @@
 import { assertTamilPreviewStorage } from "./tamil-preview-storage";
+import { assertCashBookPreviewStorage } from "./cashbook-preview-storage";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { join, resolve } from "node:path";
 import type { LocalUser } from "./local-users";
@@ -8,6 +9,7 @@ const context = new AsyncLocalStorage<LocalUser>();
 export const multiUserEnabled = () => process.env.BILLING_MULTI_USER === "1" || (process.env.BILLING_MULTI_USER !== "0" && process.env.NODE_ENV !== "test");
 export const baseDataDirectory = () => {
   if (process.env.BILLING_TAMIL_PREVIEW === "1") assertTamilPreviewStorage();
+  if (process.env.BILLING_CASHBOOK_PREVIEW === "1") assertCashBookPreviewStorage();
   return resolve(process.env.LOCAL_DATA_DIR || resolve(process.cwd(), "data"));
 };
 export const runAsLocalUser = <T>(user: LocalUser, action: () => T): T => context.run(user, action);
