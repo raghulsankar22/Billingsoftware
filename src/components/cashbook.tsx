@@ -1,5 +1,6 @@
 "use client";
 
+import { newUuid } from "@/lib/uuid";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { billingToday } from "@/lib/business-updates";
 import type { CashAccountDay, CashBookAction, CashBookView, CashEntry, CashEntryKind, CashTotals, PaymentMethod } from "@/lib/cashbook-types";
@@ -108,7 +109,7 @@ function CashBookDay({ accountSlot, date, combined, onDateChange, onCombinedChan
     const payload = JSON.stringify(action);
     const key = `${accountSlot}:${action.action}`;
     const previous = operations.get(key);
-    const operation = previous?.payload === payload ? previous : { payload, operationId: crypto.randomUUID() };
+    const operation = previous?.payload === payload ? previous : { payload, operationId: newUuid() };
     operations.set(key, operation);
     submitting.current = true;
     setPending(true);

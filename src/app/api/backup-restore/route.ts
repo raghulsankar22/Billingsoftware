@@ -2,15 +2,17 @@ import { NextResponse } from "next/server";
 import { requireUser } from "../../../lib/auth";
 import { backupStatus, listBackups, previewBackup, restoreInstallation } from "../../../lib/backups";
 import { baseDataDirectory, currentLocalUser } from "../../../lib/local-session-context";
-import { requestToken, sessionCookie, withLocalSession } from "../../../lib/local-request";
+import { phoneRequest, requestToken, sessionCookie, withLocalSession } from "../../../lib/local-request";
 import { localStorageEnabled } from "../../../lib/storage-mode";
 import { validationMessage } from "../../../lib/validation";
 
 const headers = { "cache-control": "no-store" };
-function failure(error: unknown) { return NextResponse.json({ error: validationMessage(error, "The backup could not be restored.") }, { status: error instanceof Error && error.message === "Administrator sign-in is required." ? 403 : 400, headers }); }
+const phoneMessage = "Recovery must be done on the shop computer, not on a phone.";
+function failure(error: unknown) { return NextResponse.json({ error: validationMessage(error, "The backup could not be restored.") }, { status: error instanceof Error && (error.message === "Administrator sign-in is required." || error.message === phoneMessage) ? 403 : 400, headers }); }
 async function available(request: Request) {
   if (!localStorageEnabled) throw new Error("Restore is available only in the offline app.");
   await requireUser(request);
+  if (phoneRequest(request)) throw new Error(phoneMessage);
   if (!currentLocalUser()?.administrator) throw new Error("Administrator sign-in is required.");
 }
 

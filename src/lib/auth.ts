@@ -2,6 +2,7 @@ import { createAdminSupabase } from "./supabase";
 import { localStorageEnabled } from "./storage-mode";
 import { isAccountSlot } from "./account-url";
 import { cloudMultiUserEnabled } from "./cloud-mode";
+import { phoneOriginAllowed, phoneRequest } from "./phone-request";
 
 export function assertOwnerEmail(actual: string | undefined, configured: string | undefined) {
   const ownerEmail = configured?.trim().toLowerCase();
@@ -29,6 +30,10 @@ function sameLocalOrigin(value: string, requestUrl: URL) {
 
 export async function requireUser(request: Request) {
   if (localStorageEnabled) {
+    if (phoneRequest(request)) {
+      if (!phoneOriginAllowed(request)) throw new Error("Open billing directly on this computer.");
+      return { id: "local-owner", email: "local@localhost" };
+    }
     const url = new URL(request.url);
     if (!localHosts.has(url.hostname)) throw new Error("Local billing is available only on this computer.");
     const origin = request.headers.get("origin");

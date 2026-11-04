@@ -1,5 +1,6 @@
 "use client";
 
+import { newUuid } from "@/lib/uuid";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { hasBillDraftContent, makeBillDraft, parseBillDraft, type BillDraft, type BillSubmission, type JewelleryDrafts } from "@/lib/bill-drafts";
 import type { BillInput } from "@/lib/types";
@@ -37,7 +38,7 @@ export function useBillDraft(key: string | null, form: BillInput, jewellery: Jew
   }, [key]);
   useEffect(() => {
     if (!key) return;
-    try { expected.current = window.localStorage.getItem(key); const draft = parseBillDraft(expected.current); identifier.current = draft?.id ?? crypto.randomUUID(); submissionRef.current = draft?.submission ?? null; setSubmission(submissionRef.current); setPending(draft); active.current = !draft; }
+    try { expected.current = window.localStorage.getItem(key); const draft = parseBillDraft(expected.current); identifier.current = draft?.id ?? newUuid(); submissionRef.current = draft?.submission ?? null; setSubmission(submissionRef.current); setPending(draft); active.current = !draft; }
     catch { setWarning("Draft recovery is unavailable. Keep this window open until you save the bill."); active.current = false; }
     setReady(true);
     const flush = () => persist();
@@ -49,19 +50,19 @@ export function useBillDraft(key: string | null, form: BillInput, jewellery: Jew
   const clear = () => {
     cleared.current = JSON.stringify(latest.current);
     if (key) { try { if (window.localStorage.getItem(key) === expected.current) { window.localStorage.removeItem(key); expected.current = null; } } catch { setWarning("The saved draft could not be removed from this browser."); } }
-    submissionRef.current = null; setSubmission(null); identifier.current = crypto.randomUUID();
+    submissionRef.current = null; setSubmission(null); identifier.current = newUuid();
     setPending(null); setSaved(false); active.current = true;
   };
   const prepareSubmission = (body: string): BillSubmission => {
     if (submissionRef.current) return submissionRef.current;
-    const request = { id: identifier.current || crypto.randomUUID(), body };
+    const request = { id: identifier.current || newUuid(), body };
     submissionRef.current = request;
     if (!persist()) { submissionRef.current = null; throw new Error("The safe-save request could not be stored on this computer. No bill was sent. Reopen New bill and resume the saved draft, or check browser storage."); }
     setSubmission(request);
     return request;
   };
   const rejectSubmission = () => {
-    submissionRef.current = null; setSubmission(null); identifier.current = crypto.randomUUID(); persist();
+    submissionRef.current = null; setSubmission(null); identifier.current = newUuid(); persist();
   };
   const resume = () => { const draft = pending; setPending(null); active.current = true; return draft; };
   return { pending, ready: !key || ready, warning, saved, submission, prepareSubmission, rejectSubmission, clear, resume };

@@ -22,3 +22,16 @@ export function noticePeriod(reviewMonth: string, stage: NoticeStage): PeriodRan
 export function noticeBillHistory(bills: readonly Bill[], reviewMonth: string, stage: NoticeStage, search = ""): Bill[] {
   return pendingBillHistory(bills, noticePeriod(reviewMonth, stage), search);
 }
+
+/**
+ * A notice list is the bills of its month that are still undelivered, plus any bills the owner added by hand
+ * (a bill missed last month, say). Added bills are shown only while they are still undelivered, obey the same
+ * search box, and appear once even if they also belong to the month.
+ */
+export function mergeNoticeBills(natural: readonly Bill[], added: readonly Bill[], search = ""): Bill[] {
+  const everything: PeriodRange = { from: "0001-01-01", to: "9999-12-31" };
+  const extras = pendingBillHistory(added, everything, search);
+  const seen = new Set(natural.map(bill => bill.id));
+  return [...natural, ...extras.filter(bill => !seen.has(bill.id))]
+    .sort((a, b) => a.billDate.localeCompare(b.billDate) || a.billNumber - b.billNumber || a.id.localeCompare(b.id));
+}

@@ -111,7 +111,8 @@ node scripts/check-local-migration.mjs  # Check data consistency before any migr
 
 Things to know:
 
-- **Back up your data.** On the Dashboard, choose a backup folder on a USB drive or another disk; the app saves a dated copy every day and can restore one from the same panel. You can also close the app and copy the whole data folder. The offline app has no cloud backup.
+- **Use it from a phone.** An administrator can turn on phone access (Users screen) so a phone on the shop Wi-Fi, or anywhere through Tailscale, uses the same ledger. See docs/phone-access.md.
+- **Back up your data.** (For an online copy, choose a folder inside Google Drive for desktop: docs/google-drive-backup.md.) On the Dashboard, choose a backup folder on a USB drive or another disk; the app saves a dated copy every day and can restore one from the same panel. You can also close the app and copy the whole data folder. The offline app has no cloud backup.
 - **Data isn't encrypted on disk.** Customer details, including Aadhaar numbers, can be read by anyone with access to the Windows account.
 - **The installer isn't digitally signed.** Only install builds you made yourself.
 - **Never run `git clean -x` in a folder holding live data.** The data folder is ignored by Git, so Git can't restore it.

@@ -346,4 +346,36 @@ assert.equal((await api('/api/backup')).folder, null);
 assert.equal((await fetch(base + '/api/backup', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ folder: 'relative/folder' }) })).status, 403);
 assert.equal((await fetch(base + '/api/backup-restore')).status, 403);
 assert.equal((await fetch(base + '/api/backup-restore', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ file: '../billing.sqlite' }) })).status, 403);
-console.log('Local HTTP flow passed: jewellery rename/delete without changing saved bills, shared-phone confirmation and selection, delivery date validation, sample register preview/import and duplicate rejection, administrator-only recovery guards, shared customers and IDs, all-account search, prior-year bill filtering, account numbering/Excel, PDFs, atomic multi-delivery, interest and safe Excel retries.');
+// Notice tab: a bill added by hand appears in that month's list and Excel, can be taken off again, and is never a delivered bill.
+{
+  const noticeBills = (await api('/api/bills')).bills;
+  const pendingBill = noticeBills.find(bill => !(bill.deliveryNo && bill.deliveryDate));
+  assert.ok(pendingBill, 'The notice check needs an undelivered bill.');
+  const parameters = { month: '2031-01', notice: '1' };
+  const noticeUrl = '/api/notice-additions?month=2031-01&notice=1';
+  assert.deepEqual((await api(noticeUrl)).bills, []);
+  assert.equal((await fetch(base + '/api/notice-additions?month=2031-13&notice=1')).status, 400);
+  assert.equal((await fetch(base + '/api/notice-additions', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...parameters, billId: 'missing' }) })).status, 400);
+  const addedToNotice = await api('/api/notice-additions', 'POST', { ...parameters, billId: pendingBill.id });
+  assert.deepEqual(addedToNotice.bills.map(bill => bill.id), [pendingBill.id]);
+  assert.deepEqual((await api('/api/notice-additions', 'POST', { ...parameters, billId: pendingBill.id })).bills.map(bill => bill.id), [pendingBill.id]);
+  assert.deepEqual((await api('/api/notice-additions?month=2031-01&notice=2')).bills, [], 'Notice 2 has its own list.');
+  const noticeExcel = async () => {
+    const response = await fetch(base + '/api/reports/notices?month=2031-01&notice=1');
+    assert.equal(response.status, 200);
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(Buffer.from(await response.arrayBuffer()));
+    const sheet = workbook.getWorksheet('Notice 1');
+    return { numbers: sheet.getColumn(2).values.slice(2), boldCell: sheet.getCell('D2').font?.bold };
+  };
+  const withAddition = await noticeExcel();
+  assert.ok(withAddition.numbers.includes(pendingBill.billNumber), 'The added bill must be in the notice Excel.');
+  assert.equal(withAddition.boldCell, true, 'Notice Excel cells must be bold.');
+  assert.deepEqual((await api('/api/notice-additions', 'DELETE', { ...parameters, billId: pendingBill.id })).bills, []);
+  assert.ok(!(await noticeExcel()).numbers.includes(pendingBill.billNumber), 'A bill taken off the notice must leave the notice Excel.');
+  assert.ok((await api('/api/bills')).bills.some(bill => bill.id === pendingBill.id), 'Taking a bill off a notice must not delete the bill.');
+  const deliveredBill = noticeBills.find(bill => bill.deliveryNo && bill.deliveryDate);
+  if (deliveredBill) assert.equal((await fetch(base + '/api/notice-additions', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...parameters, billId: deliveredBill.id }) })).status, 400, 'A delivered bill cannot be added to a notice.');
+}
+
+console.log('Local HTTP flow passed: notice additions, jewellery rename/delete without changing saved bills, shared-phone confirmation and selection, delivery date validation, sample register preview/import and duplicate rejection, administrator-only recovery guards, shared customers and IDs, all-account search, prior-year bill filtering, account numbering/Excel, PDFs, atomic multi-delivery, interest and safe Excel retries.');

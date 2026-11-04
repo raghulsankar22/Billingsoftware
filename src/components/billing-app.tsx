@@ -1,5 +1,6 @@
 "use client";
 
+import { newUuid } from "@/lib/uuid";
 import { useLanguage } from "./language-provider";
 import { formatParticulars } from "@/lib/jewellery";
 
@@ -18,6 +19,7 @@ import { BillForm } from "./bill-form";
 import { BillDelivery } from "./bill-delivery";
 import { DeliveryBills } from "./delivery-bills";
 import { CustomerBillLost } from "./customer-bill-lost";
+import { useTableLabels } from "./use-table-labels";
 import { BackupPanel } from "./backup-panel";
 import { AutoBackup } from "./auto-backup";
 import { BillHistory } from "./bill-history";
@@ -63,6 +65,7 @@ function safeFilenamePart(value: string) {
 
 export function BillingApp() {
   const { t } = useLanguage();
+  useTableLabels();
   const [signedIn, setSignedIn] = useState<boolean | null>(null);
   const [accountSlot, setAccountSlot] = useState<AccountSlot>(1);
   const [accountReady, setAccountReady] = useState(false);
@@ -89,6 +92,7 @@ export function BillingApp() {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [deleteRequest, setDeleteRequest] = useState<Bill | null>(null);
   const [deletingBill, setDeletingBill] = useState<string | null>(null);
+  const [billListVersion, setBillListVersion] = useState(0);
   const deleteInFlight = useRef(false);
   const [addingAccount, setAddingAccount] = useState(false);
   const [inDesktopApp, setInDesktopApp] = useState(false);
@@ -180,11 +184,11 @@ export function BillingApp() {
 
   if (!configured) return <main className="auth-shell"><section className="auth-card"><p className="eyebrow">{t("ONE-TIME SETUP REQUIRED")}</p><h1>{t("Finance Billing")}</h1><p>{t("The app is installed correctly, but needs its secure cloud database details before it can accept bills.")}</p><ol className="setup-steps"><li>{t("Create a Supabase project.")}</li><li>{t("Apply all SQL files in")} <code>{t("supabase/migrations")}</code> {t("in order (001–004, then the Google Drive migration).")}</li><li>{t("Copy")} <code>{t(".env.example")}</code> {t("to")} <code>{t(".env.local")}</code> {t("and add the Supabase URL, anon key, and server service-role key.")}</li><li>{t("Restart this server.")}</li></ol><p className="notice">{t("Your Google Drive details can be added after this first setup.")}</p></section></main>;
   if (signedIn === null || !accountReady) return <main className="auth-shell"><p>{t("Loading secure billing…")}</p></main>;
-  if (!signedIn) return localStorageEnabled && multiUser ? <LocalSignIn setup={needsSetup} notice={loginNotice} onSignedIn={user => { setLoginNotice(""); setLocalUser(user); setNeedsSetup(false); setAccountSlot(1); setSignedIn(true); try { window.localStorage.setItem("finance-billing-user-change", crypto.randomUUID()); } catch {} }} /> : <SignIn onSignedIn={() => setSignedIn(true)} />;
+  if (!signedIn) return localStorageEnabled && multiUser ? <LocalSignIn setup={needsSetup} notice={loginNotice} onSignedIn={user => { setLoginNotice(""); setLocalUser(user); setNeedsSetup(false); setAccountSlot(1); setSignedIn(true); try { window.localStorage.setItem("finance-billing-user-change", newUuid()); } catch {} }} /> : <SignIn onSignedIn={() => setSignedIn(true)} />;
 
   function clearLocalSession() {
     loadGeneration.current++; setSignedIn(false); setLocalUser(null); setProfile(null); setProfiles([]); setBills([]); setSelected(null); setOverviewBill(null); setDeliveryDocumentBill(null); setEditingSource(null); setLoadedSlot(null); setQuery(""); setAccountSlot(1); setView("bills");
-    try { window.localStorage.setItem("finance-billing-user-change", crypto.randomUUID()); } catch {}
+    try { window.localStorage.setItem("finance-billing-user-change", newUuid()); } catch {}
   }
   async function signOutLocal() {
     if ((view === "new" || view === "customers" || view === "settings") && !window.confirm(t("Sign out? Unsaved changes will be discarded."))) return;
@@ -247,7 +251,7 @@ export function BillingApp() {
       if (selected?.id === bill.id) setSelected(null);
       if (overviewBill?.id === bill.id) setOverviewBill(null);
       if (deliveryDocumentBill?.id === bill.id) setDeliveryDocumentBill(null);
-      await load(query, accountSlot);
+      await load(query, accountSlot); setBillListVersion(version => version + 1);
       if (result.warning) setError(result.warning);
       setExcelNotice(`Bill #${bill.billNumber} deleted. The next bill will be #${result.nextBillNumber}.`);
     } catch (failure) {
@@ -344,8 +348,8 @@ export function BillingApp() {
       {view === "delivery-bills" && profile && accountLoaded && <DeliveryBills key={accountSlot} accountSlot={accountSlot} onOpen={setDeliveryDocumentBill} onOriginal={setSelected} />}
       {view === "dashboard" && profile && accountLoaded && localStorageEnabled && <BackupPanel key={`backup-${accountSlot}`} accountSlot={accountSlot} />}
       {view === "dashboard" && profile && accountLoaded && <BusinessUpdates key={accountSlot} accountSlot={accountSlot} onBill={setSelected} onDelivery={setDeliveryDocumentBill} onExportExcel={exportExcel} onRefreshExcel={refreshExcel} isRefreshingExcel={isRefreshingExcel} />}
-      {view === "overdue" && profile && accountLoaded && <OverdueBills key={accountSlot} accountSlot={accountSlot} onOpen={setSelected} onOverview={setOverviewBill} />}
-      {view === "notice" && profile && accountLoaded && <NoticeBills key={accountSlot} accountSlot={accountSlot} profile={profile} onOpen={setSelected} onOverview={setOverviewBill} />}
+      {view === "overdue" && profile && accountLoaded && <OverdueBills key={accountSlot} accountSlot={accountSlot} onOpen={setSelected} onOverview={setOverviewBill} onDelete={localStorageEnabled ? setDeleteRequest : undefined} deletingBillId={deletingBill} listVersion={billListVersion} />}
+      {view === "notice" && profile && accountLoaded && <NoticeBills key={accountSlot} accountSlot={accountSlot} profile={profile} onOpen={setSelected} onOverview={setOverviewBill} onDelete={localStorageEnabled ? setDeleteRequest : undefined} deletingBillId={deletingBill} listVersion={billListVersion} />}
       {view === "search" && accountLoaded && <AllAccountSearch accountSlot={accountSlot} />}
       {view === "import" && profile && accountLoaded && <ImportPreview key={accountSlot} accountSlot={accountSlot} onImported={() => void load(query, accountSlot)} />}
       {view === "bills" && accountLoaded && profile && <section className="panel">

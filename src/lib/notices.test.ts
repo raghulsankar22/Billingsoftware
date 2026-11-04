@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { noticeBillHistory, noticePeriod } from "./notices";
+import { mergeNoticeBills, noticeBillHistory, noticePeriod } from "./notices";
 import type { Bill } from "./types";
 
 const bill = (id: string, billDate: string, patch: Partial<Bill> = {}): Bill => ({
@@ -34,5 +34,22 @@ describe("monthly notice lists", () => {
   });
   it.each(["", "2026-00", "2026-13", "2026-1", "0001-10"])("rejects invalid review month %s", month => {
     expect(() => noticePeriod(month, 2)).toThrow();
+  });
+});
+
+describe("notice lists with bills added by hand", () => {
+  const added = (id: string, billNumber: number, billDate: string, patch: Partial<Bill> = {}) => bill(id, billDate, { billNumber, ...patch });
+
+  it("adds missed bills from any month once, in date order", () => {
+    const natural = [added("oct", 5, "2025-10-03")];
+    const merged = mergeNoticeBills(natural, [added("missed", 2, "2025-06-10"), added("oct", 5, "2025-10-03")]);
+    expect(merged.map(item => item.id)).toEqual(["missed", "oct"]);
+  });
+
+  it("leaves out an added bill once it is delivered, and applies the same search", () => {
+    const extras = [added("delivered", 3, "2025-06-01", { deliveryNo: "1", deliveryDate: "2026-10-29" }), added("a", 4, "2025-06-02", { customerName: "Kumar" }), added("b", 6, "2025-06-03", { customerName: "Selvi" })];
+    expect(mergeNoticeBills([], extras).map(item => item.id)).toEqual(["a", "b"]);
+    expect(mergeNoticeBills([], extras, "kumar").map(item => item.id)).toEqual(["a"]);
+    expect(mergeNoticeBills([], extras, "#6").map(item => item.id)).toEqual(["b"]);
   });
 });

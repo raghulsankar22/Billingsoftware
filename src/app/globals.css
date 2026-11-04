@@ -301,3 +301,32 @@ html[data-theme="light"] .dashboard-sections button[aria-pressed="true"]{backgro
   .cashbook .cashbook-balances dd { font-size: 1.05rem; }
 }
 .bill-entry-fields{border:0;margin:0;padding:0;min-width:0}
+.phone-access{display:grid;gap:8px;margin-bottom:22px;padding-bottom:18px;border-bottom:1px solid var(--line)}.phone-access h3,.phone-access p{margin:0}.phone-addresses{list-style:none;margin:0;padding:0;display:grid;gap:8px}.phone-addresses li{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.phone-addresses code{padding:6px 10px;border:1px solid var(--line);border-radius:6px;font-size:15px;overflow-wrap:anywhere}
+/* ===== Phone layout (screens up to 700px wide): stacked cards, large touch targets, no sideways page scroll ===== */
+@media(max-width:700px){
+.content{min-width:0}
+.panel{min-width:0}
+button,select,textarea,input:not([type=checkbox]):not([type=radio]){font-size:16px}
+button,.text-button{min-height:44px}
+.app-rail .rail-new,.app-rail-expanded .rail-new{flex:0 0 auto;min-width:68px;min-height:48px;padding:6px 6px}
+.app-rail .rail-new .rail-label{font-size:10px;white-space:nowrap;overflow-wrap:normal}
+.app-rail .rail-item,.app-rail-expanded .rail-item{min-width:66px;min-height:48px;font-size:11px}
+.item-table-wrap{overflow-x:visible;margin-top:16px}
+.item-table,.history-table{display:block;width:100%;min-width:0}
+.item-table thead,.history-table thead{display:none}
+.item-table tbody,.history-table tbody{display:grid;gap:12px}
+.item-table tr,.history-table tr{display:block;border:1px solid var(--line);border-radius:12px;padding:8px 12px}
+.item-table td,.history-table td{display:block;width:100%;border:0;padding:6px 0;text-align:left}
+.item-table td[data-label]::before,.history-table td[data-label]::before{content:attr(data-label);display:block;margin-bottom:3px;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
+.item-table input,.item-table .currency-input{width:100%;min-width:0}
+.item-table .currency-input input{min-width:0}
+.jewellery-picker,.item-table .jewellery-picker{width:100%;min-width:0}
+.item-table .jewellery-remarks{width:100%;min-width:0}
+.metal-choice{flex-direction:row;min-width:0}
+.metal-choice label{flex:1}
+.row-actions{display:flex;gap:8px;flex-wrap:wrap}
+.total-bar{flex-wrap:wrap;gap:10px}
+.total-bar button{width:100%}
+.customer-details-grid{display:grid}
+}
+.notice-add{display:grid;gap:10px;margin:12px 0}.notice-add p{margin:0}.notice-add-results{list-style:none;margin:0;padding:0;display:grid;gap:8px}.notice-add-results li{display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap;padding:8px 12px;border:1px solid var(--line);border-radius:8px}.notice-added-badge{color:#d9a441;font-weight:700}

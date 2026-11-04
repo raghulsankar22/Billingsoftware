@@ -57,6 +57,8 @@ export function createLocalDatabase(directory = localDataDirectory()) {
   }
   const database = db;
   database.exec("CREATE TABLE IF NOT EXISTS local_bill_requests (operation_id TEXT PRIMARY KEY, profile_id TEXT NOT NULL, request_hash TEXT NOT NULL, bill_id TEXT NOT NULL)");
+  // Bills the owner added by hand to a month's Notice 1 or Notice 2 list, for example one that was missed last month.
+  database.exec("CREATE TABLE IF NOT EXISTS notice_additions (profile_id TEXT NOT NULL, review_month TEXT NOT NULL CHECK(review_month GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]'), stage INTEGER NOT NULL CHECK(stage IN (1,2)), bill_id TEXT NOT NULL, added_at TEXT NOT NULL, PRIMARY KEY(profile_id, review_month, stage, bill_id))");
   database.exec("CREATE TABLE IF NOT EXISTS jewellery_items (name_key TEXT PRIMARY KEY, name TEXT NOT NULL); CREATE TABLE IF NOT EXISTS jewellery_hidden_items (name_key TEXT PRIMARY KEY)");
   // Older desktop releases insert without customer_number. Allocate it in a
   // trigger shared by every writer, and serialize schema inspection/backfill.
@@ -516,6 +518,20 @@ export function createLocalDatabase(directory = localDataDirectory()) {
       save: (account: number, value: unknown, id?: string, options: { allowSharedPhone?: boolean } = {}): Customer => {
         const input = customerSchema.parse(value);
         return transaction(() => saveCustomer(account, input, id, options));
+      },
+    },
+    /** Hand-picked bills for a notice list. They are only list entries: nothing about the bill itself changes. */
+    noticeAdditions: {
+      list: (profileId: string, month: string, stage: number): string[] => {
+        const present = new Set(rows("bills").filter(bill => bill.profile_id === profileId).map(bill => String(bill.id)));
+        return database.prepare("SELECT bill_id FROM notice_additions WHERE profile_id=? AND review_month=? AND stage=? ORDER BY added_at, bill_id").all(profileId, month, stage).map(row => String(row.bill_id)).filter(id => present.has(id));
+      },
+      add: (profileId: string, month: string, stage: number, billId: string) => {
+        if (!rows("bills").some(bill => bill.profile_id === profileId && bill.id === billId)) throw new Error("That bill was not found in this business account.");
+        database.prepare("INSERT INTO notice_additions(profile_id,review_month,stage,bill_id,added_at) VALUES(?,?,?,?,?) ON CONFLICT(profile_id,review_month,stage,bill_id) DO NOTHING").run(profileId, month, stage, billId, new Date().toISOString());
+      },
+      remove: (profileId: string, month: string, stage: number, billId: string) => {
+        database.prepare("DELETE FROM notice_additions WHERE profile_id=? AND review_month=? AND stage=? AND bill_id=?").run(profileId, month, stage, billId);
       },
     },
     jewellery: {

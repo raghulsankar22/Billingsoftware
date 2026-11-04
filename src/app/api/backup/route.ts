@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { requireUser } from "../../../lib/auth";
 import { backupStatus, chooseBackupFolder, runCompleteBackup } from "../../../lib/backups";
 import { baseDataDirectory, currentLocalUser } from "../../../lib/local-session-context";
-import { withLocalSession } from "../../../lib/local-request";
+import { findGoogleDriveFolders } from "../../../lib/google-drive-folder";
+import { phoneRequest, withLocalSession } from "../../../lib/local-request";
 import { localStorageEnabled } from "../../../lib/storage-mode";
 import { validationMessage } from "../../../lib/validation";
 
@@ -14,12 +15,13 @@ async function available(request: Request) {
 }
 
 export const GET = withLocalSession(async (request: Request) => {
-  try { await available(request); return NextResponse.json({ ...backupStatus(baseDataDirectory()), administrator: currentLocalUser()?.administrator === true }, { headers }); } catch (error) { return failure(error); }
+  try { await available(request); return NextResponse.json({ ...backupStatus(baseDataDirectory()), administrator: currentLocalUser()?.administrator === true, googleDrive: currentLocalUser()?.administrator === true && !phoneRequest(request) ? findGoogleDriveFolders() : [] }, { headers }); } catch (error) { return failure(error); }
 });
 
 export const PUT = withLocalSession(async (request: Request) => {
   try {
     await available(request);
+    if (phoneRequest(request)) return NextResponse.json({ error: "Choose the backup folder on the shop computer, not on a phone." }, { status: 403, headers });
     if (!currentLocalUser()?.administrator) return NextResponse.json({ error: "Administrator sign-in is required to change the complete backup folder." }, { status: 403, headers });
     const directory = baseDataDirectory();
     const body = await request.json().catch(() => ({}));

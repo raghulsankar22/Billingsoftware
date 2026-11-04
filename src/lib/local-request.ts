@@ -1,12 +1,16 @@
 import { NextResponse } from "next/server";
+import { phoneOriginAllowed, phoneRequest } from "./phone-request";
 import { baseDataDirectory, multiUserEnabled, runAsLocalUser } from "./local-session-context";
 import { createLocalUsers } from "./local-users";
 import { localStorageEnabled } from "./storage-mode";
 import { BackupMaintenanceError, withBackupOperation } from "./backup-maintenance";
 import { withBillAuditReason } from "./bill-audit";
 
+export { phoneRequest };
+
 export const sessionCookie = "billing_session";
 export function localRequestAllowed(request: Request) {
+  if (phoneRequest(request)) return phoneOriginAllowed(request);
   const url = new URL(request.url);
   if (!["localhost", "127.0.0.1", "[::1]"].includes(url.hostname) || request.headers.get("sec-fetch-site") === "cross-site") return false;
   const value = request.headers.get("origin");

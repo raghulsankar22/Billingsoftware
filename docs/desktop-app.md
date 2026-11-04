@@ -1,5 +1,38 @@
 # Windows desktop app
 
+## Version 1.0.33
+
+- The **Notice** tab has an **Add a bill to this notice** button. Use it for a bill whose notice was forgotten, for example last month's: search by bill number, customer or phone, then press **Add**. The bill joins that month's Notice 1 or Notice 2 list (each month and each notice has its own list), is marked **Added by hand**, and is included in the notice letters and the notice Excel. **Remove from list** takes it off again without changing or deleting the bill.
+- Only undelivered bills can be added. An added bill leaves the list on its own once its delivery is saved, and it is forgotten if the bill is deleted. The list entries are kept in the ledger, so complete backups include them.
+- Retains every 1.0.32 feature (bold Excel files and Delete in the Notice and Overdue lists).
+
+The build-only installer is `release/1.0.33/Finance-Billing-Setup-1.0.33.exe`. Building does not install it or change live data.
+
+## Version 1.0.32
+
+- Every cell in the Excel files the app saves is now bold: the bill register, the downloadable Excel report, the combined All Accounts workbook and the Notice Excel. Voided rows stay red with a strike-through. A register already saved on disk changes to bold the next time Excel is refreshed or a bill syncs; use **Refresh Excel** on the Dashboard to rewrite them all at once.
+- The **Notice** and **Overdue** lists now have a **Delete** button on every bill, with the same confirmation and reason as the All bills tab. Delete permanently removes the bill, its PDFs and its Excel row, keeps the read-only change history, and is refused for bills with confirmed payments. The list refreshes when a bill is deleted. A note under the list reminds you that a bill that was delivered but not recorded should normally be fixed by saving its delivery in the Delivery tab, which also removes it from the list and keeps the delivery record.
+- Retains every 1.0.31 feature, including phone access and Google Drive backups.
+
+The build-only installer is `release/1.0.32/Finance-Billing-Setup-1.0.32.exe`. Building does not install it or change live data.
+
+## Version 1.0.31
+
+- The Data backup panel now offers **Use Google Drive** when Google Drive for desktop is installed on the computer, and tells you how to set it up when it is not. A backup folder inside Google Drive uploads each backup to the owner's Google account automatically; the app itself does not connect to Google. See docs/google-drive-backup.md.
+- Backups are still not encrypted, which the panel and the guide say plainly.
+- Retains every 1.0.30 feature, including phone access.
+
+The build-only installer is `release/1.0.31/Finance-Billing-Setup-1.0.31.exe`. Building does not install it or change live data.
+
+## Version 1.0.30
+
+- Adds **phone access**. An administrator can press **Turn on phone access** on the Users screen so a phone on the shop Wi-Fi, or anywhere through Tailscale, can open the same billing website and use the same ledger. There is no second copy of the data and nothing to sync. See docs/phone-access.md.
+- It is off by default and can be changed only on the shop computer. A second server port (3120) accepts connections only from this computer, private networks and Tailscale, requires sign-in and refuses cross-site requests and unknown host names. The normal port 3100 still accepts this computer only.
+- Phone-width screens: tables become stacked cards, buttons and fields are larger, and the menu is a scrolling strip. A home-screen icon and manifest are included.
+- Retains every 1.0.29 feature.
+
+The build-only installer is `release/1.0.30/Finance-Billing-Setup-1.0.30.exe`. Building does not install it or change live data.
+
 ## Version 1.0.29
 
 - Saving a new bill is now safe to retry. Each submission carries a one-time operation ID that is kept with the unfinished draft, so if the app freezes or the reply is lost, pressing Save again returns the same bill instead of issuing a second one or using another bill number. Reusing an ID with different bill details is refused, and a bill that was already issued is reported as issued rather than as a failure.

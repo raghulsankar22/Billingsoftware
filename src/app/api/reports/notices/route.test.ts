@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { GET } from "./route";
 import type { Bill } from "@/lib/types";
 
-const mocks = vi.hoisted(() => ({ user: vi.fn(), profile: vi.fn(), bills: vi.fn() }));
+const mocks = vi.hoisted(() => ({ user: vi.fn(), profile: vi.fn(), bills: vi.fn(), added: vi.fn() }));
 vi.mock("@/lib/auth", () => ({ requireUser: mocks.user, requireOwnerProfile: mocks.profile }));
 vi.mock("@/lib/excel-report", () => ({ loadReportBills: mocks.bills }));
 vi.mock("@/lib/accounts", async () => import("../../../../lib/accounts"));
@@ -11,6 +11,8 @@ vi.mock("@/lib/notice-report", async () => import("../../../../lib/notice-report
 vi.mock("@/lib/notices", async () => import("../../../../lib/notices"));
 vi.mock("@/lib/notice-messages", async () => import("../../../../lib/notice-messages"));
 vi.mock("@/lib/business-updates", () => ({ billingToday: () => "2026-11-02" }));
+vi.mock("@/lib/storage-mode", () => ({ localStorageEnabled: true }));
+vi.mock("@/lib/notice-additions", () => ({ addedNoticeBills: mocks.added }));
 
 const bill = (id: string, billNumber: number, billDate: string, patch: Partial<Bill> = {}): Bill => ({
   id, billNumber, billDate, status: "issued", customerCode: "C000001", customerName: "Example Customer", fatherName: "Parent", address: "Example Street", phone: "0123456789",
@@ -21,6 +23,7 @@ const request = (parameters: Record<string, string> = {}) => new Request(`http:/
 beforeEach(() => {
   vi.resetAllMocks();
   mocks.user.mockResolvedValue({ id: "owner" });
+  mocks.added.mockResolvedValue([]);
   mocks.profile.mockResolvedValue({ id: "profile-4", business_name: "Sample Finance", phone: "9000000000" });
   mocks.bills.mockResolvedValue([
     bill("oct", 1, "2025-10-01"),
@@ -78,5 +81,21 @@ describe("notice Excel download", () => {
     mocks.profile.mockResolvedValueOnce(null);
     expect((await GET(request())).status).toBe(400);
     expect(mocks.bills).not.toHaveBeenCalled();
+  });
+  it("includes bills the owner added by hand, once, in date order, and applies the same search", async () => {
+    mocks.added.mockResolvedValue([bill("missed", 9, "2025-06-15", { customerName: "Missed Customer" }), bill("oct", 1, "2025-10-01")]);
+    const response = await GET(request());
+    expect(mocks.added).toHaveBeenCalledWith("profile-4", "2026-10", 1);
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(Buffer.from(await response.arrayBuffer()) as never);
+    const sheet = workbook.getWorksheet("Notice 1")!;
+    expect(sheet.rowCount).toBe(3);
+    expect([sheet.getCell("B2").value, sheet.getCell("B3").value]).toEqual([9, 1]);
+    expect(sheet.getCell("D2").value).toBe("Missed Customer");
+    const filtered = await GET(request({ q: "Missed" }));
+    const searched = new ExcelJS.Workbook();
+    await searched.xlsx.load(Buffer.from(await filtered.arrayBuffer()) as never);
+    expect(searched.getWorksheet("Notice 1")!.rowCount).toBe(2);
+    expect(searched.getWorksheet("Notice 1")!.getCell("B2").value).toBe(9);
   });
 });

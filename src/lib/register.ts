@@ -19,7 +19,8 @@ function characterWidth(character: string) {
 function wrappedLineCount(text: string, columnWidth: number) {
   // ExcelJS does not measure rendered text. Reserve horizontal padding and use
   // conservative Calibri 11 character widths, including Tamil/fallback glyphs.
-  const availableWidth = Math.max(1, (columnWidth - 2) * 0.9);
+  // Everything in the register is bold, and bold Calibri is wider, so leave extra room.
+  const availableWidth = Math.max(1, (columnWidth - 2) * 0.85);
   let lines = 0;
   for (const paragraph of text.split(/\r\n|\r|\n/)) {
     lines++;
@@ -56,9 +57,9 @@ export function formatRegisterSheet(sheet: ExcelJS.Worksheet) {
   header.alignment = { vertical: "middle", wrapText: true };
   sheet.eachRow((row, rowNumber) => {
     if (rowNumber === 1) return;
-    row.font = { ...row.font, name: "Calibri", size: 11 };
+    row.font = { ...row.font, name: "Calibri", size: 11, bold: true };
     row.eachCell({ includeEmpty: true }, (cell, column) => {
-      cell.font = { ...cell.font, name: "Calibri", size: 11 };
+      cell.font = { ...cell.font, name: "Calibri", size: 11, bold: true };
       cell.alignment = { ...cell.alignment, vertical: "top", ...(wrappedColumns.includes(column) ? { wrapText: true } : {}) };
     });
     const lines = Math.max(1, ...wrappedColumns.map((column) => wrappedLineCount(row.getCell(column).text, sheet.getColumn(column).width!)));

@@ -24,6 +24,7 @@ const serverDirectory = path.join(runtime, 'server');
 await mkdir(serverDirectory, { recursive: true });
 await cp(path.join(root, '.next'), path.join(serverDirectory, '.next'), { recursive: true, filter: source => !['cache', 'standalone', 'types'].includes(path.relative(path.join(root, '.next'), source).split(path.sep)[0]) });
 await cp(path.join(root, 'desktop/web-server.cjs'), path.join(serverDirectory, 'server.js'));
+await cp(path.join(root, 'desktop/phone-access.cjs'), path.join(serverDirectory, 'phone-access.cjs'));
 await cp(path.join(root, 'public'), path.join(runtime, 'server/public'), { recursive: true });
 const project = JSON.parse(await readFile(path.join(root, 'package.json'), 'utf8'));
 const locked = productionLockfile(yaml.load(await readFile(path.join(root, 'pnpm-lock.yaml'), 'utf8')));

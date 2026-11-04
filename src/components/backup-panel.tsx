@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import type { AccountSlot } from "@/lib/account-url";
+import { isInGoogleDrive, type DriveSuggestion } from "@/lib/google-drive-path";
 import type { BackupCopy, BackupPreview, BackupStatus } from "@/lib/backups";
 import { api } from "./api";
 import { useLanguage } from "./language-provider";
@@ -85,6 +86,7 @@ export function BackupPanel({ accountSlot }: { accountSlot: AccountSlot }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [administrator, setAdministrator] = useState(false);
+  const [driveFolders, setDriveFolders] = useState<DriveSuggestion[]>([]);
 
   const run = useCallback(async (method: "POST" | "PUT", body: Record<string, unknown>) => {
     setBusy(true); setError("");
@@ -95,10 +97,10 @@ export function BackupPanel({ accountSlot }: { accountSlot: AccountSlot }) {
 
   useEffect(() => {
     let current = true;
-    api("/api/backup", accountSlot).then((loaded: BackupStatus & { administrator?: boolean }) => {
+    api("/api/backup", accountSlot).then((loaded: BackupStatus & { administrator?: boolean; googleDrive?: DriveSuggestion[] }) => {
       if (!current) return;
       setStatus(loaded); setFolder(loaded.folder ?? "");
-      setAdministrator(loaded.administrator === true);
+      setAdministrator(loaded.administrator === true); setDriveFolders(loaded.googleDrive ?? []);
       if (loaded.due) void run("POST", { auto: true });
     }).catch(failure => { if (current) setError(failure instanceof Error ? failure.message : "Backup status could not be loaded."); });
     return () => { current = false; };
@@ -129,9 +131,12 @@ export function BackupPanel({ accountSlot }: { accountSlot: AccountSlot }) {
         catch { setError("The folder chooser could not be opened. Enter the full path below."); }
       }}>{t("Choose folder…")}</button>
       <label>{t("Backup folder")}<input value={folder} placeholder="D:\Billing Backups" disabled={busy} maxLength={400} onChange={event => setFolder(event.target.value)} /></label>
+      {driveFolders.map(item => <button type="button" className="secondary" key={item.folder} disabled={busy} onClick={() => setFolder(item.folder)}>{t("Use Google Drive")}: {item.folder}</button>)}
       <button disabled={busy || !folder.trim()}>{busy ? t("Backing up…") : t("Save folder and back up")}</button>
       {status?.folder && <button type="button" className="secondary" disabled={busy} onClick={() => { setEditing(false); setFolder(status.folder ?? ""); setError(""); }}>{t("Cancel")}</button>}
     </form>}
+    {choosing && administrator && driveFolders.length === 0 && !isInGoogleDrive(folder) && <p className="muted">{t("To keep copies online, install Google Drive for desktop (free) and sign in, then choose a folder inside My Drive. Each copy uploads automatically.")}</p>}
+    {status?.folder && isInGoogleDrive(status.folder) && !choosing && <p className="muted">{t("This folder is in Google Drive, so each copy also uploads to your Google account once Google Drive for desktop has synced it.")}</p>}
     {error && <p className="error" role="alert">{t(error)}</p>}
     {status?.folder && !error && status.lastError && <p className="error" role="alert">{t(status.lastError)}</p>}
     {status?.folder && !choosing && administrator && <RestoreBackup accountSlot={accountSlot} disabled={busy} />}

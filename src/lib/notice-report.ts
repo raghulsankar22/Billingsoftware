@@ -50,7 +50,8 @@ export function buildNoticeRegister(bills: readonly Bill[], stage: NoticeStage, 
   sheet.getColumn("phone").numFmt = "@";
   sheet.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } };
   sheet.getRow(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF17304F" } };
-  sheet.eachRow(row => { row.alignment = { vertical: "top", wrapText: true }; });
+  // Every cell is bold, including the message columns.
+  sheet.eachRow(row => { row.alignment = { vertical: "top", wrapText: true }; row.eachCell({ includeEmpty: true }, cell => { cell.font = { ...cell.font, bold: true }; }); });
   sheet.views = [{ state: "frozen", ySplit: 1 }];
   sheet.autoFilter = { from: "A1", to: "M1" };
   return workbook;
